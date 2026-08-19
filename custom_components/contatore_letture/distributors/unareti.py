@@ -20,6 +20,7 @@ from .pcf_common.sensor import build_pcf_entities
 DISPLAY_NAME = "Unareti"
 PIVA = "12883450152"  # confermata via scheda operatore ARERA (Id operatore 1247, gruppo A2A)
 BASE_URL = "https://areaclienti.unareti.it/ClientiWeb/public/misure"
+PORTAL_URL = "https://areaclienti.unareti.it/ClientiWeb"
 
 REQUIRED_INFO = [
     "Client ID e Secret ID del Portale Clienti Finali (PCF) Unareti",

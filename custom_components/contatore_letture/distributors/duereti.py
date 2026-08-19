@@ -17,6 +17,7 @@ from .pcf_common.sensor import build_pcf_entities
 DISPLAY_NAME = "Duereti"
 PIVA = "13632560960"  # verificato via HAR ARERA il 19/08/2026 (Vimodrone)
 BASE_URL = "https://areaclienti.duereti.it/ClientiDueRetiWeb/public/misure"
+PORTAL_URL = "https://areaclienti.duereti.it/ClientiDueRetiWeb"
 
 REQUIRED_INFO = [
     "Client ID e Secret ID del Portale Clienti Finali (PCF) Duereti",

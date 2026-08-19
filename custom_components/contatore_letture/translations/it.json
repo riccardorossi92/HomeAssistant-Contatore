@@ -28,7 +28,7 @@
       },
       "pcf_credentials": {
         "title": "{distributor} - Credenziali API",
-        "description": "Per sapere come richiedere Client ID e Secret ID a {distributor}, consulta: {github_repo_url}",
+        "description": "Se non hai già Client ID e Secret ID, ecco come richiederli a {distributor}:\n\n{guida}",
         "data": {
           "client_id": "Client ID",
           "secret_id": "Secret ID"
@@ -61,7 +61,7 @@
       },
       "reauth_confirm": {
         "title": "{distributor} - Aggiorna credenziali",
-        "description": "Le credenziali salvate non sono più valide. Inserisci un nuovo Client ID/Secret ID (info: {github_repo_url})",
+        "description": "Le credenziali salvate non sono più valide. Inserisci un nuovo Client ID/Secret ID, richiedibile dal Portale Clienti Finali: {portal_url}",
         "data": {
           "client_id": "Client ID",
           "secret_id": "Secret ID"

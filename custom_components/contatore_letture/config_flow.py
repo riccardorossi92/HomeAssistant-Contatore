@@ -34,7 +34,6 @@ from .const import (
     CONF_PODS,
     CONF_SECRET_ID,
     DOMAIN,
-    GITHUB_REPO_URL,
 )
 from .distributors import DISTRIBUTOR_REGISTRY, PIVA_TO_KEY
 from .distributors.pcf_common.config_flow_helpers import pod_gia_configurato
@@ -273,7 +272,17 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "distributor": modulo.DISPLAY_NAME,
-                "github_repo_url": GITHUB_REPO_URL,
+                "guida": (
+                    f"1. Accedi al Portale Clienti Finali (PCF): {modulo.PORTAL_URL}\n"
+                    "2. Assicurati di avere almeno un'identificazione validata dal "
+                    "backoffice sul tuo profilo (senza questo passaggio la richiesta "
+                    "di abilitazione API non compare)\n"
+                    "3. Vai in \"Area POD/PDR: Interruzioni, Misure e servizi\" e cerca "
+                    "l'opzione per richiedere l'abilitazione all'uso delle API\n"
+                    "4. Invia la richiesta e attendi l'accettazione\n"
+                    "5. Una volta approvata, Client ID e Secret ID sono visibili nella "
+                    "stessa pagina (e arrivano anche via email)"
+                ),
             },
         )
 
@@ -481,7 +490,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "distributor": modulo.DISPLAY_NAME,
-                "github_repo_url": GITHUB_REPO_URL,
+                "portal_url": modulo.PORTAL_URL,
             },
         )
 
