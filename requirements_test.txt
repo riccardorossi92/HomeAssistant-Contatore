@@ -1,0 +1,10 @@
+pytest
+pytest-asyncio
+aiohttp
+openpyxl
+beautifulsoup4
+# Serve solo per i test che importano moduli con dipendenze da Home Assistant
+# (coordinator.py, config_flow.py, sensor.py, statistics.py, arera_lookup.py,
+# istat_comuni.py). I test in test_api.py non ne hanno bisogno: pcf_common/api.py
+# non importa homeassistant.
+pytest-homeassistant-custom-component

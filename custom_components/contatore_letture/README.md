@@ -1,0 +1,108 @@
+# contatore_letture — stato del pacchetto (v2, architettura pcf_common)
+
+## Architettura
+
+```
+contatore_letture/
+  config_flow.py         # orchestratore: wizard ARERA + step generici "pcf" + reauth + options
+  __init__.py             # setup/unload, dispatch per distributore, servizi condivisi
+  sensor.py                # dispatch verso il modulo del distributore
+  istat_comuni.py           # elenco comuni (fetch live + fallback snapshot)
+  arera_lookup.py            # query live ARERA (comune -> distributore)
+  distributors/
+    __init__.py               # registry: DISTRIBUTOR_REGISTRY, PIVA_TO_KEY
+    duereti.py                 # BASE_URL/DISPLAY_NAME/PIVA Duereti (sottile)
+    unareti.py                  # BASE_URL/DISPLAY_NAME/PIVA Unareti (sottile)
+    edistribuzione.py            # stub, nessuna API nota, non usa pcf_common
+    pcf_common/                   # libreria condivisa Duereti/Unareti
+      api.py                       # client requestToken/requestExport/requestResult
+      coordinator.py                 # polling, coda giorni da riprovare, retry ticket
+      statistics.py                   # import external statistics + gestione DST
+      sensor.py                        # entità diagnostiche (parametrizzate su display_name)
+      config_flow_helpers.py            # validazione credenziali/POD condivisa
+      const.py                            # costanti di protocollo condivise
+```
+
+## Cosa è stato portato dal codice reale (non stub)
+
+`pcf_common/*` è stato generato **a partire dal codice reale di `duereti_letture` v0.7.2**
+(non riscritto a mano), con trasformazioni scriptate per minimizzare il rischio di
+errori di trascrizione:
+
+- rinominate le classi (`Duereti*` → `Pcf*`);
+- parametrizzato `base_url` nel client API (prima hardcoded su Duereti);
+- parametrizzato `display_name` in coordinator/sensor/statistics per i messaggi
+  utente-facing e i nomi delle entità;
+- **nessuna modifica alla logica**: retry del WAF, gestione dei 409/429/404,
+  coda dei giorni da riprovare, calcolo del mese precedente completo, gestione
+  del cambio ora legale — tutto identico all'originale.
+
+Verificato dopo la trasformazione:
+- sintassi Python valida su tutti i file (`py_compile`);
+- tutti gli import relativi risolvono ai nomi realmente definiti (controllo
+  scriptato dedicato, non solo `py_compile`);
+- `pyflakes` pulito — i soli avvisi residui (due riferimenti a tipo posticipato
+  `"datetime"`/`"date"` in stringa, una variabile d'eccezione non riletta in un
+  ramo che fa `raise` bare) erano già presenti identici nel codice originale
+  Duereti, non introdotti dalla trasformazione.
+
+`distributors/duereti.py` e `distributors/unareti.py` sono volutamente **file separati**
+(non un'unica classe parametrizzata): se domani uno dei due diverge davvero
+(endpoint diverso, comportamento diverso), l'override va solo nel suo file.
+
+## Nota sulla documentazione del WAF/DST
+
+Alcuni commenti tecnici in `pcf_common/api.py` e `pcf_common/statistics.py`
+documentano comportamenti (blocchi del WAF, interpretazione del flag ora
+legale) **verificati sul campo solo su Duereti**, non ancora riconfermati su
+Unareti. Sono segnalati esplicitamente nei commenti: se in futuro emergono
+differenze su Unareti, vanno annotate lì (non serve più toccare due file
+diversi con la stessa logica duplicata, come accadeva prima).
+
+## Rottura intenzionale rispetto a duereti_letture/unareti_letture
+
+Per scelta esplicita (nessun utente reale con storico da preservare oggi),
+`contatore_letture` usa un **dominio HA unico** (`contatore_letture`) invece
+dei due domini separati `duereti_letture`/`unareti_letture`. Lo `statistic_id`
+generato (`contatore_letture:<pod>_energia`) è quindi diverso da quello delle
+vecchie integrazioni: se in futuro ci saranno utenti reali da migrare, servirà
+scrivere una migrazione esplicita che rinomina gli `statistic_id` nel recorder
+prima del passaggio — non ancora scritta, perché fuori scopo per ora.
+
+## Cosa resta STUB
+
+- **`distributors/edistribuzione/statistics.py`**: import nella Energy
+  Dashboard NON ancora implementato. Auth (OAuth2+PKCE+OTP via Salesforce)
+  e API di lettura sono integrate e funzionanti (nella misura in cui lo
+  era la bozza originale - i regex di scraping in `auth.py` sono
+  best-effort, non testati contro l'HTML reale, vedi i commenti nel
+  file). Il blocco mancante è lo schema JSON della curva di carico
+  (`async_get_daily_load_profile`/`async_get_monthly_load_profile`): non
+  documentato da nessuna parte, quindi `statistics.py` oggi si limita a
+  loggare la struttura ricevuta invece di inventare nomi di campo.
+- **Reauth/Options flow per E-Distribuzione**: abortiscono esplicitamente
+  (`reauth_not_supported` / `options_not_supported`) invece di fallire in
+  modo oscuro - il modello di autenticazione (OAuth2+OTP) è troppo diverso
+  da quello "pcf" per riusare la stessa logica di reauth.
+
+## Nota di sicurezza (E-Distribuzione)
+
+Le HAR usate per costruire `distributors/edistribuzione/auth.py`
+contenevano credenziali reali (password, access/refresh token, sid di
+sessione) di un account di test. Le HAR sono state condivise solo in
+questa chat (non pubblicate altrove) e non conservate oltre l'analisi; la
+password dell'account di test è già stata cambiata. Nessuna azione
+ulteriore necessaria — nota lasciata qui solo come promemoria per chi in
+futuro dovesse catturare nuove HAR per aggiornare `auth.py`: fare lo
+stesso, non committare mai le catture originali nel repository.
+
+## Prima di usarlo su un'installazione reale
+
+1. Aggiorna `codeowners`/`documentation`/`issue_tracker` in `manifest.json`
+   e `GITHUB_REPO_URL` in `const.py` con i tuoi riferimenti reali.
+2. Se vuoi disinstallare `duereti_letture`/`unareti_letture` esistenti prima
+   di installare `contatore_letture`, ricordati che è una rottura intenzionale
+   (vedi sopra): non c'è continuità automatica delle statistiche.
+3. Consigliato: un primo giro di test manuale del wizard end-to-end (region
+   → provincia → comune → lookup ARERA → credenziali → POD) prima di fare
+   affidamento sui servizi `recupera_ticket`/`recupera_storico`.

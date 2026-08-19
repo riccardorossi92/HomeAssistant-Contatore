@@ -1,0 +1,81 @@
+recupera_ticket:
+  name: Recupera un ticket
+  description: >-
+    Riprende un ticket già esistente presso il distributore (Duereti o
+    Unareti), saltando la chiamata requestExport. Utile quando si è ottenuto
+    un ticket per altre vie (es. una chiamata manuale con curl/Bruno) o
+    quando l'integrazione ne aveva perso uno ancora valido: evita di
+    chiedere un nuovo export, che è la chiamata più spesso bloccata dal WAF.
+    Se c'è già un recupero in corso viene annullato (il suo ticket resta
+    annotato nei log).
+  fields:
+    ticket:
+      name: Ticket
+      description: L'identificativo restituito da requestExport.
+      required: true
+      example: ENdZS6CausBMlUzrS3as5Q
+      selector:
+        text:
+    data_da:
+      name: Data inizio
+      description: >-
+        Inizio del periodo coperto dal ticket. Solo un'etichetta per i sensori
+        diagnostici, non influenza i dati importati (che arrivano interamente
+        dal file). Se omessa si assume il primo giorno del mese precedente.
+      required: false
+      example: "2026-07-01"
+      selector:
+        date:
+    data_a:
+      name: Data fine
+      description: >-
+        Fine del periodo coperto dal ticket. Come sopra, è solo un'etichetta.
+        Se omessa si assume l'ultimo giorno del mese precedente.
+      required: false
+      example: "2026-07-31"
+      selector:
+        date:
+    entry_id:
+      name: ID configurazione
+      description: >-
+        Necessario solo se hai più istanze Duereti/Unareti configurate, per
+        indicare su quale agire. Con una sola istanza lascialo vuoto.
+      required: false
+      selector:
+        text:
+
+recupera_storico:
+  name: Recupera storico
+  description: >-
+    Richiede al distributore i dati di un periodo passato e li importa. Il
+    recupero dello storico non è automatico: ogni richiesta può restare in
+    coda per ore e le API accettano al massimo 6 mesi per volta, quindi sei
+    tu a decidere quando e quanto recuperare. Per periodi più lunghi ripeti
+    l'azione su intervalli consecutivi. Se c'è già un recupero in corso
+    viene annullato.
+  fields:
+    data_da:
+      name: Data inizio
+      description: >-
+        Primo giorno del periodo da recuperare. Non può essere anteriore a 6
+        mesi prima della data di fine.
+      required: true
+      example: "2026-02-01"
+      selector:
+        date:
+    data_a:
+      name: Data fine
+      description: >-
+        Ultimo giorno del periodo da recuperare. I dati sono disponibili con un
+        giorno di ritardo, quindi al massimo ieri.
+      required: true
+      example: "2026-07-31"
+      selector:
+        date:
+    entry_id:
+      name: ID configurazione
+      description: >-
+        Necessario solo se hai più istanze Duereti/Unareti configurate.
+      required: false
+      selector:
+        text:

@@ -1,0 +1,127 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Individua il distributore - Regione",
+        "data": { "regione": "Regione" }
+      },
+      "provincia": {
+        "title": "Individua il distributore - Provincia",
+        "data": { "provincia": "Provincia" }
+      },
+      "comune": {
+        "title": "Individua il distributore - Comune",
+        "data": { "comune": "Comune di fornitura" }
+      },
+      "choose_distributor": {
+        "title": "Più distributori trovati",
+        "data": { "distributor": "Seleziona il distributore" }
+      },
+      "manual_select": {
+        "title": "Selezione manuale del distributore",
+        "description": "{description}",
+        "data": { "distributor": "Distributore" }
+      },
+      "distributor_info": {
+        "title": "Distributore individuato: {distributor}",
+        "description": "Per completare la configurazione con {distributor} ti servirà:\n\n{requirements}\n\nProcedi per continuare."
+      },
+      "pcf_credentials": {
+        "title": "{distributor} - Credenziali API",
+        "description": "Per sapere come richiedere Client ID e Secret ID a {distributor}, consulta: {github_repo_url}",
+        "data": {
+          "client_id": "Client ID",
+          "secret_id": "Secret ID"
+        }
+      },
+      "pcf_add_pod": {
+        "title": "{distributor} - Aggiungi POD",
+        "description": "{pod_conflitto}",
+        "data": {
+          "pod": "Codice POD/PDR",
+          "df": "Dato fiscale associato (CF o P.IVA)",
+          "aggiungi_altro": "Aggiungi un altro POD"
+        }
+      },
+      "edistribuzione_user": {
+        "title": "E-Distribuzione - Accedi",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "edistribuzione_otp": {
+        "title": "E-Distribuzione - Codice OTP",
+        "description": "Inserisci il codice OTP ricevuto via SMS",
+        "data": { "otp": "Codice OTP" }
+      },
+      "edistribuzione_pod": {
+        "title": "E-Distribuzione - Seleziona POD",
+        "data": { "pod": "POD" }
+      },
+      "reauth_confirm": {
+        "title": "{distributor} - Aggiorna credenziali",
+        "description": "Le credenziali salvate non sono più valide. Inserisci un nuovo Client ID/Secret ID (info: {github_repo_url})",
+        "data": {
+          "client_id": "Client ID",
+          "secret_id": "Secret ID"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Client ID o Secret ID non validi",
+      "cannot_connect": "Impossibile contattare le API del distributore",
+      "pod_duplicato": "Questo POD è già configurato in: {pod_conflitto}",
+      "pod_non_valido": "POD o dato fiscale non riconosciuti dal distributore. Controlla il codice POD (inizia con IT e lo trovi in bolletta) e il codice fiscale o la partita IVA dell'intestatario della fornitura.",
+      "invalid_otp": "Codice OTP errato o scaduto"
+    },
+    "abort": {
+      "reauth_successful": "Credenziali aggiornate con successo",
+      "reauth_not_supported": "Questo distributore non supporta ancora il reinserimento delle credenziali da questo flusso",
+      "no_pods_found": "Nessun POD trovato per questo account"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Gestisci POD",
+        "menu_options": {
+          "aggiungi_pod": "Aggiungi un POD",
+          "rimuovi_pod": "Rimuovi un POD",
+          "orario": "Cambia l'orario della richiesta giornaliera"
+        }
+      },
+      "aggiungi_pod": {
+        "title": "Aggiungi POD",
+        "description": "POD attualmente configurati: {pod_correnti}",
+        "data": {
+          "pod": "Codice POD/PDR",
+          "df": "Dato fiscale associato (CF o P.IVA)"
+        }
+      },
+      "rimuovi_pod": {
+        "title": "Rimuovi POD",
+        "description": "Seleziona i POD da rimuovere. I dati storici già importati nelle statistiche esterne non vengono cancellati.",
+        "data": {
+          "pods_da_rimuovere": "POD da rimuovere"
+        }
+      },
+      "orario": {
+        "title": "Orario della richiesta giornaliera",
+        "description": "A partire da che ora chiedere al distributore i dati del giorno precedente. Attualmente: {ora_attuale}:00.\n\nL'orario in cui i dati vengono pubblicati non è documentato e può variare: se noti che spesso non vengono restituiti dati, prova a spostarlo più avanti. Un giorno non ottenuto non viene comunque perso, finisce nella coda dei giorni da riprovare.",
+        "data": {
+          "ora_richiesta": "Ora (0-23)"
+        }
+      }
+    },
+    "error": {
+      "pod_duplicato": "Questo POD è già configurato in: {pod_conflitto}",
+      "non_puoi_rimuoverli_tutti": "Non puoi rimuovere tutti i POD da qui: rimuovi direttamente l'integrazione se vuoi svuotarla del tutto",
+      "pod_non_valido": "POD o dato fiscale non riconosciuti dal distributore. Controlla il codice POD (inizia con IT e lo trovi in bolletta) e il codice fiscale o la partita IVA dell'intestatario della fornitura."
+    },
+    "abort": {
+      "nessun_pod": "Non ci sono POD configurati da rimuovere",
+      "options_not_supported": "Questo distributore non ha ancora opzioni configurabili"
+    }
+  }
+}
