@@ -24,9 +24,9 @@ configurazione.
 
 | Distributore | Stato |
 |---|---|
-| Duereti | Funzionante (Portale Clienti Finali / PCF) |
-| Unareti | Funzionante (Portale Clienti Finali / PCF) |
-| E-Distribuzione | In sviluppo — nessuna API integrata ancora |
+| Duereti | Login, lettura dati e import Energy Dashboard funzionanti (Portale Clienti Finali / PCF) |
+| Unareti | Login, lettura dati e import Energy Dashboard funzionanti (Portale Clienti Finali / PCF) |
+| E-Distribuzione | Login e lettura dati funzionanti; import Energy Dashboard non ancora disponibile (schema dati della curva di carico non confermato) |
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
@@ -44,11 +44,17 @@ uno di quelli supportati, o si ferma con un messaggio chiaro altrimenti.
    con lo step corretto (Duereti, Unareti, o selezione manuale se il
    distributore non è ancora supportato o il lookup non è riuscito).
 
-## Prerequisiti: richiedere Client ID e Secret ID al tuo distributore
+## Prerequisiti
+
+I tre distributori supportati usano meccanismi di autenticazione diversi
+tra loro — nessuno dei due è "il caso normale" rispetto all'altro, sono
+semplicemente due protocolli distinti imposti da ciascun distributore.
+
+### Duereti / Unareti (Client ID + Secret ID)
 
 Le API PCF non sono pubbliche in modo libero: vanno abilitate manualmente
-dal distributore (Duereti o Unareti), che poi invia via email le credenziali
-(`client_id` e `secret_id`) da usare in questa integrazione.
+dal distributore, che poi invia via email le credenziali (`client_id` e
+`secret_id`) da usare in questa integrazione.
 
 1. Accedi al **Portale Clienti Finali (PCF)** del tuo distributore:
    - Duereti: `https://areaclienti.duereti.it/ClientiDueRetiWeb`
@@ -70,6 +76,15 @@ dal distributore (Duereti o Unareti), che poi invia via email le credenziali
 
 Questo processo è interamente gestito dal distributore: l'integrazione non
 può velocizzarlo né bypassarlo.
+
+### E-Distribuzione (email + password + OTP)
+
+Nessuna richiesta di abilitazione preventiva: ti servono solo le stesse
+credenziali dell'app/area clienti ufficiale E-Distribuzione (email,
+password, e il codice OTP che ricevi via SMS al momento dell'accesso — te
+lo chiede direttamente il wizard di configurazione). Se il tuo account ha
+più POD associati, potrai scegliere quale monitorare durante la
+configurazione.
 
 ## Installazione
 
@@ -93,14 +108,22 @@ può velocizzarlo né bypassarlo.
 2. Seleziona regione, provincia e comune della fornitura
 3. Il distributore viene individuato automaticamente (o selezionato a mano
    se necessario), e ti viene mostrato cosa ti servirà per proseguire
-4. Inserisci **Client ID** e **Secret ID** del distributore — vengono
-   validati subito con una chiamata reale alle sue API
-5. Aggiungi uno o più **POD** con il relativo **codice fiscale**; puoi
-   aggiungerne quanti vuoi prima di confermare
-6. Dopo la configurazione puoi aggiungere/rimuovere POD in qualsiasi
-   momento da **Configura** sull'integrazione (Opzioni)
+4. Inserisci le credenziali del tuo distributore (vedi
+   [Prerequisiti](#prerequisiti) sopra: Client ID/Secret ID per
+   Duereti/Unareti, email/password/OTP per E-Distribuzione) — vengono
+   validate subito con una chiamata reale alle sue API
+5. Per Duereti/Unareti, aggiungi uno o più **POD** con il relativo
+   **codice fiscale**; per E-Distribuzione, seleziona il POD tra quelli
+   dell'account (se ce n'è più di uno)
 
 ## Cosa fa una volta configurata
+
+I dati importati sono visibili come **external statistics**
+(`contatore_letture:<pod>_energia`) in **Impostazioni → Sistema →
+Statistiche**, utilizzabili nella Energy Dashboard — oggi solo per
+Duereti/Unareti (vedi tabella distributori sopra).
+
+### Duereti / Unareti
 
 - **POD e dato fiscale vengono verificati subito in configurazione:** se il
   distributore non li riconosce, il form non permette di salvare.
@@ -110,12 +133,11 @@ può velocizzarlo né bypassarlo.
   storico.
 - **Lo storico non viene recuperato automaticamente:** si richiede con
   l'azione `recupera_storico`.
+- Dopo la configurazione puoi aggiungere/rimuovere POD e cambiare l'orario
+  della richiesta giornaliera in qualsiasi momento da **Configura**
+  sull'integrazione (Opzioni).
 
-I dati vengono importati come **external statistics**
-(`contatore_letture:<pod>_energia`), visibili in **Impostazioni → Sistema →
-Statistiche** e utilizzabili nella Energy Dashboard.
-
-### Entità esposte (Duereti/Unareti)
+#### Entità esposte
 
 Sono tutte diagnostiche — i consumi stanno nelle statistiche, non in un
 sensore — e raggruppate in un dispositivo "Account API" più uno per ogni POD.
@@ -131,7 +153,7 @@ sensore — e raggruppate in un dispositivo "Account API" più uno per ogni POD.
 *Attesa file* è utile per un'automazione di allerta: se resta alto per ore,
 qualcosa si è inceppato.
 
-### Azioni
+#### Azioni
 
 **`contatore_letture.recupera_storico`** — richiede un periodo passato e lo
 importa. Le API accettano al massimo 6 mesi per volta; per periodi più
@@ -153,8 +175,29 @@ data:
   ticket: "ENdZS6CausBMlUzrS3as5Q"
 ```
 
-Entrambe accettano un `entry_id` opzionale se hai più istanze configurate
-(più POD di distributori diversi).
+Entrambe accettano un `entry_id` opzionale se hai più istanze configurate.
+Nessuna delle due si applica a E-Distribuzione: il suo protocollo non usa
+il modello a ticket/export di Duereti e Unareti.
+
+### E-Distribuzione
+
+- **Aggiornamento ogni 60 minuti**: refresh del token, poi lettura mensile
+  (reading + time-of-use) per il POD configurato.
+- **Nessun import nella Energy Dashboard per ora** — solo sensori di stato
+  (vedi sotto). Vedi la nota nello stato dei distributori sopra.
+- Nessuna azione dedicata ancora (niente equivalente di
+  `recupera_storico`/`recupera_ticket`: il modello dati è diverso, non
+  serve un ticket da riprendere).
+
+#### Entità esposte
+
+Un dispositivo per POD, con un sensore per ogni combinazione
+magnitudine/fascia dell'ultima lettura pubblicata, più i picchi di potenza:
+
+| Entità | Cosa mostra |
+|---|---|
+| Energia attiva / reattiva T1–T6 | Ultima lettura cumulativa pubblicata per fascia |
+| Picco di potenza T1–T6 | Ultimo picco di potenza pubblicato per fascia |
 
 ## Sviluppo e test
 
