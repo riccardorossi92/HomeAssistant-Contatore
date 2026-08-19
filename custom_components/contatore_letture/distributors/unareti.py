@@ -22,8 +22,9 @@ PIVA = "12883450152"  # confermata via scheda operatore ARERA (Id operatore 1247
 BASE_URL = "https://areaclienti.unareti.it/ClientiWeb/public/misure"
 
 REQUIRED_INFO = [
-    "Codice cliente PCF",
-    "Credenziali portale Unareti",
+    "Client ID e Secret ID del Portale Clienti Finali (PCF) Unareti",
+    "Codice POD per ciascun punto di prelievo",
+    "Dato fiscale associato (codice fiscale o P.IVA dell'intestatario della fornitura)",
 ]
 
 

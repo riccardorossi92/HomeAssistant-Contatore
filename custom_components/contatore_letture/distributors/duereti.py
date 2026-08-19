@@ -19,8 +19,9 @@ PIVA = "13632560960"  # verificato via HAR ARERA il 19/08/2026 (Vimodrone)
 BASE_URL = "https://areaclienti.duereti.it/ClientiDueRetiWeb/public/misure"
 
 REQUIRED_INFO = [
-    "Codice cliente PCF",
-    "Credenziali portale Duereti",
+    "Client ID e Secret ID del Portale Clienti Finali (PCF) Duereti",
+    "Codice POD per ciascun punto di prelievo",
+    "Dato fiscale associato (codice fiscale o P.IVA dell'intestatario della fornitura)",
 ]
 
 
