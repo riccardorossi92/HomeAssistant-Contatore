@@ -22,14 +22,14 @@ from pathlib import Path
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .istat_transform import ComuniTree, comuni_list_to_tree
+
 _LOGGER = logging.getLogger(__name__)
 
 COMUNI_JSON_URL = (
     "https://raw.githubusercontent.com/matteocontrini/comuni-json/master/comuni.json"
 )
 SNAPSHOT_PATH = Path(__file__).parent / "data" / "istat_comuni_snapshot.json"
-
-ComuniTree = dict[str, dict[str, dict[str, dict[str, str]]]]
 
 
 async def async_get_comuni_tree(hass: HomeAssistant) -> ComuniTree:
@@ -56,17 +56,4 @@ async def _async_fetch_live(hass: HomeAssistant) -> ComuniTree:
         resp.raise_for_status()
         data = await resp.json(content_type=None)
 
-    if not isinstance(data, list) or not data:
-        raise ValueError("Formato dati comuni inatteso (lista vuota o non valida)")
-
-    tree: ComuniTree = {}
-    for c in data:
-        regione = c["regione"]["nome"]
-        provincia = c["provincia"]["nome"]
-        comune = c["nome"]
-        tree.setdefault(regione, {}).setdefault(provincia, {})[comune] = {
-            "codice_regione": c["regione"]["codice"],
-            "codice_provincia": c["provincia"]["codice"],
-            "codice_comune": c["codice"],
-        }
-    return tree
+    return comuni_list_to_tree(data)

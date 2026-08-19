@@ -3,6 +3,10 @@ pytest-asyncio
 aiohttp
 openpyxl
 beautifulsoup4
+requests
+# requests serve solo a scripts/update_istat_snapshot.py (girato in CI, non
+# dall'integrazione stessa, che usa aiohttp tramite Home Assistant).
+#
 # Serve solo per i test che importano moduli con dipendenze da Home Assistant
 # (coordinator.py, config_flow.py, sensor.py, statistics.py, arera_lookup.py,
 # istat_comuni.py). I test in test_api.py non ne hanno bisogno: pcf_common/api.py

@@ -1,0 +1,58 @@
+name: Update ISTAT comuni snapshot
+
+on:
+  schedule:
+    - cron: "0 4 1 * *"    # ogni 1° del mese alle 04:00 UTC
+  workflow_dispatch: {}      # per lanciarla a mano quando vuoi
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install requests
+
+      - name: Run update script
+        id: update
+        run: |
+          python3 scripts/update_istat_snapshot.py
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Create Pull Request
+        if: steps.update.outputs.exit_code == '1'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: bot/istat-snapshot-update
+          delete-branch: true
+          commit-message: "chore: aggiornamento snapshot comuni ISTAT"
+          title: "Aggiornamento mensile snapshot comuni ISTAT"
+          body: |
+            Rigenerato automaticamente `custom_components/contatore_letture/data/istat_comuni_snapshot.json`
+            dalla stessa sorgente usata a runtime
+            ([matteocontrini/comuni-json](https://github.com/matteocontrini/comuni-json)).
+
+            Motivo tipico di un diff: fusione/istituzione di nuovi comuni, o
+            variazione di codici provincia/regione. Rivedi il diff prima di
+            mergiare - se coinvolge un comune servito da Duereti/Unareti/
+            E-Distribuzione, verifica che il lookup ARERA continui a
+            funzionare per quel comune.
+          labels: |
+            istat-snapshot
+
+      - name: Fail job on real errors
+        if: steps.update.outputs.exit_code == '2'
+        run: |
+          echo "Lo script ha segnalato un errore (fetch fallito o formato dati inatteso)."
+          exit 1
