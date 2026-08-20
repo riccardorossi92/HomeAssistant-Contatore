@@ -353,6 +353,46 @@ class EdistribuzioneAuthClient:
         resp.close()
 
         self._parse_otp_page(otp_page_html)
+        await self._async_trigger_otp_send()
+
+    async def _async_trigger_otp_send(self) -> None:
+        """Il form OTP non parte da solo al caricamento della pagina: serve
+        un primo submit del bottone, SENZA codice, per farlo davvero
+        inviare - confermato su una HAR reale il 20/08/2026, la cui
+        risposta contiene testualmente "Abbiamo inviato un codice a 5
+        cifre al tuo indirizzo email" (non solo SMS, come si poteva
+        pensare dal solo nome del campo OTP_Input).
+
+        Il ViewState/CSRF nella risposta di QUESTA chiamata vanno poi usati
+        per l'invio effettivo del codice (async_submit_otp), non quelli
+        della pagina di atterraggio iniziale: sembrano ruotare ad ogni
+        submit del form, quindi li aggiorniamo qui via lo stesso parser
+        della pagina di atterraggio (la risposta e' ancora una pagina HTML
+        completa con lo stesso form, solo con il messaggio di conferma e
+        token freschi).
+        """
+        headers = {
+            "User-Agent": _MOBILE_USER_AGENT,
+            "Faces-Request": "partial/ajax",
+        }
+        data = {
+            "AJAXREQUEST": "_viewRoot",
+            "thePage:j_id2:i:f": "thePage:j_id2:i:f",
+            "thePage:j_id2:i:f:pb:d:navigationType": "",
+            "com.salesforce.visualforce.ViewState": self._flow.view_state,
+            "com.salesforce.visualforce.ViewStateVersion": self._flow.view_state_version,
+            "com.salesforce.visualforce.ViewStateMAC": self._flow.view_state_mac,
+            "com.salesforce.visualforce.ViewStateCSRF": self._flow.view_state_csrf,
+            (self._flow.next_field_name or "thePage:j_id2:i:f:pb:pbb:nextAjax"): (
+                self._flow.next_field_name or "thePage:j_id2:i:f:pb:pbb:nextAjax"
+            ),
+        }
+
+        url = self._flow.form_action_url or f"{LOGINFLOW_URL}?sfdcIFrameOrigin=null"
+        async with self._session.post(url, data=data, headers=headers) as resp:
+            body = await resp.text()
+
+        self._parse_otp_page(body)
 
     # -- Step 2: OTP ----------------------------------------------------------
 
