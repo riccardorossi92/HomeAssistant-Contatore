@@ -44,9 +44,26 @@ cairosvg.svg2png(url='icon_source.svg', write_to='icon@2x.png', output_width=512
   un'integrazione ufficiale di uno di loro: contatore_letture è un progetto
   indipendente che si appoggia alle loro API pubbliche.
 
-## Sottomissione ad home-assistant/brands
+## Nota su home-assistant/brands (repository esterna)
 
-Una volta confermata, questa icona va anche proposta come Pull Request al
-repository ufficiale [home-assistant/brands](https://github.com/home-assistant/brands)
-(cartella `custom_integrations/contatore_letture/`) per comparire anche
-prima che l'utente installi l'integrazione.
+Da **Home Assistant 2026.3** in poi, il repository ufficiale
+[home-assistant/brands](https://github.com/home-assistant/brands) **non
+accetta più Pull Request per integrazioni custom** — le chiude
+automaticamente e rimanda a questo stesso meccanismo (`brand/` dentro
+l'integrazione), servito da HA tramite un proxy locale
+(`/api/brands/integration/{domain}/{immagine}`). Vedi l'annuncio ufficiale:
+https://developers.home-assistant.io/blog/2026/02/24/brands-proxy-api
+
+Quindi non serve (e non è più possibile) aprire una PR a `home-assistant/brands`
+per questa integrazione: le immagini in questa cartella sono già tutto
+quello che serve.
+
+**Nota su HACS**: al momento (2026-08) la dashboard di HACS mostra
+ancora "icona non disponibile" per le integrazioni che forniscono solo
+icone locali come questa, perché il suo frontend punta ancora alla vecchia
+CDN pubblica invece di usare il proxy locale (bug segnalato upstream:
+[hacs/integration#5171](https://github.com/hacs/integration/issues/5171),
+[#5223](https://github.com/hacs/integration/issues/5223)). L'icona
+funziona comunque correttamente nella UI di Home Assistant stessa
+(pagina Integrazioni, dispositivi, ecc.) — è solo la lista di HACS a non
+mostrarla finché quel bug non viene risolto lato loro.
