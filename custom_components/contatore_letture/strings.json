@@ -52,7 +52,7 @@
       },
       "edistribuzione_otp": {
         "title": "E-Distribuzione - Codice OTP",
-        "description": "Inserisci il codice OTP ricevuto via SMS",
+        "description": "Inserisci il codice OTP ricevuto via email o SMS",
         "data": { "otp": "Codice OTP" }
       },
       "edistribuzione_pod": {

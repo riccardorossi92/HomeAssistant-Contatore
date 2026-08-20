@@ -36,7 +36,7 @@ DISTRIBUTOR_REGISTRY: dict[str, dict] = {
         "module": edistribuzione,
         "required_info": [
             "Email e password dell'area clienti E-Distribuzione",
-            "Codice OTP (ricevuto via SMS al momento dell'accesso)",
+            "Codice OTP (ricevuto via email o SMS al momento dell'accesso)",
         ],
     },
 }
