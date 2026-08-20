@@ -429,14 +429,22 @@ class EdistribuzioneAuthClient:
         if "Codice OTP" in body and "errato" in body.lower():
             raise EdistribuzioneInvalidOtp(body[:500])
 
-        redirect_match = re.search(r'content="([^"]*Location[^"]*)"', body) or re.search(
-            r'Location["\']?\s*content=["\']([^"\']+)', body
-        )
-        # Simpler/more robust: pull the "Location" meta tag content directly.
+        # Pull the "Location" meta tag content directly.
         loc_match = re.search(r'name="Location"\s+content="([^"]+)"', body)
         if not loc_match:
+            _log_parsing_failure_context(body, "meta Location dopo l'invio dell'OTP")
+            try:
+                Path("otp_submit_response_debug.html").write_text(body, encoding="utf-8")
+                _LOGGER.error(
+                    "Risposta completa salvata in %s",
+                    Path("otp_submit_response_debug.html").resolve(),
+                )
+            except OSError as exc:
+                _LOGGER.debug("Impossibile salvare la risposta di debug su disco: %s", exc)
             raise EdistribuzioneParsingError(
-                "Could not find post-OTP redirect Location in loginFlow response"
+                "Redirect (meta Location) non trovato nella risposta dopo "
+                f"l'invio dell'OTP (risposta lunga {len(body)} caratteri - "
+                "vedi log per un'anteprima)"
             )
         next_url = unquote(loc_match.group(1))
         if next_url.startswith("/"):
@@ -621,7 +629,18 @@ class EdistribuzioneAuthClient:
         otp_field = re.search(r'name="([^"]*OTP_Input[^"]*)"', html)
         if otp_field:
             self._flow.otp_field_name = otp_field.group(1)
-        resend_field = re.search(r'name="([^"]*Richiedi_nuovo_OTP[^"]*)"', html)
+        # La pagina ha DUE campi con "Richiedi_nuovo_OTP" nel nome: una
+        # checkbox visibile (element___input____...) e un campo nascosto
+        # che la specchia (element___hidden____...), aggiornato da un
+        # onclick JS - e' quest'ultimo che va sottomesso. Un regex generico
+        # trova per primo la checkbox (appare prima nell'HTML), causando
+        # l'invio del campo sbagliato - confermato su una risposta reale
+        # il 20/08/2026, dove il server trattava la sottomissione del
+        # codice come un'ennesima richiesta di reinvio invece che una
+        # convalida.
+        resend_field = re.search(
+            r'name="([^"]*element___hidden____Richiedi_nuovo_OTP[^"]*)"', html
+        )
         if resend_field:
             self._flow.resend_field_name = resend_field.group(1)
         next_field = re.search(r'name="([^"]*nextAjax[^"]*)"', html)
