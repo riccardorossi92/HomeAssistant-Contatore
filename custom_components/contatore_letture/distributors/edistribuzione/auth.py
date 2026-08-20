@@ -359,12 +359,23 @@ class EdistribuzioneAuthClient:
 
     @staticmethod
     def _extract_fwuid(html: str) -> str:
-        # Appears repeatedly as "fwuid":"<value>" in embedded JSON/JS on the
-        # login page.
+        # Forma diretta: "fwuid":"<value>" letterale in JSON/JS embedded.
         match = re.search(r'"fwuid"\s*:\s*"([^"]+)"', html)
-        if not match:
-            raise EdistribuzioneParsingError("fwuid not found on login page")
-        return match.group(1)
+        if match:
+            return match.group(1)
+
+        # Forma percent-encoded: confermato su cattura reale il 20/08/2026,
+        # il blob di contesto Aura e' incorporato direttamente nel PATH
+        # dell'URL di uno <script src="...">, non in una variabile JS:
+        #   <script src="/PortaleClienti/s/sfsites/l/%7B%22mode%22...
+        #     %22fwuid%22%3A%22<value>%22...%7D/app.js">
+        # Deve essere cosi' perche' virgolette letterali dentro un
+        # attributo src="..." romperebbero il parsing HTML.
+        match = re.search(r"%22fwuid%22%3A%22([^%]+)%22", html)
+        if match:
+            return match.group(1)
+
+        raise EdistribuzioneParsingError("fwuid not found on login page")
 
     @staticmethod
     def _extract_aura_token(html: str) -> str:
