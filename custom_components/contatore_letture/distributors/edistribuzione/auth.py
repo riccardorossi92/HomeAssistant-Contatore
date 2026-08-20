@@ -22,6 +22,7 @@ import json
 import logging
 import re
 import secrets
+import uuid
 from dataclasses import dataclass, field
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -230,10 +231,28 @@ class EdistribuzioneAuthClient:
             "aura.token": self._flow.aura_token,
         }
 
+        # X-SFDC-Page-Scope-Id: mai visto in nessuna risposta del server in
+        # tutta la HAR analizzata, solo nelle richieste - e' verosimilmente
+        # generato lato client (un ID di correlazione per la pagina/sessione,
+        # riusato identico su tutte le chiamate Aura), non qualcosa da
+        # estrarre. Generato qui un UUID plausibile, non provato necessario
+        # da solo ma coerente con quanto osservato in una richiesta reale.
+        #
+        # Origin/Referer/Content-Type aggiunti per la stessa ragione: non
+        # individualmente confermati come causa del rifiuto, ma presenti
+        # nella richiesta reale riuscita e a rischio zero da aggiungere.
+        login_headers = {
+            **headers,
+            "X-SFDC-Page-Scope-Id": str(uuid.uuid4()),
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+            "Origin": "https://private.e-distribuzione.it",
+            "Referer": str(resp.url),
+        }
+
         async with self._session.post(
             f"{AURA_ENDPOINT}?r=2&other.PED_Login.loginUser=1",
             data=data,
-            headers=headers,
+            headers=login_headers,
         ) as resp:
             raw_text = await resp.text()
             try:
