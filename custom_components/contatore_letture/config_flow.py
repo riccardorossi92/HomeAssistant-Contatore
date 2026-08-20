@@ -374,6 +374,17 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except EdistribuzioneParsingError:
                 _LOGGER.exception("Parsing della pagina di login E-Distribuzione fallito")
                 errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001 - qualunque altro errore imprevisto
+                # aiohttp.ClientError, timeout, risposta non-JSON dove ce ne
+                # aspettavamo una, o qualunque altra cosa che auth.py non
+                # incapsula nelle sue eccezioni dedicate: meglio mostrare un
+                # errore nel form (e loggare il traceback completo per
+                # capire cosa e' successo davvero) che far esplodere lo step
+                # con lo "Unknown error occurred" generico di Home Assistant.
+                _LOGGER.exception(
+                    "Errore imprevisto durante il login E-Distribuzione"
+                )
+                errors["base"] = "cannot_connect"
             else:
                 return await self.async_step_edistribuzione_otp()
 
@@ -402,6 +413,11 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except EdistribuzioneParsingError:
                 _LOGGER.exception("Parsing della pagina OTP E-Distribuzione fallito")
                 errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                _LOGGER.exception(
+                    "Errore imprevisto durante lo scambio del codice OTP E-Distribuzione"
+                )
+                errors["base"] = "cannot_connect"
             else:
                 self._edistribuzione_access_token = tokens.access_token
                 self._edistribuzione_refresh_token = tokens.refresh_token
@@ -421,7 +437,19 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         api = EdistribuzioneApiClient(session, self._edistribuzione_access_token)
 
         if not self._edistribuzione_pods:
-            self._edistribuzione_pods = await api.async_get_supplies()
+            try:
+                self._edistribuzione_pods = await api.async_get_supplies()
+            except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                # Login e OTP sono gia' andati a buon fine qui: un OTP e'
+                # utilizzabile una sola volta, quindi non ha senso far
+                # ripresentare il form di questo step (un retry non
+                # risolverebbe nulla senza rifare login+OTP da capo).
+                # Meglio abortire con un messaggio chiaro che dire
+                # esplicitamente di ricominciare, invece di un crash.
+                _LOGGER.exception(
+                    "Errore imprevisto nel recupero dei POD E-Distribuzione"
+                )
+                return self.async_abort(reason="edistribuzione_supplies_failed")
 
         def crea_entry(pod: str):
             return self.async_create_entry(
