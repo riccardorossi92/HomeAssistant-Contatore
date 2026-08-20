@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "contatore_letture" / "distributors"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "custom_components" / "contatore_letture" / "distributors"))
 
 from pcf_common.api import (  # noqa: E402
     PcfApiError,
