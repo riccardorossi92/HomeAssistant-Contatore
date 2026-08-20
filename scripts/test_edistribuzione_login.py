@@ -1,11 +1,14 @@
-"""Testa il vero codice di login E-Distribuzione (auth.py) da terminale,
-senza Home Assistant nel mezzo - molto più veloce che passare dalla UI ad
-ogni tentativo.
+"""Testa il vero codice di login E-Distribuzione (auth.py + api.py) da
+terminale, senza Home Assistant nel mezzo - molto più veloce che passare
+dalla UI ad ogni tentativo.
 
-Importa auth.py DIRETTAMENTE (bypassando i vari __init__.py della
+Copre l'intera catena: email/password -> OTP -> recupero POD
+(async_get_supplies), lo stesso percorso del config flow reale.
+
+Importa auth.py e api.py DIRETTAMENTE (bypassando i vari __init__.py della
 gerarchia distributors/edistribuzione/, che importano
 homeassistant.config_entries/core - non installati qui e non necessari:
-auth.py di per sé non dipende da Home Assistant, solo da aiohttp e
+né auth.py né api.py dipendono da Home Assistant, solo da aiohttp e
 libreria standard).
 
 Uso:
@@ -35,9 +38,10 @@ EDISTRIBUZIONE_DIR = (
 )
 
 
-def _load_auth_module():
-    """Carica const.py e auth.py come un mini-pacchetto isolato, senza
-    eseguire i vari __init__.py reali (che richiedono homeassistant)."""
+def _load_edistribuzione_modules():
+    """Carica const.py, auth.py e api.py come un mini-pacchetto isolato,
+    senza eseguire i vari __init__.py reali (che richiedono homeassistant).
+    Ritorna (auth, api)."""
     if not EDISTRIBUZIONE_DIR.exists():
         sys.exit(
             f"Non trovo {EDISTRIBUZIONE_DIR} - lancia questo script dalla "
@@ -60,7 +64,9 @@ def _load_auth_module():
         return mod
 
     _load("const", "const.py")
-    return _load("auth", "auth.py")
+    auth = _load("auth", "auth.py")
+    api = _load("api", "api.py")
+    return auth, api
 
 
 async def main() -> None:
@@ -68,7 +74,7 @@ async def main() -> None:
         level=logging.DEBUG,
         format="%(levelname)s %(name)s: %(message)s",
     )
-    auth = _load_auth_module()
+    auth, api = _load_edistribuzione_modules()
 
     try:
         import aiohttp
@@ -114,6 +120,18 @@ async def main() -> None:
         print(f"access_token  (primi 20 char): {tokens.access_token[:20]}...")
         print(f"refresh_token (primi 20 char): {tokens.refresh_token[:20]}...")
         print(f"instance_url: {tokens.instance_url}")
+
+        print("\n--- Recupero POD (async_get_supplies) ---")
+        api_client = api.EdistribuzioneApiClient(session, tokens.access_token)
+        try:
+            pods = await api_client.async_get_supplies()
+        except Exception:
+            print("Errore IMPREVISTO nel recupero dei POD (traceback completo sotto):\n")
+            raise
+
+        print(f"\n=== POD TROVATI: {len(pods)} ===")
+        for p in pods:
+            print(" -", p)
 
 
 if __name__ == "__main__":
