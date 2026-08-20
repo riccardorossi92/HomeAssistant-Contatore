@@ -13,7 +13,7 @@ libreria standard).
 
 Uso:
     pip install aiohttp
-    python3 test_edistribuzione_login.py
+    python3 verify_edistribuzione_login.py
 
 La password viene letta con getpass (non appare a schermo, non resta
 nella history del terminale).
