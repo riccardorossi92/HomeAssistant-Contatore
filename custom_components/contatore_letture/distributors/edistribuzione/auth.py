@@ -44,6 +44,24 @@ _LOGGER = logging.getLogger(__name__)
 
 _MOBILE_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15"
 
+
+def _log_parsing_failure_context(html: str, campo_cercato: str) -> None:
+    """Logga titolo + un'anteprima della pagina quando un campo atteso non
+    si trova - serve a distinguere "regex sbagliato" (il campo c'e' ma in
+    forma diversa) da "pagina completamente diversa da quella attesa"
+    (es. errore, OTP saltato perche' il dispositivo e' gia' fidato, sessione
+    scaduta) senza dover chiedere un'altra cattura per scoprirlo."""
+    title_match = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    title = title_match.group(1).strip() if title_match else "(nessun <title> trovato)"
+    _LOGGER.error(
+        "Campo '%s' non trovato. Titolo pagina: %r. Lunghezza: %d caratteri. "
+        "Primi 300 caratteri: %r",
+        campo_cercato,
+        title,
+        len(html),
+        html[:300],
+    )
+
 _MAX_REDIRECT_HOPS = 15
 
 
@@ -483,28 +501,33 @@ class EdistribuzioneAuthClient:
         return "{}"
 
     def _parse_otp_page(self, html: str) -> None:
-        def find(pattern: str, name: str) -> str:
-            m = re.search(pattern, html)
-            if not m:
-                raise EdistribuzioneParsingError(f"{name} not found on OTP page")
-            return m.group(1)
+        def find(field_name: str) -> str:
+            # Cerca l'intero tag <input ...> che contiene questo attributo
+            # 'name', poi 'value' AL SUO INTERNO - indipendente dall'ordine
+            # in cui i due attributi compaiono nel tag (il regex precedente
+            # richiedeva 'name' prima di 'value', che potrebbe non essere
+            # sempre vero).
+            tag_match = re.search(
+                rf'<input[^>]*name="{re.escape(field_name)}"[^>]*>', html
+            )
+            if not tag_match:
+                _log_parsing_failure_context(html, field_name)
+                raise EdistribuzioneParsingError(
+                    f"Campo '{field_name}' non trovato sulla pagina OTP "
+                    f"(pagina lunga {len(html)} caratteri - vedi log per un'anteprima)"
+                )
+            value_match = re.search(r'value="([^"]*)"', tag_match.group(0))
+            if not value_match:
+                raise EdistribuzioneParsingError(
+                    f"Campo '{field_name}' trovato ma senza attributo 'value' "
+                    f"leggibile: {tag_match.group(0)!r}"
+                )
+            return value_match.group(1)
 
-        self._flow.view_state = find(
-            r'name="com\.salesforce\.visualforce\.ViewState"\s+[^>]*value="([^"]+)"',
-            "ViewState",
-        )
-        self._flow.view_state_version = find(
-            r'name="com\.salesforce\.visualforce\.ViewStateVersion"\s+[^>]*value="([^"]+)"',
-            "ViewStateVersion",
-        )
-        self._flow.view_state_mac = find(
-            r'name="com\.salesforce\.visualforce\.ViewStateMAC"\s+[^>]*value="([^"]+)"',
-            "ViewStateMAC",
-        )
-        self._flow.view_state_csrf = find(
-            r'name="com\.salesforce\.visualforce\.ViewStateCSRF"\s+[^>]*value="([^"]+)"',
-            "ViewStateCSRF",
-        )
+        self._flow.view_state = find("com.salesforce.visualforce.ViewState")
+        self._flow.view_state_version = find("com.salesforce.visualforce.ViewStateVersion")
+        self._flow.view_state_mac = find("com.salesforce.visualforce.ViewStateMAC")
+        self._flow.view_state_csrf = find("com.salesforce.visualforce.ViewStateCSRF")
         # Field name prefixes are Salesforce-generated and may shift between
         # deploys (`thePage:j_id2:...`) - try to discover them dynamically
         # rather than trusting the hardcoded defaults used as a fallback above.

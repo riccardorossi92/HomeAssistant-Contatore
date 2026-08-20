@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import getpass
 import importlib.util
+import logging
 import sys
 import types
 from pathlib import Path
@@ -63,6 +64,10 @@ def _load_auth_module():
 
 
 async def main() -> None:
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
     auth = _load_auth_module()
 
     try:
