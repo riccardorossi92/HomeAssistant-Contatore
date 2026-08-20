@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import logging
 import re
 import secrets
@@ -226,7 +227,20 @@ class EdistribuzioneAuthClient:
             data=data,
             headers=headers,
         ) as resp:
-            payload = await resp.json(content_type=None)
+            raw_text = await resp.text()
+            try:
+                payload = json.loads(raw_text)
+            except json.JSONDecodeError as err:
+                _LOGGER.error(
+                    "Risposta non-JSON da loginUser (status %s). Primi 500 "
+                    "caratteri del corpo: %r",
+                    resp.status,
+                    raw_text[:500],
+                )
+                raise EdistribuzioneParsingError(
+                    f"Risposta non-JSON da loginUser (status {resp.status}): "
+                    f"{raw_text[:200]!r}"
+                ) from err
 
         try:
             return_value = payload["actions"][0]["returnValue"]
