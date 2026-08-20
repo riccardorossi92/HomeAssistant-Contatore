@@ -97,7 +97,7 @@ async def main() -> None:
         print("OK: email/password accettate.")
 
         print("\n--- Invio codice OTP ---")
-        otp = input("Codice OTP ricevuto via SMS: ").strip()
+        otp = input("Codice OTP ricevuto via email o SMS: ").strip()
         try:
             tokens = await client.async_submit_otp(otp)
         except auth.EdistribuzioneInvalidOtp as exc:
