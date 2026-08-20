@@ -10,5 +10,3 @@ CONF_COMUNE = "comune"
 CONF_CLIENT_ID = "client_id"
 CONF_SECRET_ID = "secret_id"
 CONF_PODS = "pods"
-
-GITHUB_REPO_URL = "https://github.com/riccardorossi92/HomeAssistant-Contatore"

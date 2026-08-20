@@ -1,26 +1,39 @@
-# contatore_letture — stato del pacchetto (v2, architettura pcf_common)
+# contatore_letture — stato del pacchetto
 
 ## Architettura
 
 ```
 contatore_letture/
-  config_flow.py         # orchestratore: wizard ARERA + step generici "pcf" + reauth + options
-  __init__.py             # setup/unload, dispatch per distributore, servizi condivisi
-  sensor.py                # dispatch verso il modulo del distributore
-  istat_comuni.py           # elenco comuni (fetch live + fallback snapshot)
-  arera_lookup.py            # query live ARERA (comune -> distributore)
+  config_flow.py             # orchestratore: wizard ARERA + step generici "pcf" + reauth + options
+  __init__.py                 # setup/unload, dispatch per distributore, servizi condivisi
+  sensor.py                    # dispatch verso il modulo del distributore
+  istat_comuni.py               # elenco comuni: fetch live + fallback snapshot
+  istat_transform.py             # trasformazione pura lista->albero (condivisa con scripts/)
+  arera_lookup.py                 # query live ARERA (comune -> distributore)
   distributors/
-    __init__.py               # registry: DISTRIBUTOR_REGISTRY, PIVA_TO_KEY
-    duereti.py                 # BASE_URL/DISPLAY_NAME/PIVA Duereti (sottile)
-    unareti.py                  # BASE_URL/DISPLAY_NAME/PIVA Unareti (sottile)
-    edistribuzione.py            # stub, nessuna API nota, non usa pcf_common
-    pcf_common/                   # libreria condivisa Duereti/Unareti
-      api.py                       # client requestToken/requestExport/requestResult
-      coordinator.py                 # polling, coda giorni da riprovare, retry ticket
-      statistics.py                   # import external statistics + gestione DST
-      sensor.py                        # entità diagnostiche (parametrizzate su display_name)
-      config_flow_helpers.py            # validazione credenziali/POD condivisa
-      const.py                            # costanti di protocollo condivise
+    __init__.py                   # registry: DISTRIBUTOR_REGISTRY, PIVA_TO_KEY
+    duereti.py                     # BASE_URL/DISPLAY_NAME/PIVA Duereti (sottile, usa pcf_common)
+    unareti.py                      # BASE_URL/DISPLAY_NAME/PIVA Unareti (sottile, usa pcf_common)
+    pcf_common/                      # libreria condivisa Duereti/Unareti
+      api.py                          # client requestToken/requestExport/requestResult
+      coordinator.py                    # polling, coda giorni da riprovare, retry ticket
+      statistics.py                      # import external statistics + gestione DST
+      sensor.py                           # entità diagnostiche (parametrizzate su display_name)
+      config_flow_helpers.py               # validazione credenziali/POD condivisa
+      const.py                              # costanti di protocollo condivise
+    edistribuzione/                  # pacchetto a se', protocollo diverso (OAuth2+PKCE/OTP)
+      auth.py                          # login Salesforce Aura + OTP + scambio token
+      api.py                            # client REST verso il backend misure
+      coordinator.py                     # refresh token + polling reading/time-of-use
+      sensor.py                           # entità (lettura per fascia, picchi di potenza)
+      statistics.py                        # STUB - vedi "Cosa resta STUB" sotto
+      const.py
+
+scripts/
+  update_istat_snapshot.py    # rigenera data/istat_comuni_snapshot.json (usato dalla Action)
+
+.github/workflows/
+  update-istat-snapshot.yml   # cron mensile, apre una PR se lo snapshot ISTAT e' cambiato
 ```
 
 ## Cosa è stato portato dal codice reale (non stub)
@@ -98,11 +111,9 @@ stesso, non committare mai le catture originali nel repository.
 
 ## Prima di usarlo su un'installazione reale
 
-1. Aggiorna `codeowners`/`documentation`/`issue_tracker` in `manifest.json`
-   e `GITHUB_REPO_URL` in `const.py` con i tuoi riferimenti reali.
-2. Se vuoi disinstallare `duereti_letture`/`unareti_letture` esistenti prima
+1. Se vuoi disinstallare `duereti_letture`/`unareti_letture` esistenti prima
    di installare `contatore_letture`, ricordati che è una rottura intenzionale
    (vedi sopra): non c'è continuità automatica delle statistiche.
-3. Consigliato: un primo giro di test manuale del wizard end-to-end (region
+2. Consigliato: un primo giro di test manuale del wizard end-to-end (region
    → provincia → comune → lookup ARERA → credenziali → POD) prima di fare
    affidamento sui servizi `recupera_ticket`/`recupera_storico`.
