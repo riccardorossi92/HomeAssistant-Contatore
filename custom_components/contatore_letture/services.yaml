@@ -48,14 +48,14 @@ recupera_storico:
   name: Recupera storico
   description: >-
     Richiede al distributore i dati di un periodo passato e li importa.
-    Funziona sia per Duereti/Unareti (un'unica richiesta per l'intero
-    periodo, il recupero può restare in coda per ore) sia per
-    E-Distribuzione (una richiesta per ogni giorno del periodo, in
-    sequenza - più lento su periodi lunghi ma senza attesa in coda). Il
-    recupero dello storico non è automatico: sei tu a decidere quando e
-    quanto recuperare. Per Duereti/Unareti le API accettano al massimo 6
-    mesi per richiesta (limite documentato); per E-Distribuzione è un
-    limite di cortesia auto-imposto, non un vincolo noto delle loro API.
+    Funziona sia per Duereti/Unareti sia per E-Distribuzione, entrambi con
+    un'unica richiesta per l'intero periodo (per Duereti/Unareti può
+    restare in coda per ore). Il recupero dello storico non è automatico:
+    sei tu a decidere quando e quanto recuperare. Per Duereti/Unareti le
+    API accettano al massimo 6 mesi per richiesta (limite documentato);
+    per E-Distribuzione è un limite di cortesia auto-imposto, non un
+    vincolo noto delle loro API (confermato funzionante fino a 181 giorni
+    in un'unica risposta).
     Per periodi più lunghi ripeti l'azione su intervalli consecutivi.
   fields:
     data_da:
@@ -81,6 +81,16 @@ recupera_storico:
       description: >-
         Necessario solo se hai più istanze configurate (Duereti/Unareti/
         E-Distribuzione).
+      required: false
+      selector:
+        text:
+    pod:
+      name: POD
+      description: >-
+        Solo per E-Distribuzione, e solo se la configurazione ha più di un
+        POD: limita il recupero a questo solo POD invece di tutti quelli
+        configurati. Non si applica a Duereti/Unareti (che recuperano
+        sempre insieme tutti i POD della configurazione).
       required: false
       selector:
         text:

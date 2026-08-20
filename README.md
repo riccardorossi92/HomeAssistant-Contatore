@@ -196,9 +196,14 @@ Entrambe accettano un `entry_id` opzionale se hai più istanze configurate.
   meccanismo robusto indipendentemente dal ritardo reale, ma se noti
   richieste spesso vuote prova a spostare l'orario più avanti dalle
   opzioni.
-- **`contatore_letture.recupera_storico`** funziona anche qui: a
-  differenza di Duereti/Unareti (un'unica richiesta per l'intero periodo),
-  qui viene fatta una richiesta per ogni giorno del periodo, in sequenza.
+- **`contatore_letture.recupera_storico`** funziona anche qui, con
+  un'unica richiesta per l'intero periodo (come Duereti/Unareti) — non un
+  ciclo giorno per giorno: confermato con un test reale che l'endpoint
+  restituisce correttamente fino a 181 giorni (~6 mesi) in una sola
+  risposta, cambio ora legale incluso. Accetta anche più POD sulla stessa
+  configurazione (aggiungibili/rimovibili dalle opzioni dell'integrazione,
+  come per Duereti/Unareti), e l'azione `recupera_storico` può essere
+  limitata a un singolo POD con il parametro opzionale `pod`.
 
 #### Entità esposte
 

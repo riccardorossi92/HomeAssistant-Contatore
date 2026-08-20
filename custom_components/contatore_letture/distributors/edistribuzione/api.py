@@ -114,13 +114,27 @@ class EdistribuzioneApiClient:
         return payload.get("data", [])
 
     async def async_get_daily_load_profile(
-        self, pod: str, day: date, magnitude: str = "A1"
+        self, pod: str, date_from: date, date_to: date | None = None, magnitude: str = "A1"
     ) -> list[dict[str, Any]]:
-        """Hourly/quarter-hourly load curve for a single day."""
+        """Hourly/quarter-hourly load curve.
+
+        Se date_to è None (comportamento di prima, retrocompatibile),
+        richiede un solo giorno (date_from == date_to nella richiesta).
+
+        Se date_to è specificato e diverso da date_from, richiede un
+        intervallo vero. NON ANCORA CONFERMATO se l'endpoint supporta
+        davvero un range multi-giorno in un'unica risposta (rangeDateFrom/
+        rangeDateTo erano finora sempre passati uguali) o se lo tronca/
+        ignora silenziosamente restituendo comunque un solo giorno - da
+        verificare con verify_edistribuzione_login.py prima di farci
+        affidamento in async_recupera_storico.
+        """
+        if date_to is None:
+            date_to = date_from
         params = {
             "pointofdelivery": pod,
-            "rangeDateFrom": day.isoformat(),
-            "rangeDateTo": day.isoformat(),
+            "rangeDateFrom": date_from.isoformat(),
+            "rangeDateTo": date_to.isoformat(),
             "magnitude": magnitude,
         }
         payload = await self._get_json(

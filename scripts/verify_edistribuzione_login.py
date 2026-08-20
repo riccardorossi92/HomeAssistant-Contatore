@@ -159,24 +159,52 @@ async def main() -> None:
 
         default_giorno = date.today() - timedelta(days=7)
         giorno_input = input(
-            f"Che giorno vuoi interrogare (YYYY-MM-DD) [invio per {default_giorno.isoformat()}]: "
+            f"Giorno di inizio da interrogare (YYYY-MM-DD) [invio per {default_giorno.isoformat()}]: "
         ).strip()
         try:
-            giorno = date.fromisoformat(giorno_input) if giorno_input else default_giorno
+            giorno_da = date.fromisoformat(giorno_input) if giorno_input else default_giorno
         except ValueError:
             print(f"Data non valida, uso il default {default_giorno.isoformat()}.")
-            giorno = default_giorno
+            giorno_da = default_giorno
 
-        print(f"\n--- Recupero curva di carico giornaliera per {pod_scelto} il {giorno} ---")
+        giorno_a_input = input(
+            f"Giorno di fine (YYYY-MM-DD) [invio per usare solo {giorno_da.isoformat()}, "
+            "un singolo giorno - metti una data successiva per testare se l'API supporta "
+            "davvero un intervallo]: "
+        ).strip()
         try:
-            curva = await api_client.async_get_daily_load_profile(pod_scelto, giorno)
+            giorno_a = date.fromisoformat(giorno_a_input) if giorno_a_input else giorno_da
+        except ValueError:
+            print(f"Data non valida, uso solo {giorno_da.isoformat()}.")
+            giorno_a = giorno_da
+
+        print(f"\n--- Recupero curva di carico per {pod_scelto}: {giorno_da} - {giorno_a} ---")
+        try:
+            curva = await api_client.async_get_daily_load_profile(pod_scelto, giorno_da, giorno_a)
         except Exception:
             print("Errore IMPREVISTO nel recupero della curva (traceback completo sotto):\n")
             raise
 
-        print(f"\n=== {len(curva)} punti ricevuti ===")
+        print(f"\n=== {len(curva)} elemento/i ricevuto/i nella lista 'data' ===")
+        if giorno_a != giorno_da:
+            giorni_attesi = (giorno_a - giorno_da).days + 1
+            date_ricevute = sorted({g.get("readings", {}).get("sampleDate") for g in curva})
+            print(f"Giorni richiesti nell'intervallo: {giorni_attesi}")
+            print(f"Valori distinti di 'sampleDate' nella risposta: {date_ricevute}")
+            if len(curva) >= giorni_attesi and len(date_ricevute) >= giorni_attesi:
+                print(
+                    "=> Sembra che l'endpoint supporti davvero un intervallo multi-giorno "
+                    "in un'unica risposta."
+                )
+            else:
+                print(
+                    "=> L'endpoint NON sembra restituire l'intero intervallo richiesto "
+                    "(pochi elementi/date rispetto ai giorni richiesti) - probabile che "
+                    "tronchi o ignori rangeDateTo diverso da rangeDateFrom."
+                )
+
         if curva:
-            print("Primo punto (struttura completa):")
+            print("\nPrimo punto (struttura completa):")
             print(json.dumps(curva[0], indent=2, ensure_ascii=False))
 
         debug_path = Path("daily_load_profile_debug.json")

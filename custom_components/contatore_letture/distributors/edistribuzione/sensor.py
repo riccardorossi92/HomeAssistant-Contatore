@@ -1,15 +1,15 @@
 """Sensor platform for e-Distribuzione.
 
-Exposes, per configured POD:
+Un dispositivo per POD (la config entry può averne più di uno), con per
+ciascuno:
   - one sensor per (magnitude, fascia) from the latest published `reading`
     e.g. sensor.edistribuzione_<pod>_ea_t1, ..._er_t3
   - one sensor per (magnitude, fascia) power peak from monthly time-of-use
     e.g. sensor.edistribuzione_<pod>_pot_t1
 
-The coordinator already fetched `reading` and `time_of_use`; this platform
-just reshapes the latest entries into entities. Extend as needed once you've
-decided which of these you actually want long-term-statistics style handling
-for (similar to what you did for Octopus IT).
+The coordinator already fetched `reading` and `time_of_use` per POD
+(coordinator.data["by_pod"][pod]); this platform just reshapes the latest
+entries into entities.
 """
 from __future__ import annotations
 
@@ -26,18 +26,20 @@ _FASCE = ("T1", "T2", "T3", "T4", "T5", "T6")
 def build_edistribuzione_entities(
     coordinator: EdistribuzioneCoordinator,
 ) -> list[SensorEntity]:
-    """Costruisce le entità sensor per una config entry E-Distribuzione.
+    """Costruisce le entità sensor per una config entry E-Distribuzione,
+    un dispositivo per ciascun POD configurato.
 
     Chiamata dal sensor.py di contatore_letture (non è un platform entry
     point autonomo: un solo sensor.py serve tutti i distributori)."""
     entities: list[SensorEntity] = []
-    for magnitude in _ENERGY_MAGNITUDES:
+    for pod in coordinator.pods:
+        for magnitude in _ENERGY_MAGNITUDES:
+            for fascia in _FASCE:
+                entities.append(
+                    EdistribuzioneReadingSensor(coordinator, pod, magnitude, fascia)
+                )
         for fascia in _FASCE:
-            entities.append(
-                EdistribuzioneReadingSensor(coordinator, magnitude, fascia)
-            )
-    for fascia in _FASCE:
-        entities.append(EdistribuzionePowerPeakSensor(coordinator, fascia))
+            entities.append(EdistribuzionePowerPeakSensor(coordinator, pod, fascia))
 
     return entities
 
@@ -45,9 +47,9 @@ def build_edistribuzione_entities(
 class _BaseEdistribuzioneSensor(CoordinatorEntity[EdistribuzioneCoordinator], SensorEntity):
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: EdistribuzioneCoordinator) -> None:
+    def __init__(self, coordinator: EdistribuzioneCoordinator, pod: str) -> None:
         super().__init__(coordinator)
-        self._pod = coordinator.pod
+        self._pod = pod
 
     @property
     def device_info(self):
@@ -58,6 +60,9 @@ class _BaseEdistribuzioneSensor(CoordinatorEntity[EdistribuzioneCoordinator], Se
             "model": "POD",
         }
 
+    def _dati_pod(self) -> dict:
+        return self.coordinator.data.get("by_pod", {}).get(self._pod, {})
+
 
 class EdistribuzioneReadingSensor(_BaseEdistribuzioneSensor):
     """Latest published cumulative reading for a given (magnitude, fascia)."""
@@ -66,17 +71,17 @@ class EdistribuzioneReadingSensor(_BaseEdistribuzioneSensor):
     _attr_native_unit_of_measurement = "kWh"
 
     def __init__(
-        self, coordinator: EdistribuzioneCoordinator, magnitude: str, fascia: str
+        self, coordinator: EdistribuzioneCoordinator, pod: str, magnitude: str, fascia: str
     ) -> None:
-        super().__init__(coordinator)
+        super().__init__(coordinator, pod)
         self._magnitude = magnitude
         self._fascia = fascia
-        self._attr_unique_id = f"{self._pod}_{magnitude.lower()}_{fascia.lower()}"
+        self._attr_unique_id = f"{pod}_{magnitude.lower()}_{fascia.lower()}"
         self._attr_name = f"{_ENERGY_MAGNITUDES[magnitude]} {fascia}"
 
     @property
     def native_value(self):
-        readings = self.coordinator.data.get("reading", [])
+        readings = self._dati_pod().get("reading", [])
         if not readings:
             return None
         latest = readings[-1]
@@ -91,15 +96,15 @@ class EdistribuzionePowerPeakSensor(_BaseEdistribuzioneSensor):
 
     _attr_native_unit_of_measurement = "kW"
 
-    def __init__(self, coordinator: EdistribuzioneCoordinator, fascia: str) -> None:
-        super().__init__(coordinator)
+    def __init__(self, coordinator: EdistribuzioneCoordinator, pod: str, fascia: str) -> None:
+        super().__init__(coordinator, pod)
         self._fascia = fascia
-        self._attr_unique_id = f"{self._pod}_pot_{fascia.lower()}"
+        self._attr_unique_id = f"{pod}_pot_{fascia.lower()}"
         self._attr_name = f"Picco di potenza {fascia}"
 
     @property
     def native_value(self):
-        readings = self.coordinator.data.get("reading", [])
+        readings = self._dati_pod().get("reading", [])
         if not readings:
             return None
         latest = readings[-1]

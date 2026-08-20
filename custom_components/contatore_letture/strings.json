@@ -57,7 +57,8 @@
       },
       "edistribuzione_pod": {
         "title": "E-Distribuzione - Seleziona POD",
-        "data": { "pod": "POD" }
+        "description": "Puoi selezionare più di un POD se vuoi monitorarne diversi con questa stessa configurazione.",
+        "data": { "pods": "POD" }
       },
       "reauth_confirm": {
         "title": "{distributor} - Aggiorna credenziali",
@@ -73,7 +74,8 @@
       "cannot_connect": "Impossibile contattare le API del distributore",
       "pod_duplicato": "Questo POD è già configurato in: {pod_conflitto}",
       "pod_non_valido": "POD o dato fiscale non riconosciuti dal distributore. Controlla il codice POD (inizia con IT e lo trovi in bolletta) e il codice fiscale o la partita IVA dell'intestatario della fornitura.",
-      "invalid_otp": "Codice OTP errato o scaduto"
+      "invalid_otp": "Codice OTP errato o scaduto",
+      "nessun_pod_selezionato": "Seleziona almeno un POD"
     },
     "abort": {
       "reauth_successful": "Credenziali aggiornate con successo",
@@ -89,6 +91,8 @@
         "menu_options": {
           "aggiungi_pod": "Aggiungi un POD",
           "rimuovi_pod": "Rimuovi un POD",
+          "edistribuzione_aggiungi_pod": "Aggiungi un POD",
+          "edistribuzione_rimuovi_pod": "Rimuovi un POD",
           "orario": "Cambia l'orario della richiesta giornaliera"
         }
       },
@@ -101,6 +105,20 @@
         }
       },
       "rimuovi_pod": {
+        "title": "Rimuovi POD",
+        "description": "Seleziona i POD da rimuovere. I dati storici già importati nelle statistiche esterne non vengono cancellati.",
+        "data": {
+          "pods_da_rimuovere": "POD da rimuovere"
+        }
+      },
+      "edistribuzione_aggiungi_pod": {
+        "title": "Aggiungi POD",
+        "description": "POD attualmente configurati: {pod_correnti}. Sotto trovi quelli disponibili sul tuo account non ancora aggiunti a questa configurazione.",
+        "data": {
+          "pods_da_aggiungere": "POD da aggiungere"
+        }
+      },
+      "edistribuzione_rimuovi_pod": {
         "title": "Rimuovi POD",
         "description": "Seleziona i POD da rimuovere. I dati storici già importati nelle statistiche esterne non vengono cancellati.",
         "data": {
@@ -122,7 +140,11 @@
     },
     "abort": {
       "nessun_pod": "Non ci sono POD configurati da rimuovere",
-      "options_not_supported": "Questo distributore non ha ancora opzioni configurabili"
+      "options_not_supported": "Questo distributore non ha ancora opzioni configurabili",
+      "nessun_pod_selezionato": "Seleziona almeno un POD da aggiungere",
+      "nessun_pod_da_aggiungere": "Tutti i POD del tuo account sono già configurati qui",
+      "edistribuzione_refresh_failed": "Non è stato possibile rinnovare l'accesso a E-Distribuzione. Riprova più tardi; se il problema persiste potrebbe servire un nuovo login (rimuovi e riconfigura l'integrazione).",
+      "edistribuzione_supplies_failed": "Errore imprevisto nel recupero dei POD dall'account. Riprova più tardi."
     }
   }
 }

@@ -448,7 +448,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_edistribuzione_pod(self, user_input: dict[str, Any] | None = None):
         from .distributors.edistribuzione.api import EdistribuzioneApiClient
-        from .distributors.edistribuzione.const import CONF_POD, CONF_REFRESH_TOKEN
+        from .distributors.edistribuzione.const import CONF_PODS, CONF_REFRESH_TOKEN
 
         session = async_get_clientsession(self.hass)
         api = EdistribuzioneApiClient(session, self._edistribuzione_access_token)
@@ -468,31 +468,50 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
                 return self.async_abort(reason="edistribuzione_supplies_failed")
 
-        def crea_entry(pod: str):
+        def crea_entry(pods: list[str]):
+            titolo = pods[0] if len(pods) == 1 else f"{len(pods)} POD"
             return self.async_create_entry(
-                title=f"E-Distribuzione ({pod})",
+                title=f"E-Distribuzione ({titolo})",
                 data={
                     "distributor": "edistribuzione",
                     "comune": self._comune_name,
-                    CONF_POD: pod,
+                    CONF_PODS: pods,
                     CONF_REFRESH_TOKEN: self._edistribuzione_refresh_token,
                 },
             )
 
-        if len(self._edistribuzione_pods) <= 1:
-            pod_id = self._edistribuzione_pods[0]["IdPod"] if self._edistribuzione_pods else None
-            if pod_id is None:
-                return self.async_abort(reason="no_pods_found")
-            return crea_entry(pod_id)
+        if not self._edistribuzione_pods:
+            return self.async_abort(reason="no_pods_found")
+
+        # Con un solo POD sull'account non serve far scegliere: lo
+        # selezioniamo subito, com'era anche prima di supportare più POD.
+        if len(self._edistribuzione_pods) == 1:
+            return crea_entry([self._edistribuzione_pods[0]["IdPod"]])
 
         if user_input is not None:
-            return crea_entry(user_input[CONF_POD])
+            scelti = user_input[CONF_PODS]
+            if not scelti:
+                return self.async_show_form(
+                    step_id="edistribuzione_pod",
+                    data_schema=self._schema_multi_pod(),
+                    errors={"pods": "nessun_pod_selezionato"},
+                )
+            return crea_entry(scelti)
 
-        pod_ids = [p["IdPod"] for p in self._edistribuzione_pods]
         return self.async_show_form(
             step_id="edistribuzione_pod",
-            data_schema=vol.Schema({vol.Required(CONF_POD): vol.In(pod_ids)}),
+            data_schema=self._schema_multi_pod(),
         )
+
+    def _schema_multi_pod(self) -> vol.Schema:
+        from .distributors.edistribuzione.const import CONF_PODS
+
+        pod_ids = [p["IdPod"] for p in self._edistribuzione_pods]
+        return vol.Schema({
+            vol.Required(CONF_PODS, default=pod_ids): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=pod_ids, multiple=True)
+            )
+        })
 
     # ------------------------------------------------------------------
     # Reauth (generico, dispatcha sul distributore della entry esistente)
@@ -559,12 +578,22 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         distributor_key = self.config_entry.data["distributor"]
-        if DISTRIBUTOR_REGISTRY[distributor_key]["kind"] != "pcf":
-            return self.async_abort(reason="options_not_supported")
-        return self.async_show_menu(
-            step_id="init",
-            menu_options=["aggiungi_pod", "rimuovi_pod", "orario"],
-        )
+        kind = DISTRIBUTOR_REGISTRY[distributor_key]["kind"]
+        if kind == "pcf":
+            return self.async_show_menu(
+                step_id="init",
+                menu_options=["aggiungi_pod", "rimuovi_pod", "orario"],
+            )
+        if kind == "edistribuzione":
+            return self.async_show_menu(
+                step_id="init",
+                menu_options=[
+                    "edistribuzione_aggiungi_pod",
+                    "edistribuzione_rimuovi_pod",
+                    "orario",
+                ],
+            )
+        return self.async_abort(reason="options_not_supported")
 
     async def async_step_orario(self, user_input: dict[str, Any] | None = None):
         if user_input is not None:
@@ -664,5 +693,102 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
         return vol.Schema({
             vol.Required("pods_da_rimuovere", default=[]): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=opzioni, multiple=True)
+            )
+        })
+
+    # ------------------------------------------------------------------
+    # E-Distribuzione: aggiungi/rimuovi POD
+    #
+    # A differenza di PCF, qui non serve un dato fiscale per POD (sono
+    # tutti gia' sull'account autenticato): per aggiungerne uno nuovo
+    # basta rifare il refresh del token e richiedere di nuovo l'elenco
+    # POD dell'account, senza richiedere email/password/OTP di nuovo.
+    # ------------------------------------------------------------------
+
+    async def async_step_edistribuzione_aggiungi_pod(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        from .distributors.edistribuzione.api import EdistribuzioneApiClient
+        from .distributors.edistribuzione.auth import EdistribuzioneAuthClient
+        from .distributors.edistribuzione.const import CONF_PODS, CONF_REFRESH_TOKEN
+
+        pods_attuali = list(self.config_entry.data.get(CONF_PODS, []))
+
+        if user_input is not None:
+            nuovi = user_input.get("pods_da_aggiungere", [])
+            if not nuovi:
+                return self.async_abort(reason="nessun_pod_selezionato")
+            pods_finali = pods_attuali + [p for p in nuovi if p not in pods_attuali]
+            new_data = {**self.config_entry.data, CONF_PODS: pods_finali}
+            self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            return self.async_create_entry(title="", data={})
+
+        session = async_get_clientsession(self.hass)
+        auth = EdistribuzioneAuthClient(session)
+        try:
+            tokens = await auth.async_refresh_access_token(
+                self.config_entry.data[CONF_REFRESH_TOKEN]
+            )
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("Refresh del token E-Distribuzione fallito nelle opzioni")
+            return self.async_abort(reason="edistribuzione_refresh_failed")
+
+        api = EdistribuzioneApiClient(session, tokens.access_token)
+        try:
+            tutti_pod = await api.async_get_supplies()
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("Recupero POD E-Distribuzione fallito nelle opzioni")
+            return self.async_abort(reason="edistribuzione_supplies_failed")
+
+        disponibili = [p["IdPod"] for p in tutti_pod if p["IdPod"] not in pods_attuali]
+        if not disponibili:
+            return self.async_abort(reason="nessun_pod_da_aggiungere")
+
+        return self.async_show_form(
+            step_id="edistribuzione_aggiungi_pod",
+            data_schema=vol.Schema({
+                vol.Required("pods_da_aggiungere", default=[]): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=disponibili, multiple=True)
+                )
+            }),
+            description_placeholders={
+                "pod_correnti": ", ".join(pods_attuali) or "nessuno",
+            },
+        )
+
+    async def async_step_edistribuzione_rimuovi_pod(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        from .distributors.edistribuzione.const import CONF_PODS
+
+        pods = list(self.config_entry.data.get(CONF_PODS, []))
+        if not pods:
+            return self.async_abort(reason="nessun_pod")
+
+        if user_input is not None:
+            da_rimuovere = set(user_input.get("pods_da_rimuovere", []))
+            if len(da_rimuovere) >= len(pods):
+                return self.async_show_form(
+                    step_id="edistribuzione_rimuovi_pod",
+                    data_schema=self._schema_rimuovi_edistribuzione(pods),
+                    errors={"pods_da_rimuovere": "non_puoi_rimuoverli_tutti"},
+                )
+            pods_rimasti = [p for p in pods if p not in da_rimuovere]
+            new_data = {**self.config_entry.data, CONF_PODS: pods_rimasti}
+            self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            return self.async_create_entry(title="", data={})
+
+        return self.async_show_form(
+            step_id="edistribuzione_rimuovi_pod",
+            data_schema=self._schema_rimuovi_edistribuzione(pods),
+        )
+
+    @staticmethod
+    def _schema_rimuovi_edistribuzione(pods: list[str]) -> vol.Schema:
+        return vol.Schema({
+            vol.Required("pods_da_rimuovere", default=[]): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=pods, multiple=True)
             )
         })
