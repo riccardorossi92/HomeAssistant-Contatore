@@ -228,9 +228,60 @@ PAYLOAD_CURVA_REALE = {
     ]
 }
 
+# Struttura reale confermata il 20/08/2026 richiedendo un intervallo VERO
+# (2026-01-01 - 2026-06-30, rangeDateFrom != rangeDateTo): l'endpoint ha
+# davvero restituito tutti i 181 giorni in un'unica risposta (qui solo 3
+# per brevità del test, ma con lo stesso pattern osservato: un elemento
+# per giorno, ciascuno con 'initialSample' proprio). Confermato anche che
+# initialSample gestisce da solo il cambio ora legale (visto nel giorno
+# del 29/03/2026 nella risposta reale, non riprodotto qui).
+PAYLOAD_CURVA_MULTIGIORNO_REALE = {
+    "data": [
+        {
+            "readings": {"energyType": "A1", "sampleDate": "20260101", "sampleValues": [
+                {"id": "1", "val": "0.100"}, {"id": "2", "val": "0.100"},
+            ]},
+            "sampleFrequency": 15, "timeType": "CONS",
+            "initialSample": "2025-12-31T23:00:00.000+00:00",
+        },
+        {
+            "readings": {"energyType": "A1", "sampleDate": "20260102", "sampleValues": [
+                {"id": "1", "val": "0.200"}, {"id": "2", "val": "0.200"},
+            ]},
+            "sampleFrequency": 15, "timeType": "CONS",
+            "initialSample": "2026-01-01T23:00:00.000+00:00",
+        },
+        {
+            "readings": {"energyType": "A1", "sampleDate": "20260103", "sampleValues": [
+                {"id": "1", "val": "0.300"}, {"id": "2", "val": "0.300"},
+            ]},
+            "sampleFrequency": 15, "timeType": "CONS",
+            "initialSample": "2026-01-02T23:00:00.000+00:00",
+        },
+    ]
+}
+
 
 class TestAsyncGetDailyLoadProfile:
     @pytest.mark.asyncio
+    async def test_intervallo_vero_ritorna_piu_giorni(self):
+        """Regressione: confermato con un test reale il 20/08/2026 che
+        rangeDateFrom != rangeDateTo restituisce davvero più giorni in
+        un'unica risposta (fino a 181 testati) - non va più assunto che
+        serva un ciclo giorno per giorno."""
+        client = _client(
+            {"querydailyloadprofile": (200, PAYLOAD_CURVA_MULTIGIORNO_REALE)}
+        )
+        import datetime
+
+        curva = await client.async_get_daily_load_profile(
+            "IT001E10684497", datetime.date(2026, 1, 1), datetime.date(2026, 1, 3)
+        )
+        assert len(curva) == 3
+        date_ricevute = [g["readings"]["sampleDate"] for g in curva]
+        assert date_ricevute == ["20260101", "20260102", "20260103"]
+
+
     async def test_estrae_i_dati_dal_payload_reale(self):
         client = _client(
             {"querydailyloadprofile": (200, PAYLOAD_CURVA_REALE)}
@@ -285,4 +336,31 @@ class TestAsyncGetDailyLoadProfile:
         import datetime
 
         curva = await client.async_get_daily_load_profile("IT001E10684497", datetime.date(2026, 8, 1))
+        assert curva == PAYLOAD_CURVA_REALE["data"]
+
+    @pytest.mark.asyncio
+    async def test_date_to_omesso_richiede_un_solo_giorno(self):
+        """Retrocompatibilità: senza date_to, il vecchio comportamento
+        (un solo giorno, rangeDateFrom == rangeDateTo) resta invariato."""
+        client = _client({"querydailyloadprofile": (200, PAYLOAD_CURVA_REALE)})
+        import datetime
+
+        curva = await client.async_get_daily_load_profile(
+            "IT001E10684497", datetime.date(2026, 8, 1)
+        )
+        assert curva == PAYLOAD_CURVA_REALE["data"]
+
+    @pytest.mark.asyncio
+    async def test_date_to_specificato_viene_accettato(self):
+        """Verifica solo che la chiamata con un intervallo vero (date_to
+        diverso da date_from) non fallisca lato client - se l'endpoint
+        supporti davvero un range multi-giorno o lo tronchi va verificato
+        con verify_edistribuzione_login.py contro il servizio reale, non
+        qui (questo test usa comunque un solo giorno di fixture)."""
+        client = _client({"querydailyloadprofile": (200, PAYLOAD_CURVA_REALE)})
+        import datetime
+
+        curva = await client.async_get_daily_load_profile(
+            "IT001E10684497", datetime.date(2026, 8, 1), datetime.date(2026, 8, 3)
+        )
         assert curva == PAYLOAD_CURVA_REALE["data"]

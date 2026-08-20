@@ -35,6 +35,7 @@ SCHEMA_RECUPERA_STORICO = vol.Schema({
     vol.Required("data_da"): cv.date,
     vol.Required("data_a"): cv.date,
     vol.Optional("entry_id"): cv.string,
+    vol.Optional("pod"): cv.string,
 })
 
 SCHEMA_RECUPERA_TICKET = vol.Schema({
@@ -96,7 +97,19 @@ async def _async_registra_servizi(hass: HomeAssistant) -> None:
         coordinator = _trova_coordinator(
             hass, call.data.get("entry_id"), (PcfCoordinator, EdistribuzioneCoordinator)
         )
-        await coordinator.async_recupera_storico(call.data["data_da"], call.data["data_a"])
+        pod = call.data.get("pod")
+        if pod and not isinstance(coordinator, EdistribuzioneCoordinator):
+            raise HomeAssistantError(
+                "Il parametro 'pod' è supportato solo per E-Distribuzione: "
+                "Duereti/Unareti recuperano sempre insieme tutti i POD della "
+                "configurazione con un'unica richiesta."
+            )
+        if isinstance(coordinator, EdistribuzioneCoordinator):
+            await coordinator.async_recupera_storico(
+                call.data["data_da"], call.data["data_a"], pod=pod
+            )
+        else:
+            await coordinator.async_recupera_storico(call.data["data_da"], call.data["data_a"])
 
     hass.services.async_register(
         DOMAIN, SERVICE_RECUPERA_TICKET, _recupera_ticket, schema=SCHEMA_RECUPERA_TICKET

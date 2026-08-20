@@ -51,7 +51,7 @@ METHOD_USER_CURVA_PERIODO = "CURVE_DI_CARICO-PERIODO"
 
 DEFAULT_UPDATE_INTERVAL_MINUTES = 60
 
-CONF_POD = "pod"
+CONF_PODS = "pods"  # lista di codici POD (stringhe), non dict come pcf_common: qui non serve un dato fiscale per POD, sono tutti sulla stessa utenza gia' autenticata
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_ACCESS_TOKEN = "access_token"
 
@@ -91,8 +91,9 @@ ORA_MINIMA_RICHIESTA = 19
 # Limite di cortesia auto-imposto per l'azione recupera_storico (non è un
 # vincolo noto delle API E-Distribuzione, a differenza del limite di 6 mesi
 # per richiesta di Duereti/Unareti, che è documentato nel loro manuale PCF):
-# recupero_storico chiama async_get_daily_load_profile un giorno alla volta
-# in sequenza, quindi un intervallo troppo lungo in una singola chiamata
-# manderebbe molte richieste di fila. Il limite qui è solo per evitare che
-# un errore di battitura nella data richieda anni di dati per sbaglio.
+# async_get_daily_load_profile supporta un intervallo multi-giorno in
+# un'unica chiamata (confermato il 20/08/2026 fino a 181 giorni), quindi
+# non è più un limite anti-spam come nella prima versione - resta solo per
+# evitare che un errore di battitura nella data richieda anni di dati per
+# sbaglio in una singola risposta.
 MAX_GIORNI_RECUPERO_STORICO = 190  # ~6 mesi, stesso ordine di grandezza di pcf_common
