@@ -47,18 +47,22 @@ recupera_ticket:
 recupera_storico:
   name: Recupera storico
   description: >-
-    Richiede al distributore i dati di un periodo passato e li importa. Il
-    recupero dello storico non è automatico: ogni richiesta può restare in
-    coda per ore e le API accettano al massimo 6 mesi per volta, quindi sei
-    tu a decidere quando e quanto recuperare. Per periodi più lunghi ripeti
-    l'azione su intervalli consecutivi. Se c'è già un recupero in corso
-    viene annullato.
+    Richiede al distributore i dati di un periodo passato e li importa.
+    Funziona sia per Duereti/Unareti (un'unica richiesta per l'intero
+    periodo, il recupero può restare in coda per ore) sia per
+    E-Distribuzione (una richiesta per ogni giorno del periodo, in
+    sequenza - più lento su periodi lunghi ma senza attesa in coda). Il
+    recupero dello storico non è automatico: sei tu a decidere quando e
+    quanto recuperare. Per Duereti/Unareti le API accettano al massimo 6
+    mesi per richiesta (limite documentato); per E-Distribuzione è un
+    limite di cortesia auto-imposto, non un vincolo noto delle loro API.
+    Per periodi più lunghi ripeti l'azione su intervalli consecutivi.
   fields:
     data_da:
       name: Data inizio
       description: >-
-        Primo giorno del periodo da recuperare. Non può essere anteriore a 6
-        mesi prima della data di fine.
+        Primo giorno del periodo da recuperare. Per Duereti/Unareti non può
+        essere anteriore a 6 mesi prima della data di fine.
       required: true
       example: "2026-02-01"
       selector:
@@ -75,7 +79,8 @@ recupera_storico:
     entry_id:
       name: ID configurazione
       description: >-
-        Necessario solo se hai più istanze Duereti/Unareti configurate.
+        Necessario solo se hai più istanze configurate (Duereti/Unareti/
+        E-Distribuzione).
       required: false
       selector:
         text:

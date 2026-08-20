@@ -57,3 +57,42 @@ CONF_ACCESS_TOKEN = "access_token"
 
 DISPLAY_NAME = "E-Distribuzione"
 PIVA = "05779711000"  # confermata via scheda operatore ARERA (Id operatore 435, gruppo ENEL)
+
+# --- Import automatico curva giornaliera + coda di retry ----------------------
+# Stesso meccanismo di pcf_common (vedi distributors/pcf_common/const.py per
+# il ragionamento completo), duplicato qui invece che condiviso perché
+# edistribuzione resta un pacchetto a sé - se in futuro il comportamento reale
+# di E-Distribuzione divergesse da quello di Duereti/Unareti, non tocchi due
+# distributori diversi per una modifica che vale solo per uno.
+#
+# A DIFFERENZA di pcf_common, RITARDO_DATI_GIORNI qui NON è stato verificato
+# empiricamente: per Duereti è confermato su settimane di test reali, per
+# E-Distribuzione al momento sappiamo solo che un giorno vecchio di 19 giorni
+# funziona - non sappiamo quanto recente possa essere. Il valore sotto è
+# un'ipotesi di partenza per analogia con Duereti/Unareti (stesso tipo di
+# distributore, stesso ordine di grandezza plausibile), corretta di fatto
+# dal meccanismo di coda: se il ritardo vero è maggiore, il giorno finisce
+# semplicemente in coda finché non arriva, entro MAX_TENTATIVI_PER_GIORNO.
+RITARDO_DATI_GIORNI = 1
+
+CONF_DATA_INSTALLAZIONE = "data_installazione"
+CONF_GIORNI_DA_RIPROVARE = "giorni_da_riprovare"
+CONF_ORA_RICHIESTA = "ora_richiesta"
+
+MAX_TENTATIVI_PER_GIORNO = 10
+MAX_GIORNI_IN_CODA = 30
+
+# Anche questo è un punto di partenza non confermato per E-Distribuzione
+# (per Duereti è stato osservato che i dati del giorno prima spesso non ci
+# sono ancora alle 10 del mattino ma ci sono la sera). Modificabile dalle
+# opzioni dell'integrazione.
+ORA_MINIMA_RICHIESTA = 19
+
+# Limite di cortesia auto-imposto per l'azione recupera_storico (non è un
+# vincolo noto delle API E-Distribuzione, a differenza del limite di 6 mesi
+# per richiesta di Duereti/Unareti, che è documentato nel loro manuale PCF):
+# recupero_storico chiama async_get_daily_load_profile un giorno alla volta
+# in sequenza, quindi un intervallo troppo lungo in una singola chiamata
+# manderebbe molte richieste di fila. Il limite qui è solo per evitare che
+# un errore di battitura nella data richieda anni di dati per sbaglio.
+MAX_GIORNI_RECUPERO_STORICO = 190  # ~6 mesi, stesso ordine di grandezza di pcf_common
