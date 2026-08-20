@@ -71,9 +71,29 @@ class EdistribuzioneApiClient:
 
     async def async_get_supplies(self) -> list[dict[str, Any]]:
         """List all PODs (delivery points) associated with the account."""
+        # json={} invece di headers manuali con corpo assente: il backend
+        # e' MuleSoft (cloudhub.io), e con Content-Type: application/json
+        # dichiarato ma nessun corpo, il parser lato server probabilmente
+        # falliva silenziosamente restituendo un 500 generico
+        # ("Generic Error", nessun dettaglio) invece di un errore di
+        # validazione preciso - coerente con l'esito osservato dopo aver
+        # aggiunto solo il Content-Type senza corpo. json={} fa si' che
+        # aiohttp mandi un corpo vero ('{}') insieme all'header corretto,
+        # invece dei due gestiti separatamente. Non confermato byte-per-byte
+        # (nessuna HAR reale per questo endpoint), ma comportamento più
+        # plausibile del precedente, che ha eliminato il 415 ma non il 500.
         async with self._session.post(
-            MISURE_GET_SUPPLIES_URL, headers=self._headers(METHOD_USER_ELENCO_POD)
+            MISURE_GET_SUPPLIES_URL,
+            headers=self._headers(METHOD_USER_ELENCO_POD),
+            json={},
         ) as resp:
+            if resp.status >= 400:
+                body_preview = await resp.text()
+                _LOGGER.error(
+                    "getSupplies ha risposto %s. Corpo (primi 500 caratteri): %r",
+                    resp.status,
+                    body_preview[:500],
+                )
             resp.raise_for_status()
             payload = await resp.json(content_type=None)
         try:
