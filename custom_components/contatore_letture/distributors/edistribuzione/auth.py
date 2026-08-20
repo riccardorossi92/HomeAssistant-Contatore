@@ -192,7 +192,7 @@ class EdistribuzioneAuthClient:
         resp.close()
 
         self._flow.fwuid = self._extract_fwuid(login_page_html)
-        self._flow.aura_token = self._extract_aura_token(login_page_html)
+        self._flow.aura_token = self._extract_aura_token_from_cookies(self._session)
 
         message = (
             '{"actions":[{"id":"1;a","descriptor":'
@@ -378,11 +378,24 @@ class EdistribuzioneAuthClient:
         raise EdistribuzioneParsingError("fwuid not found on login page")
 
     @staticmethod
-    def _extract_aura_token(html: str) -> str:
-        match = re.search(r'"token"\s*:\s*"([^"]+)"', html)
-        if not match:
-            raise EdistribuzioneParsingError("aura.token not found on login page")
-        return match.group(1)
+    def _extract_aura_token_from_cookies(session: aiohttp.ClientSession) -> str:
+        """aura.token NON è nell'HTML della pagina di login: è impostato come
+        cookie (`__Host-ERIC_PROD<suffisso>`) dalla risposta di /s/login/,
+        letto qui dal cookie jar della sessione. Confermato su una HAR reale
+        con login riuscito il 20/08/2026 - la vecchia implementazione
+        cercava `"token":"..."` nel body HTML, dove non è mai stato presente.
+
+        Il suffisso numerico nel nome del cookie sembra legato al
+        deployment/org Salesforce: usiamo un prefix match invece del nome
+        esatto, nel caso vari tra ambienti o nel tempo.
+        """
+        for cookie in session.cookie_jar:
+            if cookie.key.startswith("__Host-ERIC_PROD"):
+                return cookie.value
+        raise EdistribuzioneParsingError(
+            "Cookie aura.token (__Host-ERIC_PROD*) non trovato dopo il fetch "
+            "della pagina di login"
+        )
 
     def _parse_otp_page(self, html: str) -> None:
         def find(pattern: str, name: str) -> str:
