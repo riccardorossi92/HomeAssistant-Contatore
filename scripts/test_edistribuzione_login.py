@@ -23,9 +23,11 @@ from __future__ import annotations
 import asyncio
 import getpass
 import importlib.util
+import json
 import logging
 import sys
 import types
+from datetime import date, timedelta
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -130,8 +132,58 @@ async def main() -> None:
             raise
 
         print(f"\n=== POD TROVATI: {len(pods)} ===")
-        for p in pods:
-            print(" -", p)
+        for i, p in enumerate(pods, start=1):
+            indirizzo = (
+                f"{p.get('PointOfMeasureStreetPrefix', '')} "
+                f"{p.get('PointOfMeasureStreet', '')} "
+                f"{p.get('PointOfMeasureStreetNumber', '')}, "
+                f"{p.get('PointOfMeasureMunicipality', '')} "
+                f"({p.get('PointOfMeasureProvince', '')})"
+            ).strip()
+            print(f"  [{i}] {p.get('IdPod')} - {indirizzo}")
+
+        if not pods:
+            print("Nessun POD trovato, mi fermo qui.")
+            return
+
+        scelta = input(
+            f"\nQuale POD vuoi interrogare? [1-{len(pods)}, invio per saltare]: "
+        ).strip()
+        if not scelta:
+            return
+        try:
+            pod_scelto = pods[int(scelta) - 1]["IdPod"]
+        except (ValueError, IndexError):
+            print("Scelta non valida, mi fermo qui.")
+            return
+
+        default_giorno = date.today() - timedelta(days=7)
+        giorno_input = input(
+            f"Che giorno vuoi interrogare (YYYY-MM-DD) [invio per {default_giorno.isoformat()}]: "
+        ).strip()
+        try:
+            giorno = date.fromisoformat(giorno_input) if giorno_input else default_giorno
+        except ValueError:
+            print(f"Data non valida, uso il default {default_giorno.isoformat()}.")
+            giorno = default_giorno
+
+        print(f"\n--- Recupero curva di carico giornaliera per {pod_scelto} il {giorno} ---")
+        try:
+            curva = await api_client.async_get_daily_load_profile(pod_scelto, giorno)
+        except Exception:
+            print("Errore IMPREVISTO nel recupero della curva (traceback completo sotto):\n")
+            raise
+
+        print(f"\n=== {len(curva)} punti ricevuti ===")
+        if curva:
+            print("Primo punto (struttura completa):")
+            print(json.dumps(curva[0], indent=2, ensure_ascii=False))
+
+        debug_path = Path("daily_load_profile_debug.json")
+        debug_path.write_text(
+            json.dumps(curva, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        print(f"\nRisposta completa salvata in {debug_path.resolve()}")
 
 
 if __name__ == "__main__":
