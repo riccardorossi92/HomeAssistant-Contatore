@@ -193,6 +193,7 @@ class EdistribuzioneAuthClient:
         resp.close()
 
         self._flow.fwuid = self._extract_fwuid(login_page_html)
+        loaded = self._extract_loaded(login_page_html)
         # aura.token: confermato su una HAR reale con login riuscito il
         # 20/08/2026 che il client invia letteralmente la stringa "null"
         # (non un token vero) per questa azione specifica, e il server la
@@ -211,9 +212,16 @@ class EdistribuzioneAuthClient:
             f'{{"username":"{email}","password":"{password}",'
             '"startUrl":"/PortaleClienti/setup/secur/RemoteAccessAuthorizationPage.apexp"}}}}]}'
         )
+        # 'loaded' NON puo' essere {} (vuoto): il server risponde con un
+        # generico AuraClientInputException ("Unexpected request input")
+        # se non corrisponde a quanto si aspetta - confermato confrontando
+        # con una richiesta reale riuscita il 20/08/2026, dove conteneva un
+        # riferimento alla versione del componente caricato
+        # (es. {"APPLICATION@markup://siteforce:loginApp2":"1628_..."}).
         aura_context = (
             '{"mode":"PROD","fwuid":"' + self._flow.fwuid + '",'
-            '"app":"siteforce:loginApp2","loaded":{},"dn":[],"globals":{},"uad":true}'
+            '"app":"siteforce:loginApp2","loaded":' + loaded + ','
+            '"dn":[],"globals":{},"uad":true}'
         )
         data = {
             "message": message,
@@ -399,6 +407,34 @@ class EdistribuzioneAuthClient:
             return match.group(1)
 
         raise EdistribuzioneParsingError("fwuid not found on login page")
+
+    @staticmethod
+    def _extract_loaded(html: str) -> str:
+        """Estrae il valore grezzo (JSON, come stringa) del campo 'loaded'
+        dallo stesso blob di bootstrap da cui si estrae fwuid - es.
+        '{"APPLICATION@markup://siteforce:loginApp2":"1628_TW-..."}'.
+
+        Necessario perche' aura.context con 'loaded':{} (vuoto) viene
+        rifiutato dal server con un AuraClientInputException generico
+        ("Unexpected request input... must be in the expected format"),
+        confermato confrontando con una richiesta loginUser reale riuscita
+        il 20/08/2026: il valore reale di 'loaded' e' non vuoto e va
+        riportato identico.
+
+        Ritorna '{}' (stringa) se non trovato, cosi' il chiamante degrada
+        al comportamento precedente invece di fallire qui - il fallimento
+        vero arrivera' comunque dal server sulla loginUser, con l'errore
+        gia' diagnosticato da li'.
+        """
+        match = re.search(r'"loaded"\s*:\s*(\{[^}]*\})', html)
+        if match:
+            return match.group(1)
+
+        match = re.search(r"%22loaded%22%3A(%7B.*?%7D)", html)
+        if match:
+            return unquote(match.group(1))
+
+        return "{}"
 
     def _parse_otp_page(self, html: str) -> None:
         def find(pattern: str, name: str) -> str:
