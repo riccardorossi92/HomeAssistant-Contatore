@@ -62,6 +62,22 @@ STEP_POD_SCHEMA = vol.Schema(
 )
 
 
+def _etichetta_pod(pod_info: dict) -> str:
+    """'IT001E10684497 - Via Venino 29, Moneglia (GE)' invece del solo
+    codice POD nel selettore, cosi' si riconosce a colpo d'occhio quale
+    immobile e' senza dover controllare altrove. Usata sia nel wizard
+    iniziale (ContatoreLettureConfigFlow) sia nelle opzioni
+    (ContatoreLettureOptionsFlow), stesso identico contesto in entrambe."""
+    indirizzo = (
+        f"{pod_info.get('PointOfMeasureStreetPrefix', '')} "
+        f"{pod_info.get('PointOfMeasureStreet', '')} "
+        f"{pod_info.get('PointOfMeasureStreetNumber', '')}, "
+        f"{pod_info.get('PointOfMeasureMunicipality', '')} "
+        f"({pod_info.get('PointOfMeasureProvince', '')})"
+    ).strip()
+    return f"{pod_info['IdPod']} - {indirizzo}"
+
+
 class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow per contatore_letture."""
 
@@ -507,9 +523,13 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         from .distributors.edistribuzione.const import CONF_PODS
 
         pod_ids = [p["IdPod"] for p in self._edistribuzione_pods]
+        opzioni = [
+            {"value": p["IdPod"], "label": _etichetta_pod(p)}
+            for p in self._edistribuzione_pods
+        ]
         return vol.Schema({
             vol.Required(CONF_PODS, default=pod_ids): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=pod_ids, multiple=True)
+                selector.SelectSelectorConfig(options=opzioni, multiple=True)
             )
         })
 
@@ -842,15 +862,17 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
             _LOGGER.exception("Recupero POD E-Distribuzione fallito nelle opzioni")
             return self.async_abort(reason="edistribuzione_supplies_failed")
 
-        disponibili = [p["IdPod"] for p in tutti_pod if p["IdPod"] not in pods_attuali]
-        if not disponibili:
+        pods_disponibili = [p for p in tutti_pod if p["IdPod"] not in pods_attuali]
+        if not pods_disponibili:
             return self.async_abort(reason="nessun_pod_da_aggiungere")
+
+        opzioni = [{"value": p["IdPod"], "label": _etichetta_pod(p)} for p in pods_disponibili]
 
         return self.async_show_form(
             step_id="edistribuzione_aggiungi_pod",
             data_schema=vol.Schema({
                 vol.Required("pods_da_aggiungere", default=[]): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=disponibili, multiple=True)
+                    selector.SelectSelectorConfig(options=opzioni, multiple=True)
                 )
             }),
             description_placeholders={

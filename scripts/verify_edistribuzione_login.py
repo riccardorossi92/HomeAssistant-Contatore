@@ -5,6 +5,13 @@ dalla UI ad ogni tentativo.
 Copre l'intera catena: email/password -> OTP -> recupero POD
 (async_get_supplies), lo stesso percorso del config flow reale.
 
+Dopo un login riuscito salva il refresh_token in
+edistribuzione_refresh_token.txt (file locale, escluso da git): al lancio
+successivo lo script offre di testare SOLO il refresh
+(async_refresh_access_token), senza rifare email/password/OTP - il modo
+pratico per verificare periodicamente se il refresh continua a
+funzionare nel tempo, cosa non testabile in un colpo solo come il login.
+
 Importa auth.py e api.py DIRETTAMENTE (bypassando i vari __init__.py della
 gerarchia distributors/edistribuzione/, che importano
 homeassistant.config_entries/core - non installati qui e non necessari:
@@ -71,6 +78,48 @@ def _load_edistribuzione_modules():
     return auth, api
 
 
+REFRESH_TOKEN_FILE = Path("edistribuzione_refresh_token.txt")
+
+
+async def _test_refresh_soltanto(auth) -> None:
+    """Testa async_refresh_access_token con il token salvato da un login
+    precedente, senza rifare email/password/OTP - il modo rapido per
+    verificare periodicamente se il refresh continua a funzionare nel
+    tempo (obiettivo: capire se/quando scade, non testabile in un colpo
+    solo come il login)."""
+    refresh_token_salvato = REFRESH_TOKEN_FILE.read_text(encoding="utf-8").strip()
+
+    import aiohttp
+
+    async with aiohttp.ClientSession() as session:
+        client = auth.EdistribuzioneAuthClient(session)
+        print(f"\n--- Test refresh con il token salvato in {REFRESH_TOKEN_FILE} ---")
+        try:
+            tokens = await client.async_refresh_access_token(refresh_token_salvato)
+        except auth.EdistribuzioneAuthError as exc:
+            print(f"\nREFRESH FALLITO: {exc}")
+            print(
+                "Se il messaggio parla di token non valido/scaduto/revocato, il "
+                "refresh_token non è più utilizzabile: serve rifare login+OTP da capo "
+                "(rilancia lo script e rispondi 'n' alla prossima domanda)."
+            )
+            return
+        except Exception:
+            print("Errore IMPREVISTO durante il refresh (traceback completo sotto):\n")
+            raise
+
+        print("\n=== REFRESH RIUSCITO ===")
+        print(f"access_token  (primi 20 char): {tokens.access_token[:20]}...")
+        if tokens.refresh_token == refresh_token_salvato:
+            print("refresh_token: invariato rispetto a quello salvato")
+        else:
+            print(
+                f"refresh_token: CAMBIATO (primi 20 char nuovo: {tokens.refresh_token[:20]}...) "
+                "- salvo il nuovo al posto del vecchio"
+            )
+            REFRESH_TOKEN_FILE.write_text(tokens.refresh_token, encoding="utf-8")
+
+
 async def main() -> None:
     logging.basicConfig(
         level=logging.DEBUG,
@@ -82,6 +131,16 @@ async def main() -> None:
         import aiohttp
     except ImportError:
         sys.exit("Manca aiohttp: pip install aiohttp")
+
+    if REFRESH_TOKEN_FILE.exists():
+        scelta = input(
+            f"\nTrovato un refresh_token salvato in {REFRESH_TOKEN_FILE} (da un login "
+            "precedente). Vuoi testare SOLO quello (niente email/password/OTP)? [S/n]: "
+        ).strip().lower()
+        if scelta in ("", "s", "si", "sì", "y", "yes"):
+            await _test_refresh_soltanto(auth)
+            return
+        print("Ok, procedo con login completo (email/password/OTP).\n")
 
     email = input("Email E-Distribuzione: ").strip()
     password = getpass.getpass("Password (non visibile mentre digiti): ")
@@ -122,6 +181,13 @@ async def main() -> None:
         print(f"access_token  (primi 20 char): {tokens.access_token[:20]}...")
         print(f"refresh_token (primi 20 char): {tokens.refresh_token[:20]}...")
         print(f"instance_url: {tokens.instance_url}")
+
+        REFRESH_TOKEN_FILE.write_text(tokens.refresh_token, encoding="utf-8")
+        print(
+            f"\nrefresh_token salvato in {REFRESH_TOKEN_FILE.resolve()} - la prossima "
+            "volta puoi testarlo direttamente senza rifare login+OTP (è un file locale, "
+            "già escluso da git: non va mai committato)."
+        )
 
         print("\n--- Recupero POD (async_get_supplies) ---")
         api_client = api.EdistribuzioneApiClient(session, tokens.access_token)

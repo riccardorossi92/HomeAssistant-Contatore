@@ -10,3 +10,14 @@ venv/
 
 # Ambiente locale / credenziali
 .env
+
+# File di debug generati dagli script in scripts/ (mai committarli: alcuni
+# contengono dati personali - indirizzo, consumi - o, nel caso del token
+# di refresh, una credenziale vera e propria). Nomi file espliciti invece
+# di un pattern con prefisso di cartella: vengono scritti nella cartella
+# da cui lanci lo script, non sempre scripts/.
+otp_page_debug.html
+otp_submit_response_debug.html
+login_page_decoded.html
+daily_load_profile_debug.json
+edistribuzione_refresh_token.txt
