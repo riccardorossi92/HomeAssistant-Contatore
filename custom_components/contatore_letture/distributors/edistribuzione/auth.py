@@ -42,6 +42,8 @@ _LOGGER = logging.getLogger(__name__)
 
 _MOBILE_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15"
 
+_MAX_REDIRECT_HOPS = 15
+
 
 class EdistribuzioneAuthError(Exception):
     """Generic authentication failure."""
@@ -61,6 +63,49 @@ class EdistribuzioneParsingError(EdistribuzioneAuthError):
     Most likely cause: Enel changed something in their Salesforce site and
     the regexes below need updating. Capture a fresh HAR and compare.
     """
+
+
+async def _get_following_redirects(
+    session: aiohttp.ClientSession,
+    url: str,
+    *,
+    params: dict | None = None,
+    headers: dict | None = None,
+) -> aiohttp.ClientResponse:
+    """GET seguendo i redirect a mano invece di allow_redirects=True.
+
+    Necessario perche' la catena di redirect di /services/oauth2/authorize
+    passa per un parametro 'startURL' che contiene un URL annidato
+    percent-encoded (%2F, %3F, ...). Lasciando che aiohttp gestisca i
+    redirect da solo (allow_redirects=True), il comportamento dipende
+    dall'opzione 'requote_redirect_url' della ClientSession (che puo'
+    ri-codificare il Location gia' codificato, alterandolo ad ogni hop) e
+    puo' entrare in un loop infinito fino a TooManyRedirects - riprodotto e
+    confermato il 20/08/2026 con un HAR reale. Seguendo i redirect
+    esplicitamente con encoded=True sull'URL del prossimo hop, il valore
+    del Location non viene mai ri-processato: la stessa catena che con
+    allow_redirects=True va in loop qui si risolve in 3 hop.
+
+    Ritorna la risposta finale (status < 300, nessun altro Location);
+    il chiamante e' responsabile di chiudere/consumare 'resp' come al solito.
+    """
+    resp = await session.get(url, params=params, headers=headers, allow_redirects=False)
+
+    for _ in range(_MAX_REDIRECT_HOPS):
+        location = resp.headers.get("Location")
+        if location is None:
+            return resp
+
+        resp.close()
+        location_url = aiohttp.client.URL(location, encoded=True)
+        next_url = location_url if location_url.is_absolute() else resp.url.join(location_url)
+        resp = await session.get(next_url, headers=headers, allow_redirects=False)
+
+    resp.close()
+    raise EdistribuzioneAuthError(
+        f"Troppi redirect (>{_MAX_REDIRECT_HOPS}) seguendo {url}: possibile "
+        "cambiamento lato Salesforce nella struttura dei redirect di login."
+    )
 
 
 def _b64url(data: bytes) -> str:
@@ -136,11 +181,15 @@ class EdistribuzioneAuthClient:
             "state": self._oauth_state,
         }
 
-        # Let aiohttp follow the redirect chain down to the rendered login page.
-        async with self._session.get(
-            OAUTH_AUTHORIZE_URL, params=params, headers=headers, allow_redirects=True
-        ) as resp:
-            login_page_html = await resp.text()
+        # Segue i redirect a mano (vedi _get_following_redirects) invece di
+        # allow_redirects=True: quest'ultimo puo' entrare in un loop
+        # infinito su questa catena specifica per via di un parametro
+        # ('startURL') che contiene un URL annidato gia' percent-encoded.
+        resp = await _get_following_redirects(
+            self._session, OAUTH_AUTHORIZE_URL, params=params, headers=headers
+        )
+        login_page_html = await resp.text()
+        resp.close()
 
         self._flow.fwuid = self._extract_fwuid(login_page_html)
         self._flow.aura_token = self._extract_aura_token(login_page_html)
@@ -183,11 +232,12 @@ class EdistribuzioneAuthClient:
         frontdoor_url = return_value[len("OK:") :]
 
         # Following this establishes the `sid` session cookie and lands on the
-        # OTP interview page (loginflow.apexp).
-        async with self._session.get(
-            frontdoor_url, headers=headers, allow_redirects=True
-        ) as resp:
-            otp_page_html = await resp.text()
+        # OTP interview page (loginflow.apexp). Stesso rischio di loop del
+        # commento sopra su OAUTH_AUTHORIZE_URL: frontdoor_url ha tipicamente
+        # un parametro retURL anch'esso percent-encoded con un URL annidato.
+        resp = await _get_following_redirects(self._session, frontdoor_url, headers=headers)
+        otp_page_html = await resp.text()
+        resp.close()
 
         self._parse_otp_page(otp_page_html)
 
