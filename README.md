@@ -26,7 +26,7 @@ configurazione.
 |---|---|
 | Duereti | Login, lettura dati e import Energy Dashboard funzionanti (Portale Clienti Finali / PCF) |
 | Unareti | Login, lettura dati e import Energy Dashboard funzionanti (Portale Clienti Finali / PCF) |
-| E-Distribuzione | Login e lettura dati funzionanti; import Energy Dashboard non ancora disponibile (schema dati della curva di carico non confermato) |
+| E-Distribuzione | In lavorazione: login OAuth2+OTP non ancora confermato funzionante end-to-end (v0.0.5 ha corretto l'estrazione del `fwuid`, l'estrazione del token Aura è ancora da verificare). Import Energy Dashboard non ancora implementato in ogni caso |
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
@@ -85,6 +85,10 @@ password, e il codice OTP che ricevi via SMS al momento dell'accesso — te
 lo chiede direttamente il wizard di configurazione). Se il tuo account ha
 più POD associati, potrai scegliere quale monitorare durante la
 configurazione.
+
+*(Questo descrive il meccanismo previsto — vedi la tabella "Distributori
+supportati" sopra per lo stato attuale, non ancora confermato funzionante
+end-to-end.)*
 
 ## Installazione
 

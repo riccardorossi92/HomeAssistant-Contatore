@@ -82,17 +82,32 @@ vecchie integrazioni: se in futuro ci saranno utenti reali da migrare, servirà
 scrivere una migrazione esplicita che rinomina gli `statistic_id` nel recorder
 prima del passaggio — non ancora scritta, perché fuori scopo per ora.
 
-## Cosa resta STUB
+## Cosa resta STUB / non ancora verificato
 
+- **Login E-Distribuzione (`distributors/edistribuzione/auth.py`)**: NON
+  ancora confermato funzionante end-to-end. Come previsto dal README della
+  bozza originale ("i regex di scraping sono best-effort, non testati
+  contro l'HTML reale"), il primo test reale (19-20/08/2026) ha trovato e
+  corretto due bug concreti:
+  - un loop di redirect infinito (`TooManyRedirects`) causato da una
+    doppia codifica URL nel redirect automatico di aiohttp — risolto
+    seguendo i redirect a mano con `encoded=True` (v0.0.4);
+  - l'estrazione del `fwuid` cercava una forma letterale `"fwuid":"..."`
+    nell'HTML, ma il valore reale è incorporato percent-encoded nel path
+    di un URL di bootstrap (`<script src="/sfsites/l/%7B...%7D/app.js">`)
+    — risolto aggiungendo quella forma come fallback (v0.0.5).
+
+  **Ancora da verificare**: l'estrazione del token Aura
+  (`_extract_aura_token`) non ha ancora superato un test reale — la
+  pagina di login catturata finora non sembra contenerlo nella forma
+  attesa dal regex originale. Il login potrebbe fallire al passo
+  successivo finché questo non viene verificato/corretto allo stesso modo.
 - **`distributors/edistribuzione/statistics.py`**: import nella Energy
-  Dashboard NON ancora implementato. Auth (OAuth2+PKCE+OTP via Salesforce)
-  e API di lettura sono integrate e funzionanti (nella misura in cui lo
-  era la bozza originale - i regex di scraping in `auth.py` sono
-  best-effort, non testati contro l'HTML reale, vedi i commenti nel
-  file). Il blocco mancante è lo schema JSON della curva di carico
-  (`async_get_daily_load_profile`/`async_get_monthly_load_profile`): non
-  documentato da nessuna parte, quindi `statistics.py` oggi si limita a
-  loggare la struttura ricevuta invece di inventare nomi di campo.
+  Dashboard NON ancora implementato. Il blocco mancante è lo schema JSON
+  della curva di carico (`async_get_daily_load_profile`/
+  `async_get_monthly_load_profile`): non documentato da nessuna parte,
+  quindi `statistics.py` oggi si limita a loggare la struttura ricevuta
+  invece di inventare nomi di campo.
 - **Reauth/Options flow per E-Distribuzione**: abortiscono esplicitamente
   (`reauth_not_supported` / `options_not_supported`) invece di fallire in
   modo oscuro - il modello di autenticazione (OAuth2+OTP) è troppo diverso
