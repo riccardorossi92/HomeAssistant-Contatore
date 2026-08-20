@@ -337,11 +337,18 @@ class EdistribuzioneAuthClient:
 
         frontdoor_url = return_value[len("OK:") :]
 
-        # Following this establishes the `sid` session cookie and lands on the
-        # OTP interview page (loginflow.apexp). Stesso rischio di loop del
-        # commento sopra su OAUTH_AUTHORIZE_URL: frontdoor_url ha tipicamente
-        # un parametro retURL anch'esso percent-encoded con un URL annidato.
+        # Following this establishes the `sid` session cookie e atterra su
+        # una pagina-ponte che fa un redirect via JAVASCRIPT
+        # (window.location.replace(...)) verso il vero form OTP - un
+        # browser lo segue automaticamente, noi no. Confermato analizzando
+        # l'ordine cronologico reale di una HAR il 20/08/2026: la pagina di
+        # frontdoor.jsp NON e' mai il form OTP, e' solo un ponte.
         resp = await _get_following_redirects(self._session, frontdoor_url, headers=headers)
+        bridge_html = await resp.text()
+        resp.close()
+
+        otp_form_url = self._extract_js_redirect_url(bridge_html)
+        resp = await _get_following_redirects(self._session, otp_form_url, headers=headers)
         otp_page_html = await resp.text()
         resp.close()
 
@@ -510,6 +517,35 @@ class EdistribuzioneAuthClient:
             return unquote(match.group(1))
 
         return "{}"
+
+    @staticmethod
+    def _extract_js_redirect_url(html: str) -> str:
+        """La pagina di frontdoor.jsp e' un ponte che rimanda al vero form
+        OTP con `window.location.replace('URL')` (JavaScript, non un
+        redirect HTTP) - un browser lo segue da solo, noi dobbiamo
+        estrarre l'URL a mano e farci una GET esplicita.
+
+        L'URL dentro replace() e' gia' assoluto e correttamente
+        percent-encoded (e' dentro una stringa JS, non un attributo HTML),
+        quindi nessun problema di doppia codifica come altrove in questo
+        file - va usato cosi' com'e'.
+        """
+        match = re.search(r"window\.location\.replace\('([^']+)'\)", html)
+        if match:
+            return match.group(1)
+
+        # Fallback: alcune varianti di questa pagina Salesforce usano
+        # window.location.href invece di .replace(...).
+        match = re.search(r"window\.location\.href\s*=\s*'([^']+)'", html)
+        if match:
+            return match.group(1)
+
+        _log_parsing_failure_context(html, "window.location.replace(...) su pagina frontdoor")
+        raise EdistribuzioneParsingError(
+            "Redirect JavaScript verso il form OTP non trovato sulla pagina "
+            f"di frontdoor (pagina lunga {len(html)} caratteri - vedi log "
+            "per un'anteprima)"
+        )
 
     def _parse_otp_page(self, html: str) -> None:
         def find(field_name: str) -> str:
