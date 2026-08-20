@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import logging
 import re
 import secrets
+import uuid
 from dataclasses import dataclass, field
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -189,9 +191,23 @@ class EdistribuzioneAuthClient:
             self._session, OAUTH_AUTHORIZE_URL, params=params, headers=headers
         )
         login_page_html = await resp.text()
+        # Il parametro 'startURL' della pagina su cui atterriamo contiene un
+        # token 'source=...' generato dal server al primo hop
+        # (oauth2/authorize), che il server pretende di riavere indietro nel
+        # campo 'startUrl' dentro 'message' per validare che il login
+        # appartenga allo stesso flusso di autorizzazione - confermato
+        # confrontando con una richiesta reale riuscita il 20/08/2026, dove
+        # mandare un path nudo (senza questo token) produceva lo stesso
+        # AuraClientInputException generico osservato più volte.
+        start_url_value = resp.url.query.get(
+            "startURL", "/PortaleClienti/setup/secur/RemoteAccessAuthorizationPage.apexp"
+        )
+        aura_page_uri = resp.url.path_qs
+        referer = str(resp.url)
         resp.close()
 
         self._flow.fwuid = self._extract_fwuid(login_page_html)
+        loaded = self._extract_loaded(login_page_html)
         # aura.token: confermato su una HAR reale con login riuscito il
         # 20/08/2026 che il client invia letteralmente la stringa "null"
         # (non un token vero) per questa azione specifica, e il server la
@@ -203,30 +219,82 @@ class EdistribuzioneAuthClient:
         # quindi il server non pretende un token reale per loginUser.
         self._flow.aura_token = "null"
 
-        message = (
-            '{"actions":[{"id":"1;a","descriptor":'
-            '"apex://PED_LoginController/ACTION$loginUser",'
-            '"callingDescriptor":"markup://c:PED_Login","params":'
-            f'{{"username":"{email}","password":"{password}",'
-            '"startUrl":"/PortaleClienti/setup/secur/RemoteAccessAuthorizationPage.apexp"}}}}]}'
-        )
-        aura_context = (
-            '{"mode":"PROD","fwuid":"' + self._flow.fwuid + '",'
-            '"app":"siteforce:loginApp2","loaded":{},"dn":[],"globals":{},"uad":true}'
-        )
+        # Costruito con json.dumps invece di concatenazione di stringhe:
+        # oltre a essere più leggibile, evita JSON malformato se
+        # email/password contenessero virgolette o backslash (mai
+        # verificato prima, ma con tutti i problemi di "JSON non valido"
+        # incontrati finora meglio non lasciarlo al caso).
+        message = json.dumps({
+            "actions": [{
+                "id": "1;a",
+                "descriptor": "apex://PED_LoginController/ACTION$loginUser",
+                "callingDescriptor": "markup://c:PED_Login",
+                "params": {
+                    "username": email,
+                    "password": password,
+                    "startUrl": start_url_value,
+                },
+            }]
+        })
+        # 'loaded' NON puo' essere {} (vuoto): il server risponde con un
+        # generico AuraClientInputException ("Unexpected request input")
+        # se non corrisponde a quanto si aspetta - confermato confrontando
+        # con una richiesta reale riuscita il 20/08/2026, dove conteneva un
+        # riferimento alla versione del componente caricato
+        # (es. {"APPLICATION@markup://siteforce:loginApp2":"1628_..."}).
+        aura_context = json.dumps({
+            "mode": "PROD",
+            "fwuid": self._flow.fwuid,
+            "app": "siteforce:loginApp2",
+            "loaded": json.loads(loaded),
+            "dn": [],
+            "globals": {},
+            "uad": True,
+        })
         data = {
             "message": message,
             "aura.context": aura_context,
-            "aura.pageURI": "/PortaleClienti/s/login/",
+            "aura.pageURI": aura_page_uri,
             "aura.token": self._flow.aura_token,
+        }
+
+        # X-SFDC-Page-Scope-Id: mai visto in nessuna risposta del server in
+        # tutta la HAR analizzata, solo nelle richieste - e' verosimilmente
+        # generato lato client (un ID di correlazione per la pagina/sessione,
+        # riusato identico su tutte le chiamate Aura), non qualcosa da
+        # estrarre. Generato qui un UUID plausibile, non provato necessario
+        # da solo ma coerente con quanto osservato in una richiesta reale.
+        #
+        # Origin/Referer/Content-Type aggiunti per la stessa ragione: non
+        # individualmente confermati come causa del rifiuto, ma presenti
+        # nella richiesta reale riuscita e a rischio zero da aggiungere.
+        login_headers = {
+            **headers,
+            "X-SFDC-Page-Scope-Id": str(uuid.uuid4()),
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+            "Origin": "https://private.e-distribuzione.it",
+            "Referer": referer,
         }
 
         async with self._session.post(
             f"{AURA_ENDPOINT}?r=2&other.PED_Login.loginUser=1",
             data=data,
-            headers=headers,
+            headers=login_headers,
         ) as resp:
-            payload = await resp.json(content_type=None)
+            raw_text = await resp.text()
+            try:
+                payload = json.loads(raw_text)
+            except json.JSONDecodeError as err:
+                _LOGGER.error(
+                    "Risposta non-JSON da loginUser (status %s). Primi 500 "
+                    "caratteri del corpo: %r",
+                    resp.status,
+                    raw_text[:500],
+                )
+                raise EdistribuzioneParsingError(
+                    f"Risposta non-JSON da loginUser (status {resp.status}): "
+                    f"{raw_text[:200]!r}"
+                ) from err
 
         try:
             return_value = payload["actions"][0]["returnValue"]
@@ -385,6 +453,34 @@ class EdistribuzioneAuthClient:
             return match.group(1)
 
         raise EdistribuzioneParsingError("fwuid not found on login page")
+
+    @staticmethod
+    def _extract_loaded(html: str) -> str:
+        """Estrae il valore grezzo (JSON, come stringa) del campo 'loaded'
+        dallo stesso blob di bootstrap da cui si estrae fwuid - es.
+        '{"APPLICATION@markup://siteforce:loginApp2":"1628_TW-..."}'.
+
+        Necessario perche' aura.context con 'loaded':{} (vuoto) viene
+        rifiutato dal server con un AuraClientInputException generico
+        ("Unexpected request input... must be in the expected format"),
+        confermato confrontando con una richiesta loginUser reale riuscita
+        il 20/08/2026: il valore reale di 'loaded' e' non vuoto e va
+        riportato identico.
+
+        Ritorna '{}' (stringa) se non trovato, cosi' il chiamante degrada
+        al comportamento precedente invece di fallire qui - il fallimento
+        vero arrivera' comunque dal server sulla loginUser, con l'errore
+        gia' diagnosticato da li'.
+        """
+        match = re.search(r'"loaded"\s*:\s*(\{[^}]*\})', html)
+        if match:
+            return match.group(1)
+
+        match = re.search(r"%22loaded%22%3A(%7B.*?%7D)", html)
+        if match:
+            return unquote(match.group(1))
+
+        return "{}"
 
     def _parse_otp_page(self, html: str) -> None:
         def find(pattern: str, name: str) -> str:
