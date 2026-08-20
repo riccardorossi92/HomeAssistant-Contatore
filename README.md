@@ -26,7 +26,7 @@ configurazione.
 |---|---|
 | Duereti | Login, lettura dati e import Energy Dashboard funzionanti (Portale Clienti Finali / PCF) |
 | Unareti | Login, lettura dati e import Energy Dashboard funzionanti (Portale Clienti Finali / PCF) |
-| E-Distribuzione | Login, OTP e recupero POD **confermati funzionanti con dati reali** (dalla v0.1.3). Import Energy Dashboard non ancora implementato (schema dati della curva di carico non confermato) |
+| E-Distribuzione | Login, OTP, recupero POD e import Energy Dashboard **confermati funzionanti con dati reali**. Ritardo di pubblicazione dati non ancora verificato empiricamente (a differenza di Duereti/Unareti) |
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
@@ -175,19 +175,30 @@ data:
   ticket: "ENdZS6CausBMlUzrS3as5Q"
 ```
 
+`recupera_storico` funziona anche per E-Distribuzione (vedi sezione
+dedicata più sotto, con un comportamento leggermente diverso: una
+richiesta per giorno invece che un'unica richiesta per l'intero periodo).
+`recupera_ticket` resta specifico di Duereti/Unareti: E-Distribuzione non
+ha il concetto di ticket/export.
+
 Entrambe accettano un `entry_id` opzionale se hai più istanze configurate.
-Nessuna delle due si applica a E-Distribuzione: il suo protocollo non usa
-il modello a ticket/export di Duereti e Unareti.
 
 ### E-Distribuzione
 
-- **Aggiornamento ogni 60 minuti**: refresh del token, poi lettura mensile
-  (reading + time-of-use) per il POD configurato.
-- **Nessun import nella Energy Dashboard per ora** — solo sensori di stato
-  (vedi sotto). Vedi la nota nello stato dei distributori sopra.
-- Nessuna azione dedicata ancora (niente equivalente di
-  `recupera_storico`/`recupera_ticket`: il modello dati è diverso, non
-  serve un ticket da riprendere).
+- **Ogni 60 minuti**: refresh del token, lettura mensile (reading +
+  time-of-use), e — una volta al giorno dopo l'orario configurato — la
+  curva di carico giornaliera del giorno prima, importata nella Energy
+  Dashboard. Giorni senza dati ancora pubblicati finiscono in coda e
+  vengono riprovati nei giorni successivi, come per Duereti/Unareti.
+  **A differenza di Duereti/Unareti, il ritardo di pubblicazione dei
+  dati non è ancora stato verificato empiricamente** (solo confermato che
+  un giorno vecchio di 19 giorni funziona): la coda di retry rende il
+  meccanismo robusto indipendentemente dal ritardo reale, ma se noti
+  richieste spesso vuote prova a spostare l'orario più avanti dalle
+  opzioni.
+- **`contatore_letture.recupera_storico`** funziona anche qui: a
+  differenza di Duereti/Unareti (un'unica richiesta per l'intero periodo),
+  qui viene fatta una richiesta per ogni giorno del periodo, in sequenza.
 
 #### Entità esposte
 
