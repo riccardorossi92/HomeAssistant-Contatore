@@ -26,7 +26,7 @@ configurazione.
 |---|---|
 | Duereti | Login, lettura dati e import Energy Dashboard funzionanti (Portale Clienti Finali / PCF) |
 | Unareti | Login, lettura dati e import Energy Dashboard funzionanti (Portale Clienti Finali / PCF) |
-| E-Distribuzione | Login e lettura dati funzionanti; import Energy Dashboard non ancora disponibile (schema dati della curva di carico non confermato) |
+| E-Distribuzione | Login, OTP e recupero POD **confermati funzionanti con dati reali** (dalla v0.1.3). Import Energy Dashboard non ancora implementato (schema dati della curva di carico non confermato) |
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
