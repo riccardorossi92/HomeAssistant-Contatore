@@ -24,6 +24,7 @@ import re
 import secrets
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 import aiohttp
@@ -50,7 +51,11 @@ def _log_parsing_failure_context(html: str, campo_cercato: str) -> None:
     si trova - serve a distinguere "regex sbagliato" (il campo c'e' ma in
     forma diversa) da "pagina completamente diversa da quella attesa"
     (es. errore, OTP saltato perche' il dispositivo e' gia' fidato, sessione
-    scaduta) senza dover chiedere un'altra cattura per scoprirlo."""
+    scaduta) senza dover chiedere un'altra cattura per scoprirlo.
+
+    Salva anche la pagina intera su disco (best-effort - se il filesystem
+    non e' scrivibile in questo contesto, es. dentro il container di Home
+    Assistant, non blocca nulla, si limita a non salvare)."""
     title_match = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
     title = title_match.group(1).strip() if title_match else "(nessun <title> trovato)"
     _LOGGER.error(
@@ -61,6 +66,12 @@ def _log_parsing_failure_context(html: str, campo_cercato: str) -> None:
         len(html),
         html[:300],
     )
+    try:
+        debug_path = Path("otp_page_debug.html")
+        debug_path.write_text(html, encoding="utf-8")
+        _LOGGER.error("Pagina completa salvata in %s", debug_path.resolve())
+    except OSError as exc:
+        _LOGGER.debug("Impossibile salvare la pagina di debug su disco: %s", exc)
 
 _MAX_REDIRECT_HOPS = 15
 
