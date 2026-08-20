@@ -25,7 +25,10 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import (
+    async_create_clientsession,
+    async_get_clientsession,
+)
 from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
 
 from .arera_lookup import AreraLookupError, async_query_distributore
@@ -80,6 +83,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._reauth_entry: config_entries.ConfigEntry | None = None
         # Stato del ramo E-Distribuzione
         self._edistribuzione_auth = None
+        self._edistribuzione_session = None
         self._edistribuzione_access_token: str | None = None
         self._edistribuzione_refresh_token: str | None = None
         self._edistribuzione_pods: list[dict] = []
@@ -362,8 +366,21 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 EdistribuzioneParsingError,
             )
 
-            session = async_get_clientsession(self.hass)
-            self._edistribuzione_auth = EdistribuzioneAuthClient(session)
+            # Dedicata (non la sessione condivisa async_get_clientsession):
+            # questo login passa per una catena di redirect Salesforce che
+            # dipende da un cookie di sessione impostato a meta' strada. La
+            # sessione condivisa HA e' usata da tutte le integrazioni
+            # dell'istanza e non garantisce che quel cookie venga
+            # persistito/reinviato in modo affidabile per questo dominio -
+            # il sintomo osservato e' un loop di redirect infinito
+            # (aiohttp.TooManyRedirects) perche' il server continua a
+            # ripresentare la pagina "imposta il cookie" non vedendolo mai
+            # tornare indietro. Creata una sola volta e riusata tra i
+            # retry di questo stesso flow, cosi' i cookie accumulati non
+            # si perdono da un tentativo all'altro.
+            if self._edistribuzione_session is None:
+                self._edistribuzione_session = async_create_clientsession(self.hass)
+            self._edistribuzione_auth = EdistribuzioneAuthClient(self._edistribuzione_session)
 
             try:
                 await self._edistribuzione_auth.async_begin_login(
