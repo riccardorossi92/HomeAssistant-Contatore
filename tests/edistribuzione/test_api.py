@@ -281,7 +281,7 @@ class TestAsyncGetDailyLoadProfile:
         date_ricevute = [g["readings"]["sampleDate"] for g in curva]
         assert date_ricevute == ["20260101", "20260102", "20260103"]
 
-
+    @pytest.mark.asyncio
     async def test_estrae_i_dati_dal_payload_reale(self):
         client = _client(
             {"querydailyloadprofile": (200, PAYLOAD_CURVA_REALE)}
@@ -294,6 +294,21 @@ class TestAsyncGetDailyLoadProfile:
         assert len(curva) == 1
         assert curva[0]["sampleFrequency"] == 15
         assert len(curva[0]["readings"]["sampleValues"]) == 4
+
+    @pytest.mark.asyncio
+    async def test_404_e_trattato_come_nessun_dato_non_come_errore(self):
+        """Regressione: osservato il 21/08/2026 che il backend risponde 404
+        (non 200 con data:[] vuoto) quando i dati del giorno richiesto non
+        sono ancora pubblicati. Prima di questo fix, un 404 faceva fallire
+        l'intero aggiornamento invece di essere trattato come 'nessun dato
+        ancora' e finire nella coda di retry del coordinator."""
+        client = _client({"querydailyloadprofile": (404, "")})
+        import datetime
+
+        curva = await client.async_get_daily_load_profile(
+            "IT001E10684497", datetime.date(2026, 8, 20)
+        )
+        assert curva == []
 
     @pytest.mark.asyncio
     async def test_401_solleva_errore_specifico(self):

@@ -61,6 +61,27 @@ class EdistribuzioneApiClient:
         ) as resp:
             if resp.status == 401:
                 raise EdistribuzioneApiError("401 Unauthorized - access_token expired")
+            if resp.status == 404:
+                # Osservato il 21/08/2026 chiedendo il giorno corrente
+                # all'01:01 (dati del giorno prima verosimilmente non
+                # ancora pubblicati): il backend risponde 404 invece di un
+                # 200 con data:[] vuoto come nelle altre richieste andate
+                # a vuoto. Trattato come "nessun dato disponibile ancora"
+                # (stessa semantica di data:[] vuoto) invece che come
+                # errore fatale, cosi' il meccanismo di coda del
+                # coordinator lo gestisce come un giorno non ancora
+                # pronto invece di far fallire l'intero aggiornamento.
+                # Non confermato se un 404 possa MAI significare
+                # qualcos'altro (es. POD non valido): logghiamo il corpo
+                # per scoprirlo se succede.
+                body_preview = await resp.text()
+                _LOGGER.debug(
+                    "404 su %s (probabile 'nessun dato ancora disponibile', non un "
+                    "errore). Corpo (primi 300 caratteri): %r",
+                    url,
+                    body_preview[:300],
+                )
+                return {"data": []}
             resp.raise_for_status()
             payload = await resp.json(content_type=None)
 

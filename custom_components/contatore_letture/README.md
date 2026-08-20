@@ -89,7 +89,19 @@ funzionale di Duereti/Unareti.
 - `RITARDO_DATI_GIORNI` (quando E-Distribuzione pubblica i dati del
   giorno prima) non è stato verificato empiricamente, a differenza di
   Duereti/Unareti - vedi la nota in
-  `distributors/edistribuzione/const.py`.
+  `distributors/edistribuzione/const.py`. Dati reali raccolti il
+  21/08/2026, entrambi verso l'01:00: il giorno immediatamente precedente
+  (1 giorno prima) risulta non ancora disponibile (404), mentre quello di
+  2 giorni prima è già disponibile. Restringe la finestra ma non la
+  chiude: non dice ancora se il giorno precedente diventi disponibile più
+  avanti nello stesso giorno (es. all'orario di richiesta di default,
+  le 19:00) o solo il giorno dopo ancora.
+- Refresh del `refresh_token` E-Distribuzione: un primo test a poche ore
+  di distanza (21/08/2026, via `scripts/verify_edistribuzione_login.py`)
+  ha confermato che funziona e che il token **non ruota** ad ogni uso
+  (resta lo stesso). Non ancora confermato su un periodo più lungo
+  (settimane/mesi) - da riverificare periodicamente con lo stesso
+  script prima di considerarlo definitivamente affidabile.
 - L'assunzione che `val` nella curva di carico sia energia in kWh per
   intervallo (non potenza media in kW) non è stata confermata da nessuna
   documentazione ufficiale - vedi la nota in
