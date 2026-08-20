@@ -45,6 +45,7 @@
       },
       "edistribuzione_user": {
         "title": "E-Distribuzione - Accedi",
+        "description": "Usa le stesse credenziali dell'app o del sito ufficiale E-Distribuzione (nessuna richiesta di abilitazione da fare in anticipo, a differenza di Duereti/Unareti). Dopo l'accesso ti verrà chiesto un codice OTP, ricevuto via email o SMS.",
         "data": {
           "email": "Email",
           "password": "Password"
@@ -67,6 +68,19 @@
           "client_id": "Client ID",
           "secret_id": "Secret ID"
         }
+      },
+      "edistribuzione_reauth_user": {
+        "title": "E-Distribuzione - Accedi di nuovo",
+        "description": "Le credenziali salvate non sono più valide per i POD: {pod_correnti}. Accedi di nuovo con email e password.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "edistribuzione_reauth_otp": {
+        "title": "E-Distribuzione - Codice OTP",
+        "description": "Inserisci il codice OTP ricevuto via email o SMS",
+        "data": { "otp": "Codice OTP" }
       }
     },
     "error": {

@@ -514,16 +514,117 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         })
 
     # ------------------------------------------------------------------
+    # Reauth E-Distribuzione: stesso login+OTP dell'onboarding iniziale,
+    # ma niente selezione POD (la entry esistente ha gia' i suoi) - alla
+    # fine aggiorna il refresh_token sulla entry esistente invece di
+    # crearne una nuova. Step separati da async_step_edistribuzione_user/
+    # _otp (non riusati direttamente) per non dover far diramare quelli
+    # tra "crea nuova entry" e "aggiorna quella esistente", che avrebbe
+    # significato toccare codice gia' testato in produzione per aggiungere
+    # un ramo usato raramente.
+    # ------------------------------------------------------------------
+
+    async def async_step_edistribuzione_reauth_user(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            from .distributors.edistribuzione.auth import (
+                EdistribuzioneAuthClient,
+                EdistribuzioneInvalidCredentials,
+                EdistribuzioneParsingError,
+            )
+
+            session = async_get_clientsession(self.hass)
+            self._edistribuzione_auth = EdistribuzioneAuthClient(session)
+
+            try:
+                await self._edistribuzione_auth.async_begin_login(
+                    user_input["email"], user_input["password"]
+                )
+            except EdistribuzioneInvalidCredentials:
+                errors["base"] = "invalid_auth"
+            except EdistribuzioneParsingError:
+                _LOGGER.exception(
+                    "Parsing della pagina di login E-Distribuzione fallito (reauth)"
+                )
+                errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                _LOGGER.exception(
+                    "Errore imprevisto durante il login E-Distribuzione (reauth)"
+                )
+                errors["base"] = "cannot_connect"
+            else:
+                return await self.async_step_edistribuzione_reauth_otp()
+
+        return self.async_show_form(
+            step_id="edistribuzione_reauth_user",
+            data_schema=vol.Schema({
+                vol.Required("email"): str,
+                vol.Required("password"): str,
+            }),
+            errors=errors,
+            description_placeholders={"pod_correnti": ", ".join(
+                self._reauth_entry.data.get("pods", [])
+            )},
+        )
+
+    async def async_step_edistribuzione_reauth_otp(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            from .distributors.edistribuzione.auth import (
+                EdistribuzioneInvalidOtp,
+                EdistribuzioneParsingError,
+            )
+
+            try:
+                tokens = await self._edistribuzione_auth.async_submit_otp(user_input["otp"])
+            except EdistribuzioneInvalidOtp:
+                errors["base"] = "invalid_otp"
+            except EdistribuzioneParsingError:
+                _LOGGER.exception(
+                    "Parsing della pagina OTP E-Distribuzione fallito (reauth)"
+                )
+                errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception(
+                    "Errore imprevisto durante lo scambio del codice OTP E-Distribuzione (reauth)"
+                )
+                errors["base"] = "cannot_connect"
+            else:
+                from .distributors.edistribuzione.const import CONF_REFRESH_TOKEN
+
+                nuovi_dati = {
+                    **self._reauth_entry.data,
+                    CONF_REFRESH_TOKEN: tokens.refresh_token,
+                }
+                self.hass.config_entries.async_update_entry(self._reauth_entry, data=nuovi_dati)
+                await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="edistribuzione_reauth_otp",
+            data_schema=vol.Schema({vol.Required("otp"): str}),
+            errors=errors,
+        )
+
+    # ------------------------------------------------------------------
     # Reauth (generico, dispatcha sul distributore della entry esistente)
     # ------------------------------------------------------------------
 
     async def async_step_reauth(self, entry_data: dict[str, Any]):
         self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         self._distributor_key = self._reauth_entry.data["distributor"]
-        if DISTRIBUTOR_REGISTRY[self._distributor_key]["kind"] != "pcf":
-            # E-Distribuzione non ha oggi un flusso di autenticazione reale.
-            return self.async_abort(reason="reauth_not_supported")
-        return await self.async_step_reauth_confirm()
+        kind = DISTRIBUTOR_REGISTRY[self._distributor_key]["kind"]
+        if kind == "pcf":
+            return await self.async_step_reauth_confirm()
+        if kind == "edistribuzione":
+            return await self.async_step_edistribuzione_reauth_user()
+        return self.async_abort(reason="reauth_not_supported")
 
     async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None):
         errors: dict[str, str] = {}
