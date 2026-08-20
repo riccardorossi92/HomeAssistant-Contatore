@@ -219,11 +219,6 @@ class EdistribuzioneAuthClient:
         # quindi il server non pretende un token reale per loginUser.
         self._flow.aura_token = "null"
 
-        # Costruito con json.dumps invece di concatenazione di stringhe:
-        # oltre a essere più leggibile, evita JSON malformato se
-        # email/password contenessero virgolette o backslash (mai
-        # verificato prima, ma con tutti i problemi di "JSON non valido"
-        # incontrati finora meglio non lasciarlo al caso).
         message = json.dumps({
             "actions": [{
                 "id": "1;a",
@@ -273,7 +268,7 @@ class EdistribuzioneAuthClient:
             "X-SFDC-Page-Scope-Id": str(uuid.uuid4()),
             "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
             "Origin": "https://private.e-distribuzione.it",
-            "Referer": referer,
+            "Referer": referer or str(resp.url),
         }
 
         async with self._session.post(
