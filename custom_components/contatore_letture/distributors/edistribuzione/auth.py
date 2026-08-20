@@ -189,10 +189,13 @@ class EdistribuzioneAuthClient:
             self._session, OAUTH_AUTHORIZE_URL, params=params, headers=headers
         )
         login_page_html = await resp.text()
+        cookie_risposta_finale = dict(resp.cookies)
         resp.close()
 
         self._flow.fwuid = self._extract_fwuid(login_page_html)
-        self._flow.aura_token = self._extract_aura_token_from_cookies(self._session)
+        self._flow.aura_token = self._extract_aura_token_from_cookies(
+            self._session, cookie_risposta_finale
+        )
 
         message = (
             '{"actions":[{"id":"1;a","descriptor":'
@@ -378,23 +381,40 @@ class EdistribuzioneAuthClient:
         raise EdistribuzioneParsingError("fwuid not found on login page")
 
     @staticmethod
-    def _extract_aura_token_from_cookies(session: aiohttp.ClientSession) -> str:
+    def _extract_aura_token_from_cookies(
+        session: aiohttp.ClientSession, cookie_risposta_finale: dict | None = None
+    ) -> str:
         """aura.token NON è nell'HTML della pagina di login: è impostato come
-        cookie (`__Host-ERIC_PROD<suffisso>`) dalla risposta di /s/login/,
-        letto qui dal cookie jar della sessione. Confermato su una HAR reale
-        con login riuscito il 20/08/2026 - la vecchia implementazione
-        cercava `"token":"..."` nel body HTML, dove non è mai stato presente.
+        cookie (`__Host-ERIC_PROD<suffisso>`) dalla risposta di /s/login/.
+        Confermato su una HAR reale con login riuscito il 20/08/2026 - la
+        vecchia implementazione cercava `"token":"..."` nel body HTML, dove
+        non è mai stato presente.
 
         Il suffisso numerico nel nome del cookie sembra legato al
         deployment/org Salesforce: usiamo un prefix match invece del nome
         esatto, nel caso vari tra ambienti o nel tempo.
+
+        Controlla prima il cookie jar aggregato della sessione (copre il
+        caso normale), poi 'cookie_risposta_finale' - i soli cookie
+        impostati dalla risposta specifica della pagina di login - come
+        fallback nel caso ci sia una discrepanza tra i due (es. domain/path
+        matching diverso per i cookie con prefisso __Host-).
         """
         for cookie in session.cookie_jar:
             if cookie.key.startswith("__Host-ERIC_PROD"):
                 return cookie.value
+
+        if cookie_risposta_finale:
+            for nome, morsel in cookie_risposta_finale.items():
+                if nome.startswith("__Host-ERIC_PROD"):
+                    return morsel.value
+
+        cookie_jar_presenti = sorted({c.key for c in session.cookie_jar})
+        cookie_risposta_presenti = sorted((cookie_risposta_finale or {}).keys())
         raise EdistribuzioneParsingError(
-            "Cookie aura.token (__Host-ERIC_PROD*) non trovato dopo il fetch "
-            "della pagina di login"
+            "Cookie aura.token (__Host-ERIC_PROD*) non trovato. Cookie nel "
+            f"jar della sessione: {cookie_jar_presenti!r}. Cookie nella "
+            f"risposta della pagina di login: {cookie_risposta_presenti!r}"
         )
 
     def _parse_otp_page(self, html: str) -> None:
