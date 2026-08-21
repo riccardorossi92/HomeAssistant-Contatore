@@ -48,10 +48,12 @@ Verificato dopo la trasformazione:
 - sintassi Python valida su tutti i file (`py_compile`);
 - tutti gli import relativi risolvono ai nomi realmente definiti (controllo
   scriptato dedicato, non solo `py_compile`);
-- `pyflakes` pulito — i soli avvisi residui (due riferimenti a tipo posticipato
-  `"datetime"`/`"date"` in stringa, una variabile d'eccezione non riletta in un
-  ramo che fa `raise` bare) erano già presenti identici nel codice originale
-  Duereti, non introdotti dalla trasformazione.
+- `pyflakes` pulito — i soli avvisi residui (due riferimenti a tipo
+  posticipato `"datetime"` in `api.py`, lasciati con un import differito
+  per un motivo esplicito di "evitare cicli" già commentato nel file) sono
+  stati rivisti in un audit del repository (21/08/2026): tutto il resto
+  (variabile d'eccezione non riletta, type hint testuali altrove) è stato
+  ripulito.
 
 `distributors/duereti.py` e `distributors/unareti.py` sono volutamente **file separati**
 (non un'unica classe parametrizzata): se domani uno dei due diverge davvero
@@ -120,28 +122,35 @@ alla terza cifra decimale - non una stima, un confronto diretto. Vedi il
 docstring di `distributors/edistribuzione/statistics.py` per il dettaglio.
 
 **Ancora aperto**:
-- `RITARDO_DATI_GIORNI` (quando E-Distribuzione pubblica i dati del
-  giorno prima) non è stato verificato empiricamente con la stessa
-  sistematicità di Duereti/Unareti, ma i dati reali raccolti finora sono
-  coerenti col valore attuale (1 giorno) - vedi la nota in
-  `distributors/edistribuzione/const.py`. Cronologia: alle 00:01-01:00
-  del 21/08/2026 il giorno immediatamente precedente non era ancora
-  disponibile (404) mentre quello di 2 giorni prima sì; lo stesso giorno,
-  alle 18:00, il giorno precedente risultava invece già disponibile -
-  risponde alla domanda che restava aperta (il dato diventa disponibile
-  più avanti nello stesso giorno, non richiede aspettare fino al giorno
-  dopo ancora). L'orario di richiesta di default (19:00, stesso di
-  Duereti) ha quindi un margine di sicurezza, non è al limite.
-- Refresh del `refresh_token` E-Distribuzione: un primo test a poche ore
-  di distanza (21/08/2026, via `scripts/verify_edistribuzione_login.py`)
-  ha confermato che funziona e che il token **non ruota** ad ogni uso
-  (resta lo stesso). Non ancora confermato su un periodo più lungo
-  (settimane/mesi) - da riverificare periodicamente con lo stesso
-  script prima di considerarlo definitivamente affidabile.
+- `RITARDO_DATI_GIORNI` (quando E-Distribuzione pubblica i dati del giorno
+  prima): coerente con l'attuale valore di 1 giorno, ma verificato su meno
+  osservazioni di Duereti/Unareti.
+- Refresh del `refresh_token` E-Distribuzione: primo test riuscito, da
+  riconfermare su un periodo più lungo (settimane/mesi).
 - I regex di scraping in `auth.py` restano best-effort: se Enel cambia
   qualcosa lato loro, è probabile che si rompano di nuovo (è già successo
   più volte durante lo sviluppo - vedi la cronologia dei fix più sotto per
   farsi un'idea di cosa aspettarsi in quel caso).
+
+<details>
+<summary>Cronologia delle osservazioni sui due punti sopra (21/08/2026)</summary>
+
+**Ritardo di pubblicazione**: alle 00:01-01:00 il giorno immediatamente
+precedente non era ancora disponibile (404) mentre quello di 2 giorni
+prima sì; lo stesso giorno, alle 18:00, il giorno precedente risultava
+invece già disponibile - risponde alla domanda che restava aperta (il
+dato diventa disponibile più avanti nello stesso giorno, non richiede
+aspettare fino al giorno dopo ancora). L'orario di richiesta di default
+(19:00, stesso di Duereti) ha quindi un margine di sicurezza, non è al
+limite. Vedi la nota in `distributors/edistribuzione/const.py`.
+
+**Refresh token**: test eseguito a poche ore di distanza dal login
+originale (via `scripts/verify_edistribuzione_login.py`) - confermato
+funzionante, e il token **non ruota** ad ogni uso (resta lo stesso). Non
+ancora testato su settimane/mesi: da riverificare periodicamente con lo
+stesso script prima di considerarlo definitivamente affidabile.
+
+</details>
 
 ## Nota di sicurezza (E-Distribuzione)
 
@@ -156,11 +165,9 @@ stesso, non committare mai le catture originali nel repository.
 
 ## Prima di usarlo su un'installazione reale
 
-1. Aggiorna `codeowners`/`documentation`/`issue_tracker` in `manifest.json`
-   e `GITHUB_REPO_URL` in `const.py` con i tuoi riferimenti reali.
-2. Se vuoi disinstallare `duereti_letture`/`unareti_letture` esistenti prima
+1. Se vuoi disinstallare `duereti_letture`/`unareti_letture` esistenti prima
    di installare `contatore_letture`, ricordati che è una rottura intenzionale
    (vedi sopra): non c'è continuità automatica delle statistiche.
-3. Consigliato: un primo giro di test manuale del wizard end-to-end (region
+2. Consigliato: un primo giro di test manuale del wizard end-to-end (region
    → provincia → comune → lookup ARERA → credenziali → POD) prima di fare
    affidamento sui servizi `recupera_ticket`/`recupera_storico`.
