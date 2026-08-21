@@ -85,6 +85,14 @@ con una singola chiamata a intervallo (confermato fino a 181 giorni),
 reauth e options flow (aggiungi/rimuovi POD, orario) - stessa parità
 funzionale di Duereti/Unareti.
 
+**Confermato con dati reali** (21/08/2026): `val` nella curva di carico è
+energia in kWh per intervallo di 15 minuti, non potenza media in kW.
+Verificato confrontando il totale della curva per un mese intero (giugno
+2026) con il delta di due letture ufficiali consecutive
+(`async_get_reading`): 134.925 kWh in entrambi i casi, combacianti fino
+alla terza cifra decimale - non una stima, un confronto diretto. Vedi il
+docstring di `distributors/edistribuzione/statistics.py` per il dettaglio.
+
 **Ancora aperto**:
 - `RITARDO_DATI_GIORNI` (quando E-Distribuzione pubblica i dati del
   giorno prima) non è stato verificato empiricamente, a differenza di
@@ -102,10 +110,6 @@ funzionale di Duereti/Unareti.
   (resta lo stesso). Non ancora confermato su un periodo più lungo
   (settimane/mesi) - da riverificare periodicamente con lo stesso
   script prima di considerarlo definitivamente affidabile.
-- L'assunzione che `val` nella curva di carico sia energia in kWh per
-  intervallo (non potenza media in kW) non è stata confermata da nessuna
-  documentazione ufficiale - vedi la nota in
-  `distributors/edistribuzione/statistics.py`.
 - I regex di scraping in `auth.py` restano best-effort: se Enel cambia
   qualcosa lato loro, è probabile che si rompano di nuovo (è già successo
   più volte durante lo sviluppo - vedi la cronologia dei fix più sotto per
