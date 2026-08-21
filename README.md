@@ -164,9 +164,6 @@ di salvare.
 | Ultima data disponibile | POD | Ultimo giorno per cui esistono dati importati |
 | Consumo ultimo giorno importato | POD | kWh dell'ultimo giorno importato |
 
-Oltre alla curva giornaliera, ogni ora viene aggiornata anche una lettura
-mensile (reading + time-of-use) per ciascun POD.
-
 </details>
 
 ## Azioni
