@@ -198,7 +198,7 @@ data:
 
 </details>
 
-**`contatore_letture.recupera_ticket`** — solo Duereti/Unareti (che non
+**`contatore_letture.recupera_ticket`** — solo Duereti/Unareti (che 
 hanno il concetto di ticket): riprende un ticket già esistente presso il
 distributore, saltando la richiesta di un nuovo export.
 
