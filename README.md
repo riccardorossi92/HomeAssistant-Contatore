@@ -207,3 +207,6 @@ struttura delle risposte), architettura del codice, sviluppo/test e
 script disponibili sono in [`documentation/`](documentation/) — non
 necessari per usare l'integrazione, utili se vuoi contribuire o capire
 come funziona sotto.
+
+Se vuoi aggiungere un nuovo distributore o modificarne uno esistente,
+vedi [`CONTRIBUTING.md`](CONTRIBUTING.md).
