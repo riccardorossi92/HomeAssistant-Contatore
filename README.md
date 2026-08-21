@@ -198,9 +198,9 @@ data:
 
 </details>
 
-**`contatore_letture.recupera_ticket`** — solo Duereti/Unareti (che 
-hanno il concetto di ticket): riprende un ticket già esistente presso il
-distributore, saltando la richiesta di un nuovo export.
+**`contatore_letture.recupera_ticket`** — solo Duereti/Unareti
+(E-Distribuzione non ha il concetto di ticket): riprende un ticket già
+esistente presso il distributore, saltando la richiesta di un nuovo export.
 
 ```yaml
 action: contatore_letture.recupera_ticket
@@ -241,3 +241,10 @@ Per lanciare solo i test che non richiedono HA:
 ```bash
 pytest tests/pcf_common/test_api.py tests/pcf_common/test_api_errori.py tests/edistribuzione/
 ```
+
+## Documentazione tecnica
+
+Dettagli di reverse engineering dei protocolli (endpoint, gotcha,
+struttura delle risposte), architettura del codice, e script disponibili
+sono in [`documentation/`](documentation/) — non necessari per usare
+l'integrazione, utili se vuoi contribuire o capire come funziona sotto.
