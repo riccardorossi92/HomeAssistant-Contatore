@@ -89,4 +89,3 @@ recupera_storico:
       example: "2026-07-31"
       selector:
         date:
-        text:
