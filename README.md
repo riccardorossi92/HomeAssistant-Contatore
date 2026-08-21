@@ -185,18 +185,9 @@ data:
   data_a: "2026-07-31"
 ```
 
-<details>
-<summary><b>Dettagli per distributore</b></summary>
-
-- **Duereti/Unareti**: il limite di 6 mesi è documentato dalle API del
-  distributore. Il recupero vale sempre per l'intera configurazione
-  insieme (tutti i POD).
-- **E-Distribuzione**: il limite di 6 mesi è una cautela auto-imposta, non
-  un vincolo noto delle loro API (confermato funzionante fino a 181
-  giorni in un'unica risposta). Se scegli il dispositivo di un singolo
-  POD invece del dispositivo "Account", il recupero si limita a quel POD.
-
-</details>
+Per le sfumature specifiche di ciascun distributore (limite di 6 mesi
+documentato o auto-imposto, targeting per singolo POD) vedi
+[`documentation/`](documentation/).
 
 **`contatore_letture.recupera_ticket`** — solo Duereti/Unareti
 (E-Distribuzione non ha il concetto di ticket): riprende un ticket già
@@ -209,42 +200,10 @@ data:
   entry_id: <opzionale, se hai più istanze Duereti/Unareti>
 ```
 
-## Sviluppo e test
-
-```bash
-pip install -r requirements_test.txt
-pytest
-```
-
-```
-tests/
-  conftest.py                              # fixture condivise (hass, ecc.)
-  pcf_common/                                # test per Duereti/Unareti
-    test_api.py                                # nessuna dipendenza da HA
-    test_api_errori.py                         # nessuna dipendenza da HA
-    test_coordinator_dates.py                  # richiede HA installato
-  edistribuzione/                            # test per E-Distribuzione
-    test_auth.py                               # nessuna dipendenza da HA
-    test_api.py                                # nessuna dipendenza da HA
-```
-
-I test in `test_api.py`, `test_api_errori.py` (pcf_common) e
-`test_auth.py`, `test_api.py` (edistribuzione) non richiedono Home
-Assistant installato — coprono solo codice che dipende esclusivamente da
-`aiohttp` e libreria standard, caricato direttamente per bypassare i punti
-della gerarchia di pacchetti che importano `homeassistant.*`.
-`test_coordinator_dates.py` richiede invece
-`pytest-homeassistant-custom-component`.
-
-Per lanciare solo i test che non richiedono HA:
-
-```bash
-pytest tests/pcf_common/test_api.py tests/pcf_common/test_api_errori.py tests/edistribuzione/
-```
-
 ## Documentazione tecnica
 
 Dettagli di reverse engineering dei protocolli (endpoint, gotcha,
-struttura delle risposte), architettura del codice, e script disponibili
-sono in [`documentation/`](documentation/) — non necessari per usare
-l'integrazione, utili se vuoi contribuire o capire come funziona sotto.
+struttura delle risposte), architettura del codice, sviluppo/test e
+script disponibili sono in [`documentation/`](documentation/) — non
+necessari per usare l'integrazione, utili se vuoi contribuire o capire
+come funziona sotto.

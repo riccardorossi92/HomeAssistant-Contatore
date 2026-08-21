@@ -205,6 +205,16 @@ metodo>` (varia per endpoint).
   ancora pubblicato", non un errore — trattato dal client come
   equivalente a una risposta vuota, non come eccezione fatale.
 
+> [!NOTE]
+> **`recupera_storico` sfrutta questo intervallo vero**: una sola
+> richiesta per l'intero periodo, non un ciclo giorno per giorno. Il
+> limite di 6 mesi imposto lato client (`MAX_GIORNI_RECUPERO_STORICO`) è
+> una cautela auto-imposta, non un vincolo noto di questa API — il range
+> più lungo testato finora (181 giorni) ha funzionato in un'unica
+> risposta. Scegliendo il dispositivo di un singolo POD invece del
+> dispositivo "Account" nel selettore dell'azione, il recupero si limita
+> a quel solo POD.
+
 ### Struttura della risposta di `querydailyloadprofile`
 
 ```json
