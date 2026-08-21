@@ -7,8 +7,16 @@ fiscale per ciascuno (sono tutti già associati all'utenza loggata).
 Ogni ciclo:
 - refresh del token;
 - per ciascun POD configurato, se è il momento (coda + orario), la curva
-  di carico del giorno prima, importata nella Energy Dashboard;
-- per ciascun POD, lettura mensile (reading + time-of-use).
+  di carico del giorno prima, importata nella Energy Dashboard.
+
+'reading'/'time_of_use' (letture ufficiali mensili) NON sono recuperati
+automaticamente qui - lo erano fino a un certo punto dello sviluppo, ma
+nessun sensore li legge dalla riduzione a 3 sensori diagnostici (v0.2.3):
+erano scaricati ogni ora per niente, solo carico inutile verso le API del
+distributore (rimosso in v0.3.0). Restano disponibili solo tramite l'API
+stessa (EdistribuzioneApiClient.async_get_reading/
+async_get_monthly_time_of_use), da richiamare esplicitamente se in futuro
+serve esporli.
 
 async_recupera_storico accetta un parametro 'pod' opzionale: se omesso,
 recupera lo storico per TUTTI i POD della entry.
