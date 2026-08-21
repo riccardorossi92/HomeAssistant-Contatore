@@ -152,17 +152,6 @@ stesso script prima di considerarlo definitivamente affidabile.
 
 </details>
 
-## Nota di sicurezza (E-Distribuzione)
-
-Le HAR usate per costruire `distributors/edistribuzione/auth.py`
-contenevano credenziali reali (password, access/refresh token, sid di
-sessione) di un account di test. Le HAR sono state condivise solo in
-questa chat (non pubblicate altrove) e non conservate oltre l'analisi; la
-password dell'account di test è già stata cambiata. Nessuna azione
-ulteriore necessaria — nota lasciata qui solo come promemoria per chi in
-futuro dovesse catturare nuove HAR per aggiornare `auth.py`: fare lo
-stesso, non committare mai le catture originali nel repository.
-
 ## Prima di usarlo su un'installazione reale
 
 1. Se vuoi disinstallare `duereti_letture`/`unareti_letture` esistenti prima
