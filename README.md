@@ -11,19 +11,19 @@ Unofficial meta-integration for Italian electricity distributor meter data in Ho
 Integrazione per Home Assistant che, dato il tuo comune, individua
 automaticamente il distributore elettrico competente (interrogando
 [ARERA](https://www.arera.it/area-operatori/ricerca-operatori) in tempo
-reale) e configura di conseguenza l'importazione delle curve di consumo del
-tuo POD come statistiche esterne, visibili anche nella Energy Dashboard.
+reale) e configura di conseguenza l'importazione delle curve di consumo dei
+tuoi POD come statistiche esterne, visibili anche nella Energy Dashboard.
 
 Invece di dover sapere in anticipo quale distributore ti serve,
 `contatore_letture` lo scopre per te durante la configurazione.
 
 ## Distributori supportati
 
-| Distributore | Stato |
-|---|---|
-| Duereti | Login, lettura dati e import Energy Dashboard funzionanti (Portale Clienti Finali / PCF) |
-| Unareti | Login, lettura dati e import Energy Dashboard funzionanti (Portale Clienti Finali / PCF) |
-| E-Distribuzione | Login, OTP, recupero POD e import Energy Dashboard **confermati funzionanti con dati reali**. Ritardo di pubblicazione dati non ancora verificato empiricamente (a differenza di Duereti/Unareti) |
+| Distributore | Autenticazione | Stato |
+|---|---|---|
+| Duereti | Client ID + Secret ID | Login, lettura dati, import Energy Dashboard, multi-POD — tutto confermato funzionante |
+| Unareti | Client ID + Secret ID | Login, lettura dati, import Energy Dashboard, multi-POD — tutto confermato funzionante |
+| E-Distribuzione | Email + password + OTP | Login, lettura dati, import Energy Dashboard, multi-POD — tutto confermato funzionante con dati reali. Unica differenza da Duereti/Unareti: il ritardo di pubblicazione dei dati non è documentato ufficialmente (solo osservato) |
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
@@ -78,10 +78,9 @@ può velocizzarlo né bypassarlo.
 
 Nessuna richiesta di abilitazione preventiva: ti servono solo le stesse
 credenziali dell'app/area clienti ufficiale E-Distribuzione (email,
-password, e il codice OTP che ricevi via SMS al momento dell'accesso — te
-lo chiede direttamente il wizard di configurazione). Se il tuo account ha
-più POD associati, potrai scegliere quale monitorare durante la
-configurazione.
+password, e il codice OTP che ricevi via email o SMS al momento
+dell'accesso — te lo chiede direttamente il wizard di configurazione). Se
+il tuo account ha più POD associati, potrai selezionarne più di uno.
 
 ## Installazione
 
@@ -110,55 +109,75 @@ configurazione.
    Duereti/Unareti, email/password/OTP per E-Distribuzione) — vengono
    validate subito con una chiamata reale alle sue API
 5. Per Duereti/Unareti, aggiungi uno o più **POD** con il relativo
-   **codice fiscale**; per E-Distribuzione, seleziona il POD tra quelli
-   dell'account (se ce n'è più di uno)
+   **codice fiscale**; per E-Distribuzione, seleziona uno o più POD tra
+   quelli dell'account
+
+Dopo la configurazione, puoi aggiungere/rimuovere POD e cambiare l'orario
+della richiesta giornaliera in qualsiasi momento da **Configura**
+sull'integrazione (Opzioni) — per qualunque distributore.
 
 ## Cosa fa una volta configurata
 
 I dati importati sono visibili come **external statistics**
 (`contatore_letture:<pod>_energia`) in **Impostazioni → Sistema →
-Statistiche**, utilizzabili nella Energy Dashboard — oggi solo per
-Duereti/Unareti (vedi tabella distributori sopra).
+Statistiche**, utilizzabili nella Energy Dashboard, per tutti e tre i
+distributori supportati.
+
+**Ogni sera dopo le 19:00** (orario configurabile dalle opzioni) viene
+richiesto il giorno precedente. Se non è ancora stato pubblicato finisce
+in una coda e viene riprovato nei giorni successivi, così non si creano
+buchi nello storico. **Lo storico non viene recuperato automaticamente**:
+si richiede con l'azione `recupera_storico` (vedi [Azioni](#azioni) sotto).
 
 ### Duereti / Unareti
 
-- **POD e dato fiscale vengono verificati subito in configurazione:** se il
-  distributore non li riconosce, il form non permette di salvare.
-- **Ogni sera dopo le 19:00** (orario configurabile) viene richiesto il
-  giorno precedente. Se non è ancora stato pubblicato finisce in una coda e
-  viene riprovato nei giorni successivi, così non si creano buchi nello
-  storico.
-- **Lo storico non viene recuperato automaticamente:** si richiede con
-  l'azione `recupera_storico`.
-- Dopo la configurazione puoi aggiungere/rimuovere POD e cambiare l'orario
-  della richiesta giornaliera in qualsiasi momento da **Configura**
-  sull'integrazione (Opzioni).
+POD e dato fiscale vengono verificati subito in configurazione: se il
+distributore non li riconosce, il form non permette di salvare.
 
 #### Entità esposte
 
-Sono tutte diagnostiche — i consumi stanno nelle statistiche, non in un
-sensore — e raggruppate in un dispositivo "Account API" più uno per ogni POD.
+Tutte diagnostiche — i consumi stanno nelle statistiche, non in un
+sensore — raggruppate in un dispositivo "Account API" più uno per ogni POD.
 
 | Entità | Dispositivo | Cosa mostra |
 |---|---|---|
 | Ultimo import | Account | Fine del periodo dell'ultimo import riuscito |
 | Attesa file (minuti) | Account | Da quanto è in corso l'attesa del file; `0` se non c'è nulla in coda |
-| POD configurati | Account | Quanti POD in questa istanza |
+| POD configurati | Account | Quanti e quali POD in questa istanza |
 | Ultima data disponibile | POD | Ultimo giorno per cui esistono dati importati |
 | Consumo ultimo periodo | POD | kWh totali dell'ultimo periodo importato |
 
 *Attesa file* è utile per un'automazione di allerta: se resta alto per ore,
 qualcosa si è inceppato.
 
-#### Azioni
+### E-Distribuzione
+
+Oltre alla curva giornaliera, ogni ora viene aggiornata anche una lettura
+mensile (reading + time-of-use) per ciascun POD.
+
+#### Entità esposte
+
+Stesso schema di Duereti/Unareti: dispositivo "Account" comune più uno per
+ogni POD.
+
+| Entità | Dispositivo | Cosa mostra |
+|---|---|---|
+| POD configurati | Account | Quanti e quali POD in questa istanza |
+| Ultima data disponibile | POD | Ultimo giorno per cui esistono dati importati |
+| Consumo ultimo giorno importato | POD | kWh dell'ultimo giorno importato |
+
+## Azioni
 
 **`contatore_letture.recupera_storico`** — richiede un periodo passato e lo
-importa. Le API accettano al massimo 6 mesi per volta; per periodi più
-lunghi ripeti l'azione su intervalli consecutivi. Il campo "Configurazione
-/ POD" è un selettore di dispositivo popolato dinamicamente: la scelta più
-comoda è farla dall'interfaccia (**Strumenti per sviluppatori → Azioni**),
-dove compare come un menu a tendina con i nomi reali invece di un ID da
-copiare a mano.
+importa: una singola richiesta per l'intero periodo, sia per
+Duereti/Unareti sia per E-Distribuzione (confermato per quest'ultima fino
+a 181 giorni in un'unica risposta). Il campo "Configurazione / POD" è un
+selettore di dispositivo popolato dinamicamente: la scelta più comoda è
+farla dall'interfaccia (**Strumenti per sviluppatori → Azioni**), dove
+compare come un menu a tendina con i nomi reali. Per E-Distribuzione, se
+scegli il dispositivo di un singolo POD invece del dispositivo "Account",
+il recupero si limita a quel POD; per Duereti/Unareti il recupero vale
+sempre per l'intera configurazione insieme.
 
 ```yaml
 action: contatore_letture.recupera_storico
@@ -168,54 +187,21 @@ data:
   data_a: "2026-07-31"
 ```
 
-**`contatore_letture.recupera_ticket`** — riprende un ticket già esistente,
-saltando la richiesta di un nuovo export.
+Le API accettano al massimo 6 mesi per richiesta (limite documentato per
+Duereti/Unareti; per E-Distribuzione è un limite di cortesia
+auto-imposto, non un vincolo noto delle loro API). Per periodi più lunghi
+ripeti l'azione su intervalli consecutivi.
+
+**`contatore_letture.recupera_ticket`** — solo Duereti/Unareti (che non
+hanno il concetto di ticket): riprende un ticket già esistente presso il
+distributore, saltando la richiesta di un nuovo export.
 
 ```yaml
 action: contatore_letture.recupera_ticket
 data:
   ticket: "ENdZS6CausBMlUzrS3as5Q"
+  entry_id: <opzionale, se hai più istanze Duereti/Unareti>
 ```
-
-`recupera_storico` funziona anche per E-Distribuzione (vedi sezione
-dedicata più sotto, con un comportamento leggermente diverso: una
-richiesta per giorno invece che un'unica richiesta per l'intero periodo).
-`recupera_ticket` resta specifico di Duereti/Unareti: E-Distribuzione non
-ha il concetto di ticket/export.
-
-Entrambe accettano un `entry_id` opzionale se hai più istanze configurate.
-
-### E-Distribuzione
-
-- **Ogni 60 minuti**: refresh del token, lettura mensile (reading +
-  time-of-use), e — una volta al giorno dopo l'orario configurato — la
-  curva di carico giornaliera del giorno prima, importata nella Energy
-  Dashboard. Giorni senza dati ancora pubblicati finiscono in coda e
-  vengono riprovati nei giorni successivi, come per Duereti/Unareti.
-  **A differenza di Duereti/Unareti, il ritardo di pubblicazione dei
-  dati non è ancora stato verificato empiricamente** (solo confermato che
-  un giorno vecchio di 19 giorni funziona): la coda di retry rende il
-  meccanismo robusto indipendentemente dal ritardo reale, ma se noti
-  richieste spesso vuote prova a spostare l'orario più avanti dalle
-  opzioni.
-- **`contatore_letture.recupera_storico`** funziona anche qui, con
-  un'unica richiesta per l'intero periodo (come Duereti/Unareti) — non un
-  ciclo giorno per giorno: confermato con un test reale che l'endpoint
-  restituisce correttamente fino a 181 giorni (~6 mesi) in una sola
-  risposta, cambio ora legale incluso. Accetta anche più POD sulla stessa
-  configurazione (aggiungibili/rimovibili dalle opzioni dell'integrazione,
-  come per Duereti/Unareti), e l'azione `recupera_storico` può essere
-  limitata a un singolo POD con il parametro opzionale `pod`.
-
-#### Entità esposte
-
-Un dispositivo per POD, con un sensore per ogni combinazione
-magnitudine/fascia dell'ultima lettura pubblicata, più i picchi di potenza:
-
-| Entità | Cosa mostra |
-|---|---|
-| Energia attiva / reattiva T1–T6 | Ultima lettura cumulativa pubblicata per fascia |
-| Picco di potenza T1–T6 | Ultimo picco di potenza pubblicato per fascia |
 
 ## Sviluppo e test
 
@@ -249,4 +235,3 @@ Per lanciare solo i test che non richiedono HA:
 ```bash
 pytest tests/pcf_common/test_api.py tests/pcf_common/test_api_errori.py tests/edistribuzione/
 ```
-
