@@ -453,7 +453,7 @@ class PcfApiClient:
                 _log_richiesta(self._url_result, body, headers)
                 async with self._session.post(self._url_result, json=body, headers=headers) as resp:
                     data = await self._json_or_raise(resp)
-            except PcfAuthError as err:
+            except PcfAuthError:
                 # Token rifiutato (verificato: "Token non valido"). Di norma è
                 # semplicemente scaduto: forziamo un rinnovo e ritentiamo
                 # subito, senza consumare un intero intervallo di attesa.

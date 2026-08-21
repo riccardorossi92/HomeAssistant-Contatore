@@ -7,8 +7,9 @@ contatore_letture/
   config_flow.py         # orchestratore: wizard ARERA + step "pcf"/"edistribuzione" + reauth + options
   __init__.py             # setup/unload, dispatch per distributore, servizi condivisi
   sensor.py                # dispatch verso il modulo del distributore
-  istat_comuni.py           # elenco comuni (fetch live + fallback snapshot)
-  arera_lookup.py            # query live ARERA (comune -> distributore)
+  istat_comuni.py           # elenco comuni: fetch live + fallback snapshot
+  istat_transform.py         # trasformazione pura lista->albero (usata da istat_comuni.py e scripts/)
+  arera_lookup.py              # query live ARERA (comune -> distributore)
   distributors/
     __init__.py               # registry: DISTRIBUTOR_REGISTRY, PIVA_TO_KEY
     duereti.py                 # BASE_URL/DISPLAY_NAME/PIVA Duereti (sottile)
@@ -24,7 +25,7 @@ contatore_letture/
       auth.py                       # login Salesforce (email/password -> OTP -> token)
       api.py                         # client REST (getSupplies, reading, curve di carico)
       coordinator.py                  # polling multi-POD, coda per POD, recupera_storico
-      sensor.py                        # entità (letture/picchi per POD)
+      sensor.py                        # entità diagnostiche per POD (ultima data disponibile, consumo giorno)
       statistics.py                     # import external statistics (curva di carico)
       const.py                           # costanti di protocollo + schedulazione
 ```
@@ -55,6 +56,31 @@ Verificato dopo la trasformazione:
 `distributors/duereti.py` e `distributors/unareti.py` sono volutamente **file separati**
 (non un'unica classe parametrizzata): se domani uno dei due diverge davvero
 (endpoint diverso, comportamento diverso), l'override va solo nel suo file.
+
+## Script disponibili
+
+Nessuno dei due era ancora documentato qui, nonostante siano entrambi
+attivamente in uso - trovato durante un audit del repository il
+21/08/2026.
+
+- **`scripts/update_istat_snapshot.py`**: rigenera
+  `data/istat_comuni_snapshot.json` (fallback usato quando il fetch live
+  dei comuni ISTAT non è disponibile) dalla stessa sorgente usata a
+  runtime. Lanciato in automatico dalla GitHub Action
+  `.github/workflows/update-istat-snapshot.yml` il primo di ogni mese
+  (o a mano da "Actions" su GitHub): apre una PR solo se lo snapshot è
+  davvero cambiato.
+- **`scripts/verify_edistribuzione_login.py`**: testa da terminale il
+  login E-Distribuzione reale (email/password → OTP → recupero POD →
+  curva di carico), senza passare da Home Assistant - molto più veloce
+  per iterare durante il debug che riconfigurare l'integrazione ad ogni
+  tentativo. Dopo un login riuscito salva il refresh_token su file
+  locale (`edistribuzione_refresh_token.txt`, escluso da git): al lancio
+  successivo permette di testare solo il refresh, senza rifare
+  email/password/OTP - utile per verificare periodicamente se il
+  refresh continua a funzionare nel tempo. Non è un test automatico
+  (richiede credenziali reali digitate a mano): per quello vedi
+  `tests/edistribuzione/`.
 
 ## Nota sulla documentazione del WAF/DST
 

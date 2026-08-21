@@ -53,7 +53,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticMeanType
@@ -165,7 +165,7 @@ async def _leggi_serie_esistente(hass: HomeAssistant, statistic_id: str) -> dict
 
 async def async_import_curva_giornaliera(
     hass: HomeAssistant, pod: str, dati_grezzi: list[dict]
-) -> "date | None":  # noqa: F821
+) -> date | None:
     """Importa i campioni a 15 minuti di E-Distribuzione come external
     statistics, aggregandoli in bucket orari.
 

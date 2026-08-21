@@ -25,20 +25,18 @@ import secrets
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import unquote
 
 import aiohttp
 
 from .const import (
     AURA_ENDPOINT,
-    LOGIN_PAGE_URL,
     LOGINFLOW_URL,
     OAUTH_AUTHORIZE_URL,
     OAUTH_CLIENT_ID,
     OAUTH_REDIRECT_URI,
     OAUTH_SCOPE,
     OAUTH_TOKEN_URL,
-    OAUTH_USERINFO_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -461,6 +459,23 @@ class EdistribuzioneAuthClient:
         if not code_match:
             raise EdistribuzioneParsingError(
                 "Could not find authorization code in consent page response"
+            )
+        if state_match and unquote(state_match.group(1)) != self._oauth_state:
+            # Il parametro 'state' e' la protezione CSRF standard di OAuth:
+            # generato e mandato da noi in async_begin_login, dovrebbe
+            # tornare identico. Prima non veniva mai confrontato (estratto
+            # e scartato) - trovato in audit il 21/08/2026. Solo un
+            # warning, non un errore bloccante: questo metodo e' parte del
+            # flusso confermato funzionante con un login reale, e non ho
+            # verificato dal vivo se il confronto regge sempre (es.
+            # differenze di codifica) - un falso positivo qui romperebbe
+            # un login altrimenti valido.
+            _LOGGER.warning(
+                "State OAuth nella risposta non corrisponde a quello inviato "
+                "(atteso %r, ricevuto %r) - procedo comunque, ma segnalalo se "
+                "il login inizia a fallire qui",
+                self._oauth_state,
+                state_match.group(1),
             )
         auth_code = unquote(code_match.group(1))
 
