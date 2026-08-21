@@ -80,9 +80,12 @@ attivamente in uso - trovato durante un audit del repository il
   locale (`edistribuzione_refresh_token.txt`, escluso da git): al lancio
   successivo permette di testare solo il refresh, senza rifare
   email/password/OTP - utile per verificare periodicamente se il
-  refresh continua a funzionare nel tempo. Non è un test automatico
-  (richiede credenziali reali digitate a mano): per quello vedi
-  `tests/edistribuzione/`.
+  refresh continua a funzionare nel tempo. Permette anche di confrontare
+  il totale della curva di carico con una lettura ufficiale
+  (`async_get_reading`) per lo stesso periodo - è così che è stata
+  confermata l'assunzione kWh in `statistics.py` (vedi sotto). Non è un
+  test automatico (richiede credenziali reali digitate a mano): per
+  quello vedi `tests/edistribuzione/`.
 
 ## Nota sulla documentazione del WAF/DST
 
