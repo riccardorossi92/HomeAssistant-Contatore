@@ -21,6 +21,27 @@ from ...const import DOMAIN
 from .coordinator import EdistribuzioneCoordinator
 
 
+def _device_info_account(entry: ConfigEntry) -> DeviceInfo:
+    """Dispositivo "genitore" per tutti i POD di questa config entry.
+
+    Prima mancava: _device_info_pod dichiarava via_device puntando a
+    questo device, ma nessun sensore lo creava mai davvero (nessuna
+    entità lo usava come proprio device_info) - Home Assistant segnalava
+    un warning per un via_device riferito a un dispositivo inesistente.
+    Trovato nei log di produzione il 21/08/2026 (v0.2.3). Fix: aggiunto
+    almeno un sensore (EdistribuzionePodConfiguratiSensor) che usa
+    davvero questo device_info, cosi' viene creato per davvero - stesso
+    identico pattern di pcf_common.sensor._device_info_account /
+    PcfPodConfiguratiSensor.
+    """
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        name="E-Distribuzione",
+        manufacturer="E-Distribuzione",
+        model="Account API",
+    )
+
+
 def _device_info_pod(entry: ConfigEntry, pod: str) -> DeviceInfo:
     return DeviceInfo(
         identifiers={(DOMAIN, f"{entry.entry_id}_{pod}")},
@@ -35,11 +56,13 @@ def build_edistribuzione_entities(
     coordinator: EdistribuzioneCoordinator,
 ) -> list[SensorEntity]:
     """Costruisce le entità sensor per una config entry E-Distribuzione,
-    un dispositivo per ciascun POD configurato.
+    un dispositivo per ciascun POD configurato più uno "account" comune.
 
     Chiamata dal sensor.py di contatore_letture (non è un platform entry
     point autonomo: un solo sensor.py serve tutti i distributori)."""
-    entities: list[SensorEntity] = []
+    entities: list[SensorEntity] = [
+        EdistribuzionePodConfiguratiSensor(coordinator, coordinator.entry)
+    ]
     for pod in coordinator.pods:
         entities.append(
             EdistribuzioneUltimaDataDisponibileSensor(coordinator, coordinator.entry, pod)
@@ -48,6 +71,29 @@ def build_edistribuzione_entities(
             EdistribuzioneConsumoGiornoSensor(coordinator, coordinator.entry, pod)
         )
     return entities
+
+
+class EdistribuzionePodConfiguratiSensor(SensorEntity):
+    """Mostra quanti POD sono configurati in questa istanza - vive sul
+    dispositivo "account" (equivalente di PcfPodConfiguratiSensor), la
+    cui esistenza reale è anche ciò che fa funzionare via_device dei
+    dispositivi per-POD."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:counter"
+
+    def __init__(self, coordinator: EdistribuzioneCoordinator, entry: ConfigEntry) -> None:
+        super().__init__()
+        self.coordinator = coordinator
+        self._attr_unique_id = f"{entry.entry_id}_pod_configurati"
+        self._attr_name = "POD configurati"
+        self._attr_native_value = len(coordinator.pods)
+        self._attr_device_info = _device_info_account(entry)
+
+    @property
+    def extra_state_attributes(self):
+        return {"pods": list(self.coordinator.pods)}
 
 
 class EdistribuzioneUltimaDataDisponibileSensor(
