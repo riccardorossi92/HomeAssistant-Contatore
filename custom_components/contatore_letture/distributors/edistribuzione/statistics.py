@@ -30,15 +30,17 @@ stagionale. Verificato aritmeticamente sui dati reali: id=1 cade
 esattamente a mezzanotte locale del giorno richiesto, id=96 sull'ultimo
 quarto d'ora dello stesso giorno locale (23:45-24:00).
 
-ASSUNZIONI NON ANCORA CONFERMATE (nessuna documentazione ufficiale, solo
-osservazione su un giorno di un solo POD):
+CONFERMATO il 21/08/2026: 'val' è energia in kWh per intervallo di 15
+minuti, non potenza media in kW. Verificato confrontando il totale della
+curva per un mese intero (giugno 2026, POD IT001E10684497) con il delta
+di due letture ufficiali consecutive (1 giugno -> 1 luglio, via
+async_get_reading): 134.925 kWh in entrambi i casi, combacianti fino alla
+terza cifra decimale. Non una stima approssimativa: un confronto diretto
+con dati reali.
 
-- 'val' è trattato come energia in kWh per intervallo di 15 minuti (non
-  potenza media in kW), coerente con l'ordine di grandezza osservato
-  (0.02-0.36) per un'utenza domestica e con il nome "curva di carico"
-  (load profile), che nel dominio energetico italiano indica tipicamente
-  energia per intervallo. Se si rivelasse potenza, i totali giornalieri
-  importati sarebbero sbagliati.
+ASSUNZIONE ANCORA NON CONFERMATA (nessuna documentazione ufficiale, solo
+osservazione su due POD):
+
 - 'timeType' osservato finora: solo "CONS" (consumo). Entrambi i POD di
   test hanno HasPlant=False (nessun impianto di produzione); un POD con
   impianto potrebbe restituire un valore diverso (es. "PROD" per

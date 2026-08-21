@@ -279,6 +279,92 @@ async def main() -> None:
         )
         print(f"\nRisposta completa salvata in {debug_path.resolve()}")
 
+        totale_curva = sum(
+            float(c.get("val", 0))
+            for g in curva
+            for c in g.get("readings", {}).get("sampleValues", [])
+        )
+        print(f"\nTotale energia nella curva per il periodo (assumendo 'val' = kWh): {totale_curva:.3f} kWh")
+
+        conferma = input(
+            "\nVuoi confrontarlo con la lettura ufficiale per lo stesso periodo "
+            "(async_get_reading), per verificare se 'val' è davvero kWh e non kW? [S/n]: "
+        ).strip().lower()
+        if conferma in ("", "s", "si", "sì", "y", "yes"):
+            print(f"\n--- Recupero lettura ufficiale per {pod_scelto}: {giorno_da} - {giorno_a} ---")
+            try:
+                letture = await api_client.async_get_reading(pod_scelto, giorno_da, giorno_a)
+            except Exception:
+                print("Errore IMPREVISTO nel recupero della lettura (traceback completo sotto):\n")
+                raise
+
+            debug_letture_path = Path("reading_debug.json")
+            debug_letture_path.write_text(
+                json.dumps(letture, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            print(f"\n=== {len(letture)} lettura/e ricevuta/e - salvate in {debug_letture_path.resolve()} ===")
+
+            if len(letture) < 2:
+                print(
+                    "Meno di 2 letture nel periodo: non posso calcolare un delta "
+                    "automaticamente (servono almeno una lettura prima e una dopo il "
+                    "periodo). Guarda il file salvato per capire la struttura reale."
+                )
+            else:
+                print("\nPrima lettura (struttura completa):")
+                print(json.dumps(letture[0], indent=2, ensure_ascii=False))
+                print("\nUltima lettura (struttura completa):")
+                print(json.dumps(letture[-1], indent=2, ensure_ascii=False))
+
+                def _somma_ea(lettura: dict) -> float:
+                    """Somma i valori 'EA' (energia attiva) di tutte le fasce
+                    (publishedSlots) in una singola lettura cumulativa.
+
+                    Le fasce non attive sul contratto (es. T4-T6 su un
+                    contratto monorario/bioraro) hanno "value": null nel
+                    JSON, non la chiave assente - .get("value", 0) non
+                    sostituisce 0 in quel caso (il default si applica solo
+                    se la chiave manca, non se vale null), va gestito a
+                    parte."""
+                    return sum(
+                        float(slot.get("value") or 0)
+                        for slot in lettura.get("publishedSlots", [])
+                        if slot.get("magnitude") == "EA"
+                    )
+
+                prima = _somma_ea(letture[0])
+                ultima = _somma_ea(letture[-1])
+                delta_ufficiale = ultima - prima
+
+                print(f"\nSomma EA (tutte le fasce) prima lettura: {prima:.3f}")
+                print(f"Somma EA (tutte le fasce) ultima lettura: {ultima:.3f}")
+                print(f"Delta (consumo ufficiale nel periodo): {delta_ufficiale:.3f} kWh")
+                print(f"Totale curva di carico per lo stesso periodo: {totale_curva:.3f} kWh")
+
+                if delta_ufficiale > 0:
+                    rapporto = totale_curva / delta_ufficiale
+                    print(f"\nRapporto curva/ufficiale: {rapporto:.3f}")
+                    if 0.95 <= rapporto <= 1.05:
+                        print(
+                            "=> Combaciano (entro il 5%): l'assunzione 'val = kWh per "
+                            "intervallo' sembra confermata."
+                        )
+                    else:
+                        print(
+                            "=> NON combaciano: 'val' potrebbe non essere kWh per "
+                            "intervallo come assunto in statistics.py. Occhio in "
+                            "particolare a un rapporto vicino a 0.25 o 4 (confusione "
+                            "kWh/kW su intervalli da 15 minuti)."
+                        )
+                else:
+                    print(
+                        "\nDelta ufficiale a zero o negativo: non riesco a calcolare un "
+                        "rapporto sensato. Controlla reading_debug.json a mano - "
+                        "probabile che il periodo scelto non sia coperto da letture "
+                        "ufficiali pubblicate, o che la struttura sia diversa da quella "
+                        "assunta qui."
+                    )
+
 
 if __name__ == "__main__":
     asyncio.run(main())

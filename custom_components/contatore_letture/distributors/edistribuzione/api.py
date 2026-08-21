@@ -82,6 +82,14 @@ class EdistribuzioneApiClient:
                     body_preview[:300],
                 )
                 return {"data": []}
+            if resp.status >= 400:
+                body_preview = await resp.text()
+                _LOGGER.error(
+                    "%s ha risposto %s. Corpo (primi 500 caratteri): %r",
+                    url,
+                    resp.status,
+                    body_preview[:500],
+                )
             resp.raise_for_status()
             payload = await resp.json(content_type=None)
 
