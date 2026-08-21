@@ -252,12 +252,6 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
     async def _async_update_data(self) -> dict:
         await self._async_ensure_token()
 
-        today = date.today()
-        month_start = today.replace(day=1)
-        six_months_ago = (month_start - timedelta(days=1)).replace(day=1)
-        for _ in range(4):
-            six_months_ago = (six_months_ago - timedelta(days=1)).replace(day=1)
-
         by_pod: dict[str, dict] = {}
         for pod in self.pods:
             giorno_richiesto = await self._prossima_richiesta(pod)
@@ -281,19 +275,17 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 else:
                     self._accoda_giorno(pod, giorno_richiesto)
 
-            try:
-                reading = await self._api.async_get_reading(pod, today - timedelta(days=45), today)
-                time_of_use = await self._api.async_get_monthly_time_of_use(
-                    pod, six_months_ago, today
-                )
-            except EdistribuzioneApiError as err:
-                raise UpdateFailed(f"Error fetching e-Distribuzione data per il POD {pod}: {err}") from err
-
+            # 'reading'/'time_of_use' (letture ufficiali mensili) NON sono
+            # piu' recuperati automaticamente qui - lo erano fino al ciclo
+            # orario in precedenza, ma nessun sensore li legge dalla
+            # riduzione a 3 sensori diagnostici (v0.2.3): erano scaricati
+            # ogni ora per niente, solo carico inutile verso le API del
+            # distributore. Restano disponibili solo tramite l'API stessa
+            # (self.api.async_get_reading/async_get_monthly_time_of_use),
+            # da richiamare esplicitamente se in futuro serve esporli.
             ultima_data_disponibile = await async_get_ultima_data_disponibile(self.hass, pod)
 
             by_pod[pod] = {
-                "reading": reading,
-                "time_of_use": time_of_use,
                 "ultimo_giorno_curva_richiesto": (
                     giorno_richiesto.isoformat() if giorno_richiesto else None
                 ),
