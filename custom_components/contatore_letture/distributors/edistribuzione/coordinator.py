@@ -261,6 +261,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         by_pod: dict[str, dict] = {}
         for pod in self.pods:
             giorno_richiesto = await self._prossima_richiesta(pod)
+            kwh_ultimo_giorno_importato = None
             if giorno_richiesto is not None:
                 try:
                     curva = await self._api.async_get_daily_load_profile(pod, giorno_richiesto)
@@ -272,6 +273,11 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 if _curva_ha_dati(curva):
                     await async_import_curva_giornaliera(self.hass, pod, curva)
                     self._rimuovi_dalla_coda(pod, [giorno_richiesto])
+                    kwh_ultimo_giorno_importato = sum(
+                        float(c.get("val", 0))
+                        for g in curva
+                        for c in g.get("readings", {}).get("sampleValues", [])
+                    )
                 else:
                     self._accoda_giorno(pod, giorno_richiesto)
 
@@ -283,12 +289,18 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
             except EdistribuzioneApiError as err:
                 raise UpdateFailed(f"Error fetching e-Distribuzione data per il POD {pod}: {err}") from err
 
+            ultima_data_disponibile = await async_get_ultima_data_disponibile(self.hass, pod)
+
             by_pod[pod] = {
                 "reading": reading,
                 "time_of_use": time_of_use,
                 "ultimo_giorno_curva_richiesto": (
                     giorno_richiesto.isoformat() if giorno_richiesto else None
                 ),
+                "ultima_data_disponibile": (
+                    ultima_data_disponibile.isoformat() if ultima_data_disponibile else None
+                ),
+                "kwh_ultimo_giorno_importato": kwh_ultimo_giorno_importato,
             }
 
         return {"by_pod": by_pod}
