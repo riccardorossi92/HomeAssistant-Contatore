@@ -58,6 +58,19 @@ recupera_storico:
     in un'unica risposta).
     Per periodi più lunghi ripeti l'azione su intervalli consecutivi.
   fields:
+    device_id:
+      name: Configurazione / POD
+      description: >-
+        Scegli il dispositivo per cui recuperare lo storico. Per
+        Duereti/Unareti il dispositivo "account" recupera sempre tutti i
+        POD della configurazione insieme; per E-Distribuzione puoi
+        scegliere un dispositivo per un singolo POD, per limitare il
+        recupero solo a quello.
+      required: true
+      selector:
+        device:
+          filter:
+            integration: contatore_letture
     data_da:
       name: Data inizio
       description: >-
@@ -76,21 +89,4 @@ recupera_storico:
       example: "2026-07-31"
       selector:
         date:
-    entry_id:
-      name: ID configurazione
-      description: >-
-        Necessario solo se hai più istanze configurate (Duereti/Unareti/
-        E-Distribuzione).
-      required: false
-      selector:
-        text:
-    pod:
-      name: POD
-      description: >-
-        Solo per E-Distribuzione, e solo se la configurazione ha più di un
-        POD: limita il recupero a questo solo POD invece di tutti quelli
-        configurati. Non si applica a Duereti/Unareti (che recuperano
-        sempre insieme tutti i POD della configurazione).
-      required: false
-      selector:
         text:

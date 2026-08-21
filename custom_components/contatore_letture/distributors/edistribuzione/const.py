@@ -65,13 +65,18 @@ PIVA = "05779711000"  # confermata via scheda operatore ARERA (Id operatore 435,
 # di E-Distribuzione divergesse da quello di Duereti/Unareti, non tocchi due
 # distributori diversi per una modifica che vale solo per uno.
 #
-# A DIFFERENZA di pcf_common, RITARDO_DATI_GIORNI qui NON è stato verificato
-# empiricamente: per Duereti è confermato su settimane di test reali, per
-# E-Distribuzione al momento sappiamo solo che un giorno vecchio di 19 giorni
-# funziona - non sappiamo quanto recente possa essere. Il valore sotto è
-# un'ipotesi di partenza per analogia con Duereti/Unareti (stesso tipo di
-# distributore, stesso ordine di grandezza plausibile), corretta di fatto
-# dal meccanismo di coda: se il ritardo vero è maggiore, il giorno finisce
+# A DIFFERENZA di pcf_common, RITARDO_DATI_GIORNI qui NON è stato
+# verificato empiricamente con la stessa sistematicità di Duereti
+# (confermato lì su settimane di test reali). Per E-Distribuzione i dati
+# reali raccolti finora (21/08/2026, POD IT001E10684497) sono: a
+# mezzanotte/01:00 il giorno appena finito non è ancora disponibile
+# (404), quello di 2 giorni prima sì; alle 18:00 il giorno precedente
+# risulta invece già disponibile. Coerente con RITARDO_DATI_GIORNI=1
+# (un giorno intero, non frazioni) - non più solo un'ipotesi per
+# analogia con Duereti/Unareti, ma nessuna delle due distributrici lo
+# documenta esplicitamente, quindi resta un valore dedotto dall'uso, non
+# garantito. Il meccanismo di coda lo rende comunque robusto anche se
+# sbagliato: se il ritardo vero fosse maggiore, il giorno finisce
 # semplicemente in coda finché non arriva, entro MAX_TENTATIVI_PER_GIORNO.
 RITARDO_DATI_GIORNI = 1
 
@@ -82,10 +87,12 @@ CONF_ORA_RICHIESTA = "ora_richiesta"
 MAX_TENTATIVI_PER_GIORNO = 10
 MAX_GIORNI_IN_CODA = 30
 
-# Anche questo è un punto di partenza non confermato per E-Distribuzione
-# (per Duereti è stato osservato che i dati del giorno prima spesso non ci
-# sono ancora alle 10 del mattino ma ci sono la sera). Modificabile dalle
-# opzioni dell'integrazione.
+# Stesso default di Duereti (dove è stato osservato che i dati del giorno
+# prima spesso non ci sono ancora alle 10 del mattino ma ci sono la
+# sera). Per E-Distribuzione confermato coerente il 21/08/2026: il dato
+# del giorno prima risulta disponibile già alle 18:00 - le 19:00 di
+# default restano quindi una scelta prudente con margine, non stretta.
+# Modificabile (anche anticipandolo) dalle opzioni dell'integrazione.
 ORA_MINIMA_RICHIESTA = 19
 
 # Limite di cortesia auto-imposto per l'azione recupera_storico (non è un

@@ -121,15 +121,17 @@ docstring di `distributors/edistribuzione/statistics.py` per il dettaglio.
 
 **Ancora aperto**:
 - `RITARDO_DATI_GIORNI` (quando E-Distribuzione pubblica i dati del
-  giorno prima) non è stato verificato empiricamente, a differenza di
-  Duereti/Unareti - vedi la nota in
-  `distributors/edistribuzione/const.py`. Dati reali raccolti il
-  21/08/2026, entrambi verso l'01:00: il giorno immediatamente precedente
-  (1 giorno prima) risulta non ancora disponibile (404), mentre quello di
-  2 giorni prima è già disponibile. Restringe la finestra ma non la
-  chiude: non dice ancora se il giorno precedente diventi disponibile più
-  avanti nello stesso giorno (es. all'orario di richiesta di default,
-  le 19:00) o solo il giorno dopo ancora.
+  giorno prima) non è stato verificato empiricamente con la stessa
+  sistematicità di Duereti/Unareti, ma i dati reali raccolti finora sono
+  coerenti col valore attuale (1 giorno) - vedi la nota in
+  `distributors/edistribuzione/const.py`. Cronologia: alle 00:01-01:00
+  del 21/08/2026 il giorno immediatamente precedente non era ancora
+  disponibile (404) mentre quello di 2 giorni prima sì; lo stesso giorno,
+  alle 18:00, il giorno precedente risultava invece già disponibile -
+  risponde alla domanda che restava aperta (il dato diventa disponibile
+  più avanti nello stesso giorno, non richiede aspettare fino al giorno
+  dopo ancora). L'orario di richiesta di default (19:00, stesso di
+  Duereti) ha quindi un margine di sicurezza, non è al limite.
 - Refresh del `refresh_token` E-Distribuzione: un primo test a poche ore
   di distanza (21/08/2026, via `scripts/verify_edistribuzione_login.py`)
   ha confermato che funziona e che il token **non ruota** ad ogni uso

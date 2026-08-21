@@ -157,11 +157,16 @@ qualcosa si è inceppato.
 
 **`contatore_letture.recupera_storico`** — richiede un periodo passato e lo
 importa. Le API accettano al massimo 6 mesi per volta; per periodi più
-lunghi ripeti l'azione su intervalli consecutivi.
+lunghi ripeti l'azione su intervalli consecutivi. Il campo "Configurazione
+/ POD" è un selettore di dispositivo popolato dinamicamente: la scelta più
+comoda è farla dall'interfaccia (**Strumenti per sviluppatori → Azioni**),
+dove compare come un menu a tendina con i nomi reali invece di un ID da
+copiare a mano.
 
 ```yaml
 action: contatore_letture.recupera_storico
 data:
+  device_id: <scegli dall'interfaccia, vedi sopra>
   data_da: "2026-02-01"
   data_a: "2026-07-31"
 ```
