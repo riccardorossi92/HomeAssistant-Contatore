@@ -1,26 +1,34 @@
-"""Sensor platform for e-Distribuzione.
-
-Un dispositivo per POD (la config entry può averne più di uno), con per
-ciascuno:
-  - one sensor per (magnitude, fascia) from the latest published `reading`
-    e.g. sensor.edistribuzione_<pod>_ea_t1, ..._er_t3
-  - one sensor per (magnitude, fascia) power peak from monthly time-of-use
-    e.g. sensor.edistribuzione_<pod>_pot_t1
-
-The coordinator already fetched `reading` and `time_of_use` per POD
-(coordinator.data["by_pod"][pod]); this platform just reshapes the latest
-entries into entities.
+"""Sensori diagnostici E-Distribuzione: i dati veri finiscono in external
+statistics (statistics.py). Questi sensori servono solo a vedere a colpo
+d'occhio lo stato dell'import, stessa filosofia minimale di pcf_common
+(vedi distributors/pcf_common/sensor.py) - non un sensore per ogni
+combinazione fascia/grandezza come nella prima versione: la maggior
+parte delle fasce (T4-T6) è comunque null sui contratti reali osservati
+finora (monorario/bioraro), quindi era per lo più rumore.
 """
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from datetime import date
+
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ...const import DOMAIN
 from .coordinator import EdistribuzioneCoordinator
 
-_ENERGY_MAGNITUDES = {"EA": "Energia attiva", "ER": "Energia reattiva"}
-_FASCE = ("T1", "T2", "T3", "T4", "T5", "T6")
+
+def _device_info_pod(entry: ConfigEntry, pod: str) -> DeviceInfo:
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"{entry.entry_id}_{pod}")},
+        name=f"POD {pod}",
+        manufacturer="E-Distribuzione",
+        model="Punto di prelievo",
+        via_device=(DOMAIN, entry.entry_id),
+    )
 
 
 def build_edistribuzione_entities(
@@ -33,82 +41,101 @@ def build_edistribuzione_entities(
     point autonomo: un solo sensor.py serve tutti i distributori)."""
     entities: list[SensorEntity] = []
     for pod in coordinator.pods:
-        for magnitude in _ENERGY_MAGNITUDES:
-            for fascia in _FASCE:
-                entities.append(
-                    EdistribuzioneReadingSensor(coordinator, pod, magnitude, fascia)
-                )
-        for fascia in _FASCE:
-            entities.append(EdistribuzionePowerPeakSensor(coordinator, pod, fascia))
-
+        entities.append(
+            EdistribuzioneUltimaDataDisponibileSensor(coordinator, coordinator.entry, pod)
+        )
+        entities.append(
+            EdistribuzioneConsumoGiornoSensor(coordinator, coordinator.entry, pod)
+        )
     return entities
 
 
-class _BaseEdistribuzioneSensor(CoordinatorEntity[EdistribuzioneCoordinator], SensorEntity):
+class EdistribuzioneUltimaDataDisponibileSensor(
+    CoordinatorEntity[EdistribuzioneCoordinator], RestoreEntity, SensorEntity
+):
+    """Mostra l'ultima data per cui sono realmente arrivati dati curva per
+    un POD - legge lo stato reale delle external statistics, non solo se
+    l'ultimo ciclo è girato con successo (equivalente esatto di
+    PcfUltimaDataDisponibileSensor)."""
+
     _attr_has_entity_name = True
-
-    def __init__(self, coordinator: EdistribuzioneCoordinator, pod: str) -> None:
-        super().__init__(coordinator)
-        self._pod = pod
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._pod)},
-            "name": f"e-Distribuzione {self._pod}",
-            "manufacturer": "e-Distribuzione",
-            "model": "POD",
-        }
-
-    def _dati_pod(self) -> dict:
-        return self.coordinator.data.get("by_pod", {}).get(self._pod, {})
-
-
-class EdistribuzioneReadingSensor(_BaseEdistribuzioneSensor):
-    """Latest published cumulative reading for a given (magnitude, fascia)."""
-
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
-    _attr_native_unit_of_measurement = "kWh"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.DATE
+    _attr_icon = "mdi:calendar-check"
 
     def __init__(
-        self, coordinator: EdistribuzioneCoordinator, pod: str, magnitude: str, fascia: str
+        self, coordinator: EdistribuzioneCoordinator, entry: ConfigEntry, pod: str
     ) -> None:
-        super().__init__(coordinator, pod)
-        self._magnitude = magnitude
-        self._fascia = fascia
-        self._attr_unique_id = f"{pod}_{magnitude.lower()}_{fascia.lower()}"
-        self._attr_name = f"{_ENERGY_MAGNITUDES[magnitude]} {fascia}"
+        super().__init__(coordinator)
+        self._pod = pod
+        self._attr_unique_id = f"{entry.entry_id}_{pod}_ultima_data_disponibile"
+        self._attr_name = "Ultima data disponibile"
+        self._attr_device_info = _device_info_pod(entry, pod)
+        self._ripristinato: date | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Recupera l'ultimo valore noto dopo un riavvio: i dati del
+        coordinator vivono in memoria e restano vuoti finché non gira un
+        ciclo che li ripopola."""
+        await super().async_added_to_hass()
+        ultimo_stato = await self.async_get_last_state()
+        if ultimo_stato and ultimo_stato.state not in (None, "unknown", "unavailable"):
+            try:
+                self._ripristinato = date.fromisoformat(ultimo_stato.state)
+            except ValueError:
+                self._ripristinato = None
 
     @property
-    def native_value(self):
-        readings = self._dati_pod().get("reading", [])
-        if not readings:
-            return None
-        latest = readings[-1]
-        for slot in latest.get("publishedSlots", []):
-            if slot.get("magnitude") == self._magnitude and slot.get("slotId") == self._fascia:
-                return slot.get("value")
-        return None
+    def native_value(self) -> date | None:
+        dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
+        valore = dati_pod.get("ultima_data_disponibile")
+        if valore is not None:
+            return date.fromisoformat(valore)
+        return self._ripristinato
 
 
-class EdistribuzionePowerPeakSensor(_BaseEdistribuzioneSensor):
-    """Latest published power peak (POT) for a given fascia."""
+class EdistribuzioneConsumoGiornoSensor(
+    CoordinatorEntity[EdistribuzioneCoordinator], RestoreEntity, SensorEntity
+):
+    """Mostra il consumo totale (kWh) dell'ultimo giorno importato per un
+    POD - equivalente di PcfConsumoPeriodoSensor, ma per un giorno invece
+    che per un periodo arbitrario (qui l'import è sempre giornaliero).
+    Volutamente senza state_class 'energy': quel valore vive sulle
+    external statistics (statistics.py), non qui."""
 
-    _attr_native_unit_of_measurement = "kW"
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = "kWh"
+    _attr_icon = "mdi:lightning-bolt"
 
-    def __init__(self, coordinator: EdistribuzioneCoordinator, pod: str, fascia: str) -> None:
-        super().__init__(coordinator, pod)
-        self._fascia = fascia
-        self._attr_unique_id = f"{pod}_pot_{fascia.lower()}"
-        self._attr_name = f"Picco di potenza {fascia}"
+    def __init__(
+        self, coordinator: EdistribuzioneCoordinator, entry: ConfigEntry, pod: str
+    ) -> None:
+        super().__init__(coordinator)
+        self._pod = pod
+        self._attr_unique_id = f"{entry.entry_id}_{pod}_consumo_giorno"
+        self._attr_name = "Consumo ultimo giorno importato"
+        self._attr_device_info = _device_info_pod(entry, pod)
+        self._ripristinato: float | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        ultimo_stato = await self.async_get_last_state()
+        if ultimo_stato and ultimo_stato.state not in (None, "unknown", "unavailable"):
+            try:
+                self._ripristinato = float(ultimo_stato.state)
+            except ValueError:
+                self._ripristinato = None
 
     @property
-    def native_value(self):
-        readings = self._dati_pod().get("reading", [])
-        if not readings:
-            return None
-        latest = readings[-1]
-        for slot in latest.get("publishedPowerPeaks", []):
-            if slot.get("magnitude") == "POT" and slot.get("slotId") == self._fascia:
-                return slot.get("value")
-        return None
+    def native_value(self) -> float | None:
+        dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
+        valore = dati_pod.get("kwh_ultimo_giorno_importato")
+        if valore is not None:
+            return round(valore, 3)
+        return self._ripristinato
+
+    @property
+    def extra_state_attributes(self):
+        dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
+        return {"giorno": dati_pod.get("ultimo_giorno_curva_richiesto")}
