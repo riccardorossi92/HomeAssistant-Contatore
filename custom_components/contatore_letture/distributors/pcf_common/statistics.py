@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import defaultdict
+from datetime import date, datetime
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticMeanType
@@ -82,7 +83,7 @@ _OFFSET_DA_FLAG = {
 _flag_sconosciuti_segnalati: set[str] = set()
 
 
-def _timestamp_aware(punto) -> "datetime":  # noqa: F821
+def _timestamp_aware(punto) -> datetime:
     """Rende timezone-aware il timestamp naive di un punto curva.
 
     Usa FL_ORA_LEGALE quando è un valore noto, perché è l'unico modo di
@@ -196,7 +197,7 @@ async def async_import_curva(
     risultato: RisultatoLetture,
     nome_pod: str | None = None,
     distributor_display_name: str = "Contatore",
-) -> "date | None":  # noqa: F821
+) -> date | None:
     """Importa i punti curva di un POD come external statistics.
 
     Fonde i nuovi dati con la serie già presente e RICALCOLA da zero tutte le
