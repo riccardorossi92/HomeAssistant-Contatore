@@ -14,11 +14,8 @@ automaticamente il distributore elettrico competente (interrogando
 reale) e configura di conseguenza l'importazione delle curve di consumo del
 tuo POD come statistiche esterne, visibili anche nella Energy Dashboard.
 
-È il seguito naturale di [HomeAssistant-Duereti](https://github.com/riccardorossi92/HomeAssistant-Duereti)
-e [HomeAssistant-Unareti](https://github.com/riccardorossi92/HomeAssistant-Unareti):
-invece di dover sapere in anticipo quale delle due (o quale altra)
-integrazione installare, `contatore_letture` lo scopre per te durante la
-configurazione.
+Invece di dover sapere in anticipo quale distributore ti serve,
+`contatore_letture` lo scopre per te durante la configurazione.
 
 ## Distributori supportati
 
@@ -253,13 +250,3 @@ Per lanciare solo i test che non richiedono HA:
 pytest tests/pcf_common/test_api.py tests/pcf_common/test_api_errori.py tests/edistribuzione/
 ```
 
-## Progetti collegati
-
-- [HomeAssistant-Duereti](https://github.com/riccardorossi92/HomeAssistant-Duereti) — integrazione standalone Duereti (dominio separato)
-- [HomeAssistant-Unareti](https://github.com/riccardorossi92/HomeAssistant-Unareti) — integrazione standalone Unareti (dominio separato)
-
-`contatore_letture` non sostituisce queste due integrazioni per chi le ha
-già installate: usa un dominio Home Assistant proprio
-(`contatore_letture`, diverso da `duereti_letture`/`unareti_letture`), quindi
-un utente esistente di una delle due può continuare a usarla senza modifiche,
-oppure passare a `contatore_letture` come nuova installazione.

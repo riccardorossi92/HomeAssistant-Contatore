@@ -436,7 +436,7 @@ class PcfCoordinator(DataUpdateCoordinator):
           vecchio, per riempire i buchi in ordine), poi il giorno atteso.
 
         Il recupero dello storico non è automatico: si avvia a mano con
-        l'azione duereti_letture.recupera_storico.
+        l'azione contatore_letture.recupera_storico.
 
         Restituisce (fase, data_da, data_a); fase è None se non c'è nulla da
         chiedere adesso.
@@ -456,7 +456,7 @@ class PcfCoordinator(DataUpdateCoordinator):
             _LOGGER.info(
                 "Primo avvio: richiedo i dati del %s per verificare POD e dato fiscale. "
                 "Da domani le richieste partiranno dopo le %d:00 (modificabile dalle "
-                "opzioni); per lo storico usa l'azione duereti_letture.recupera_storico.",
+                "opzioni); per lo storico usa l'azione contatore_letture.recupera_storico.",
                 atteso,
                 self._ora_richiesta,
             )
