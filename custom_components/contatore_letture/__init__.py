@@ -18,6 +18,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 
 from .const import CONF_CLIENT_ID, CONF_PODS, CONF_SECRET_ID, DOMAIN
 from .distributors import DISTRIBUTOR_REGISTRY
@@ -34,8 +35,7 @@ SERVICE_RECUPERA_STORICO = "recupera_storico"
 SCHEMA_RECUPERA_STORICO = vol.Schema({
     vol.Required("data_da"): cv.date,
     vol.Required("data_a"): cv.date,
-    vol.Optional("entry_id"): cv.string,
-    vol.Optional("pod"): cv.string,
+    vol.Required("device_id"): cv.string,
 })
 
 SCHEMA_RECUPERA_TICKET = vol.Schema({
@@ -51,11 +51,9 @@ def _trova_coordinator(
 ):
     """Individua il coordinator su cui agire, tra i tipi accettati.
 
-    'recupera_ticket' accetta solo PcfCoordinator (E-Distribuzione non ha
-    il concetto di ticket); 'recupera_storico' accetta entrambi i tipi,
-    dato che sia Duereti/Unareti che E-Distribuzione lo implementano
-    (con firma compatibile: async_recupera_storico(data_da, data_a)).
-    """
+    Usata da 'recupera_ticket' (resta su entry_id testuale: un solo
+    coordinator PCF per entry, non c'e' granularita' di dispositivo da
+    scegliere)."""
     coordinators: dict = {
         eid: c for eid, c in hass.data.get(DOMAIN, {}).items() if isinstance(c, tipi)
     }
@@ -78,6 +76,47 @@ def _trova_coordinator(
     return next(iter(coordinators.values()))
 
 
+def _risolvi_coordinator_e_pod_da_device(hass: HomeAssistant, device_id: str):
+    """Da un device_id (scelto dal selettore 'device' nel form dell'azione,
+    popolato dinamicamente con i dispositivi reali dell'integrazione)
+    risale al coordinator e, se si tratta di un dispositivo per singolo
+    POD E-Distribuzione, al POD specifico.
+
+    Gli identifiers dei device sono sempre (DOMAIN, f"{entry_id}_{pod}")
+    per i dispositivi per-POD (sia pcf_common che edistribuzione, stesso
+    formato in entrambi - vedi rispettivi sensor.py), o (DOMAIN, entry_id)
+    per il dispositivo "account" di pcf_common (senza POD specifico: il
+    recupero PCF vale sempre per l'intera configurazione insieme).
+    """
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get(device_id)
+    if device is None:
+        raise HomeAssistantError(f"Dispositivo non trovato (device_id={device_id!r})")
+
+    entry_id = next(
+        (eid for eid in device.config_entries if eid in hass.data.get(DOMAIN, {})), None
+    )
+    if entry_id is None:
+        raise HomeAssistantError(
+            "Il dispositivo selezionato non appartiene a nessuna configurazione "
+            "attiva di contatore_letture."
+        )
+
+    coordinator = hass.data[DOMAIN][entry_id]
+
+    pod = None
+    if isinstance(coordinator, EdistribuzioneCoordinator):
+        prefisso = f"{entry_id}_"
+        for dominio, identificativo in device.identifiers:
+            if dominio == DOMAIN and identificativo.startswith(prefisso):
+                candidato = identificativo[len(prefisso):]
+                if candidato in coordinator.pods:
+                    pod = candidato
+                break
+
+    return coordinator, pod
+
+
 async def _async_registra_servizi(hass: HomeAssistant) -> None:
     """Registra le azioni dell'integrazione (una sola volta).
 
@@ -94,15 +133,10 @@ async def _async_registra_servizi(hass: HomeAssistant) -> None:
         await coordinator.async_forza_ticket(call.data["ticket"], data_da, data_a)
 
     async def _recupera_storico(call: ServiceCall) -> None:
-        coordinator = _trova_coordinator(
-            hass, call.data.get("entry_id"), (PcfCoordinator, EdistribuzioneCoordinator)
-        )
-        pod = call.data.get("pod")
-        if pod and not isinstance(coordinator, EdistribuzioneCoordinator):
+        coordinator, pod = _risolvi_coordinator_e_pod_da_device(hass, call.data["device_id"])
+        if not isinstance(coordinator, (PcfCoordinator, EdistribuzioneCoordinator)):
             raise HomeAssistantError(
-                "Il parametro 'pod' è supportato solo per E-Distribuzione: "
-                "Duereti/Unareti recuperano sempre insieme tutti i POD della "
-                "configurazione con un'unica richiesta."
+                "Il dispositivo selezionato non supporta il recupero storico."
             )
         if isinstance(coordinator, EdistribuzioneCoordinator):
             await coordinator.async_recupera_storico(
