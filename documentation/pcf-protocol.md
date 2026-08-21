@@ -14,6 +14,14 @@ domani uno dei due diverge davvero (endpoint diverso, comportamento
 diverso), l'override va solo nel suo file, non serve toccare una classe
 condivisa per entrambi.
 
+> [!NOTE]
+> **`recupera_storico`** fa un'unica richiesta `requestExport` per
+> l'intero periodo (non un ciclo giorno per giorno), e vale sempre per
+> l'intera configurazione insieme (tutti i POD, non un singolo POD come
+> invece è possibile per E-Distribuzione). Il limite di 6 mesi per
+> richiesta è qui documentato dalle API del distributore, non solo una
+> cautela auto-imposta.
+
 ## Cosa è stato portato dal codice reale (non stub)
 
 `pcf_common/*` è stato generato **a partire dal codice reale di
