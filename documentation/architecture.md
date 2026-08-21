@@ -28,53 +28,23 @@ contatore_letture/
       const.py                           # costanti di protocollo + schedulazione
 ```
 
-`distributors/duereti.py` e `distributors/unareti.py` sono volutamente
-**file separati** (non un'unica classe parametrizzata): se domani uno dei
-due diverge davvero (endpoint diverso, comportamento diverso), l'override
-va solo nel suo file, non serve toccare una classe condivisa per entrambi.
+Ogni distributore (o gruppo di distributori che condividono un
+protocollo, come Duereti/Unareti) vive nel proprio pacchetto sotto
+`distributors/`, con la stessa forma: `api.py` (client HTTP), `auth.py`
+se serve un login separato dalle sole credenziali API,
+`coordinator.py` (polling + logica di retry), `sensor.py` (entità
+diagnostiche), `statistics.py` (import delle curve nella Energy
+Dashboard), `const.py`. Il resto del pacchetto (`config_flow.py`,
+`__init__.py`, `sensor.py` in cima) fa da orchestratore comune, senza
+logica specifica di un singolo distributore al suo interno — quella
+vive tutta dentro il pacchetto del distributore.
 
-## Cosa è stato portato dal codice reale (non stub)
-
-`pcf_common/*` è stato generato **a partire dal codice reale di
-`duereti_letture` v0.7.2** (non riscritto a mano), con trasformazioni
-scriptate per minimizzare il rischio di errori di trascrizione:
-
-- rinominate le classi (`Duereti*` → `Pcf*`);
-- parametrizzato `base_url` nel client API (prima hardcoded su Duereti);
-- parametrizzato `display_name` in coordinator/sensor/statistics per i
-  messaggi utente-facing e i nomi delle entità;
-- **nessuna modifica alla logica**: retry del WAF, gestione dei
-  409/429/404, coda dei giorni da riprovare, calcolo del mese precedente
-  completo, gestione del cambio ora legale — tutto identico all'originale.
-
-Verificato dopo la trasformazione:
-- sintassi Python valida su tutti i file (`py_compile`);
-- tutti gli import relativi risolvono ai nomi realmente definiti
-  (controllo scriptato dedicato, non solo `py_compile`);
-- `pyflakes` pulito — i soli avvisi residui (due riferimenti a tipo
-  posticipato `"datetime"` in `pcf_common/api.py`, lasciati con un import
-  differito per un motivo esplicito di "evitare cicli" già commentato nel
-  file) sono stati rivisti in un audit del repository (21/08/2026): tutto
-  il resto (variabile d'eccezione non riletta, type hint testuali altrove)
-  è stato ripulito.
-
-## Rottura intenzionale rispetto a duereti_letture/unareti_letture
-
-Per scelta esplicita (nessun utente reale con storico da preservare oggi),
-`contatore_letture` usa un **dominio HA unico** (`contatore_letture`)
-invece dei due domini separati `duereti_letture`/`unareti_letture`. Lo
-`statistic_id` generato (`contatore_letture:<pod>_energia`) è quindi
-diverso da quello delle vecchie integrazioni: se in futuro ci saranno
-utenti reali da migrare, servirà scrivere una migrazione esplicita che
-rinomina gli `statistic_id` nel recorder prima del passaggio — non ancora
-scritta, perché fuori scopo per ora.
+Per i dettagli specifici di ciascun protocollo, vedi
+[`pcf-protocol.md`](pcf-protocol.md) (Duereti/Unareti) e
+[`edistribuzione-protocol.md`](edistribuzione-protocol.md).
 
 ## Prima di usarlo su un'installazione reale
 
-1. Se vuoi disinstallare `duereti_letture`/`unareti_letture` esistenti
-   prima di installare `contatore_letture`, ricordati che è una rottura
-   intenzionale (vedi sopra): non c'è continuità automatica delle
-   statistiche.
-2. Consigliato: un primo giro di test manuale del wizard end-to-end
-   (regione → provincia → comune → lookup ARERA → credenziali → POD)
-   prima di fare affidamento sui servizi `recupera_ticket`/`recupera_storico`.
+Consigliato: un primo giro di test manuale del wizard end-to-end
+(regione → provincia → comune → lookup ARERA → credenziali → POD) prima
+di fare affidamento sui servizi `recupera_ticket`/`recupera_storico`.
