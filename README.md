@@ -19,11 +19,13 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 
 ## Distributori supportati
 
-| Distributore | Autenticazione | Stato |
-|---|---|---|
-| Duereti | Client ID + Secret ID | Login, lettura dati, import Energy Dashboard, multi-POD — tutto confermato funzionante |
-| Unareti | Client ID + Secret ID | Login, lettura dati, import Energy Dashboard, multi-POD — tutto confermato funzionante |
-| E-Distribuzione | Email + password + OTP | Login, lettura dati, import Energy Dashboard, multi-POD — tutto confermato funzionante con dati reali. Unica differenza da Duereti/Unareti: il ritardo di pubblicazione dei dati non è documentato ufficialmente (solo osservato) |
+| Distributore | Autenticazione | Azioni | Stato |
+|---|---|---|---|
+| Duereti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | Login, lettura dati, import Energy Dashboard, multi-POD — tutto confermato funzionante |
+| Unareti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | Login, lettura dati, import Energy Dashboard, multi-POD — tutto confermato funzionante |
+| E-Distribuzione | Email + password + OTP | `recupera_storico` | Login, lettura dati, import Energy Dashboard, multi-POD — tutto confermato funzionante con dati reali, ritardo di pubblicazione dati incluso (stesso comportamento di Duereti/Unareti: un giorno, dato disponibile entro sera), anche se su un numero di osservazioni minore |
+
+Dettagli sulle azioni in [Azioni](#azioni) più sotto.
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
@@ -38,14 +40,13 @@ uno di quelli supportati, o si ferma con un messaggio chiaro altrimenti.
    [ricerca operatori ARERA](https://www.arera.it/area-operatori/ricerca-operatori)
    per quel comune, filtrando sui distributori elettrici.
 3. In base alla Partita IVA dell'operatore restituito, il wizard prosegue
-   con lo step corretto (Duereti, Unareti, o selezione manuale se il
-   distributore non è ancora supportato o il lookup non è riuscito).
+   con lo step corretto.
 
 ## Prerequisiti
 
-I tre distributori supportati usano meccanismi di autenticazione diversi
-tra loro — nessuno dei due è "il caso normale" rispetto all'altro, sono
-semplicemente due protocolli distinti imposti da ciascun distributore.
+I distributori supportati usano meccanismi di autenticazione diversi tra
+loro — nessuno è "il caso normale" rispetto agli altri, sono semplicemente
+protocolli distinti imposti da ciascun distributore.
 
 ### Duereti / Unareti (Client ID + Secret ID)
 
@@ -120,7 +121,7 @@ sull'integrazione (Opzioni) — per qualunque distributore.
 
 I dati importati sono visibili come **external statistics**
 (`contatore_letture:<pod>_energia`) in **Impostazioni → Sistema →
-Statistiche**, utilizzabili nella Energy Dashboard, per tutti e tre i
+Statistiche**, utilizzabili nella Energy Dashboard, per tutti i
 distributori supportati.
 
 **Ogni sera dopo le 19:00** (orario configurabile dalle opzioni) viene
