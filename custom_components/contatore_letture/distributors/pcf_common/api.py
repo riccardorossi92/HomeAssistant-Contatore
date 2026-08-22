@@ -38,7 +38,14 @@ _LOGGER = logging.getLogger(__name__)
 # Chiavi il cui valore non va MAI loggato in chiaro: le credenziali API e il
 # token di sessione. home-assistant.log viene spesso condiviso per chiedere
 # supporto, quindi qualunque cosa finisca qui va considerata pubblica.
-_CHIAVI_SEGRETE = {"clientid", "secretid", "authorization", "token"}
+_CHIAVI_SEGRETE = {"clientid", "secretid", "authorization", "token", "ticket"}
+# "ticket" aggiunto il 21/08/2026: il body di requestResult logava
+# {"ticket": ticket} senza redazione, l'unica delle tre chiamate a
+# _log_richiesta non coperta dalle chiavi originali (Client ID/Secret ID
+# e Authorization erano già redatti correttamente). A seconda di come
+# Duereti/Unareti validano il ticket lato server, potrebbe bastare da
+# solo a chi ha accesso ai log per interferire con l'export di
+# qualcun altro - trovato analizzando l'alert CodeQL #3.
 
 
 def _oscura(valore: object) -> str:
