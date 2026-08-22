@@ -106,21 +106,50 @@ def _log_richiesta(url: str, body: dict | None, headers: dict | None) -> None:
     )
 
 
+def _sanitizza_corpo_risposta(corpo: str) -> str:
+    """Se il corpo e' JSON, redige le chiavi sensibili prima di loggarlo:
+    a differenza della pagina HTML "Request Rejected" del WAF (che non
+    contiene segreti, solo il Support ID che serve per il ticket di
+    assistenza), un corpo JSON di successo puo' contenere il token vero
+    e proprio (es. la risposta di requestToken) - loggarlo cosi' com'e'
+    a livello DEBUG lo scriveva in chiaro nei log. Segnalato da CodeQL
+    ("clear-text logging of sensitive information") il 21/08/2026.
+
+    Se non e' JSON, il testo resta intatto: e' proprio il caso della
+    pagina del WAF che questa funzione doveva servire fin dall'inizio.
+    """
+    import json as _json
+
+    try:
+        parsed = _json.loads(corpo)
+    except ValueError:
+        return corpo
+    if isinstance(parsed, dict):
+        return _json.dumps(_sanitizza(parsed), ensure_ascii=False)
+    return corpo
+
+
 def _log_risposta(url: str, status: int, headers: object, corpo: str) -> None:
     """Logga la risposta grezza (solo a livello DEBUG).
 
-    Il corpo viene loggato così com'è (troncato): quando il WAF interviene non
-    è JSON ma una pagina HTML "Request Rejected", e vedere il testo esatto con
+    Il corpo viene sanitizzato se JSON (vedi _sanitizza_corpo_risposta),
+    altrimenti loggato intatto: quando il WAF interviene non è JSON ma
+    una pagina HTML "Request Rejected", e vedere il testo esatto con
     il Support ID è proprio l'informazione che serve.
     """
     if not _LOGGER.isEnabledFor(logging.DEBUG):
         return
-    anteprima = corpo if len(corpo) <= 800 else f"{corpo[:800]}… [troncato, {len(corpo)} caratteri]"
+    corpo_sanitizzato = _sanitizza_corpo_risposta(corpo)
+    anteprima = (
+        corpo_sanitizzato
+        if len(corpo_sanitizzato) <= 800
+        else f"{corpo_sanitizzato[:800]}… [troncato, {len(corpo_sanitizzato)} caratteri]"
+    )
     _LOGGER.debug(
         "<-- %s da %s\n    headers: %s\n    body: %s",
         status,
         url,
-        dict(headers) if headers else {},
+        _sanitizza(dict(headers)) if headers else {},
         anteprima,
     )
 
