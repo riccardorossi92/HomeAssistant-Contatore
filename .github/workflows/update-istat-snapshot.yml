@@ -40,8 +40,8 @@ jobs:
           title: "Aggiornamento mensile snapshot comuni ISTAT"
           body: |
             Rigenerato automaticamente `custom_components/contatore_letture/data/istat_comuni_snapshot.json`
-            dalla stessa sorgente usata a runtime
-            ([matteocontrini/comuni-json](https://github.com/matteocontrini/comuni-json)).
+            dalla stessa sorgente usata a runtime: il permalink ufficiale ISTAT
+            ([Elenco dei comuni italiani.csv](https://www.istat.it/storage/codici-unita-amministrative/Elenco-comuni-italiani.csv)).
 
             Motivo tipico di un diff: fusione/istituzione di nuovi comuni, o
             variazione di codici provincia/regione. Rivedi il diff prima di
