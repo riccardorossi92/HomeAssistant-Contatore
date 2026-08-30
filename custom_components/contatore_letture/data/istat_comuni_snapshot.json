@@ -1225,7 +1225,7 @@
         "codice_provincia": "068",
         "codice_regione": "13"
       },
-      "Popoli": {
+      "Popoli Terme": {
         "codice_comune": "068033",
         "codice_provincia": "068",
         "codice_regione": "13"
@@ -8562,6 +8562,11 @@
         "codice_provincia": "099",
         "codice_regione": "08"
       },
+      "Montecopiolo": {
+        "codice_comune": "099030",
+        "codice_provincia": "099",
+        "codice_regione": "08"
+      },
       "Montefiore Conca": {
         "codice_comune": "099008",
         "codice_provincia": "099",
@@ -8634,6 +8639,11 @@
       },
       "Santarcangelo di Romagna": {
         "codice_comune": "099018",
+        "codice_provincia": "099",
+        "codice_regione": "08"
+      },
+      "Sassofeltrio": {
+        "codice_comune": "099031",
         "codice_provincia": "099",
         "codice_regione": "08"
       },
@@ -15652,11 +15662,6 @@
         "codice_provincia": "013",
         "codice_regione": "03"
       },
-      "Ronago": {
-        "codice_comune": "013199",
-        "codice_provincia": "013",
-        "codice_regione": "03"
-      },
       "Rovellasca": {
         "codice_comune": "013201",
         "codice_provincia": "013",
@@ -15747,8 +15752,8 @@
         "codice_provincia": "013",
         "codice_regione": "03"
       },
-      "Uggiate-Trevano": {
-        "codice_comune": "013228",
+      "Uggiate con Ronago": {
+        "codice_comune": "013256",
         "codice_provincia": "013",
         "codice_regione": "03"
       },
@@ -18366,11 +18371,6 @@
         "codice_provincia": "018",
         "codice_regione": "03"
       },
-      "Albaredo Arnaboldi": {
-        "codice_comune": "018002",
-        "codice_provincia": "018",
-        "codice_regione": "03"
-      },
       "Albonese": {
         "codice_comune": "018003",
         "codice_provincia": "018",
@@ -18481,7 +18481,7 @@
         "codice_provincia": "018",
         "codice_regione": "03"
       },
-      "Campospinoso": {
+      "Campospinoso Albaredo": {
         "codice_comune": "018026",
         "codice_provincia": "018",
         "codice_regione": "03"
@@ -19720,8 +19720,8 @@
         "codice_provincia": "012",
         "codice_regione": "03"
       },
-      "Bardello": {
-        "codice_comune": "012009",
+      "Bardello con Malgesso e Bregano": {
+        "codice_comune": "012144",
         "codice_provincia": "012",
         "codice_regione": "03"
       },
@@ -19762,11 +19762,6 @@
       },
       "Brebbia": {
         "codice_comune": "012017",
-        "codice_provincia": "012",
-        "codice_regione": "03"
-      },
-      "Bregano": {
-        "codice_comune": "012018",
         "codice_provincia": "012",
         "codice_regione": "03"
       },
@@ -20147,11 +20142,6 @@
       },
       "Maccagno con Pino e Veddasca": {
         "codice_comune": "012142",
-        "codice_provincia": "012",
-        "codice_regione": "03"
-      },
-      "Malgesso": {
-        "codice_comune": "012095",
         "codice_provincia": "012",
         "codice_regione": "03"
       },
@@ -21402,16 +21392,6 @@
         "codice_provincia": "041",
         "codice_regione": "11"
       },
-      "Monteciccardo": {
-        "codice_comune": "041032",
-        "codice_provincia": "041",
-        "codice_regione": "11"
-      },
-      "Montecopiolo": {
-        "codice_comune": "041033",
-        "codice_provincia": "041",
-        "codice_regione": "11"
-      },
       "Montefelcino": {
         "codice_comune": "041034",
         "codice_provincia": "041",
@@ -21479,11 +21459,6 @@
       },
       "Sassocorvaro Auditore": {
         "codice_comune": "041071",
-        "codice_provincia": "041",
-        "codice_regione": "11"
-      },
-      "Sassofeltrio": {
-        "codice_comune": "041060",
         "codice_provincia": "041",
         "codice_regione": "11"
       },
@@ -23214,7 +23189,7 @@
         "codice_provincia": "005",
         "codice_regione": "01"
       },
-      "Calliano": {
+      "Calliano Monferrato": {
         "codice_comune": "005014",
         "codice_provincia": "005",
         "codice_regione": "01"
@@ -23244,7 +23219,7 @@
         "codice_provincia": "005",
         "codice_regione": "01"
       },
-      "Casorzo": {
+      "Casorzo Monferrato": {
         "codice_comune": "005020",
         "codice_provincia": "005",
         "codice_regione": "01"
@@ -23419,7 +23394,7 @@
         "codice_provincia": "005",
         "codice_regione": "01"
       },
-      "Grana": {
+      "Grana Monferrato": {
         "codice_comune": "005056",
         "codice_provincia": "005",
         "codice_regione": "01"
@@ -23524,7 +23499,7 @@
         "codice_provincia": "005",
         "codice_regione": "01"
       },
-      "Montemagno": {
+      "Montemagno Monferrato": {
         "codice_comune": "005077",
         "codice_provincia": "005",
         "codice_regione": "01"
@@ -23534,8 +23509,8 @@
         "codice_provincia": "005",
         "codice_regione": "01"
       },
-      "Moransengo": {
-        "codice_comune": "005079",
+      "Moransengo-Tonengo": {
+        "codice_comune": "005122",
         "codice_provincia": "005",
         "codice_regione": "01"
       },
@@ -23681,11 +23656,6 @@
       },
       "Tonco": {
         "codice_comune": "005109",
-        "codice_provincia": "005",
-        "codice_regione": "01"
-      },
-      "Tonengo": {
-        "codice_comune": "005110",
         "codice_provincia": "005",
         "codice_regione": "01"
       },
@@ -26762,7 +26732,7 @@
         "codice_provincia": "001",
         "codice_regione": "01"
       },
-      "Pont-Canavese": {
+      "Pont Canavese": {
         "codice_comune": "001199",
         "codice_provincia": "001",
         "codice_regione": "01"
@@ -33237,6 +33207,11 @@
         "codice_provincia": "081",
         "codice_regione": "19"
       },
+      "Misiliscemi": {
+        "codice_comune": "081025",
+        "codice_provincia": "081",
+        "codice_regione": "19"
+      },
       "Paceco": {
         "codice_comune": "081013",
         "codice_provincia": "081",
@@ -34953,7 +34928,7 @@
         "codice_provincia": "021",
         "codice_regione": "04"
       },
-      "Montagna": {
+      "Montagna sulla strada del vino": {
         "codice_comune": "021053",
         "codice_provincia": "021",
         "codice_regione": "04"
@@ -35068,7 +35043,7 @@
         "codice_provincia": "021",
         "codice_regione": "04"
       },
-      "Salorno": {
+      "Salorno sulla strada del vino": {
         "codice_comune": "021076",
         "codice_provincia": "021",
         "codice_regione": "04"
@@ -36949,11 +36924,6 @@
         "codice_provincia": "025",
         "codice_regione": "05"
       },
-      "Alano di Piave": {
-        "codice_comune": "025002",
-        "codice_provincia": "025",
-        "codice_regione": "05"
-      },
       "Alleghe": {
         "codice_comune": "025003",
         "codice_provincia": "025",
@@ -37124,11 +37094,6 @@
         "codice_provincia": "025",
         "codice_regione": "05"
       },
-      "Quero Vas": {
-        "codice_comune": "025070",
-        "codice_provincia": "025",
-        "codice_regione": "05"
-      },
       "Rivamonte Agordino": {
         "codice_comune": "025043",
         "codice_provincia": "025",
@@ -37186,6 +37151,11 @@
       },
       "Seren del Grappa": {
         "codice_comune": "025055",
+        "codice_provincia": "025",
+        "codice_regione": "05"
+      },
+      "Setteville": {
+        "codice_comune": "025075",
         "codice_provincia": "025",
         "codice_regione": "05"
       },
@@ -37358,11 +37328,6 @@
       },
       "Candiana": {
         "codice_comune": "028021",
-        "codice_provincia": "028",
-        "codice_regione": "05"
-      },
-      "Carceri": {
-        "codice_comune": "028022",
         "codice_provincia": "028",
         "codice_regione": "05"
       },
@@ -37651,6 +37616,11 @@
         "codice_provincia": "028",
         "codice_regione": "05"
       },
+      "Santa Caterina d'Este": {
+        "codice_comune": "028108",
+        "codice_provincia": "028",
+        "codice_regione": "05"
+      },
       "Santa Giustina in Colle": {
         "codice_comune": "028080",
         "codice_provincia": "028",
@@ -37718,11 +37688,6 @@
       },
       "Vescovana": {
         "codice_comune": "028097",
-        "codice_provincia": "028",
-        "codice_regione": "05"
-      },
-      "Vighizzolo d'Este": {
-        "codice_comune": "028098",
         "codice_provincia": "028",
         "codice_regione": "05"
       },
@@ -39406,11 +39371,6 @@
         "codice_provincia": "024",
         "codice_regione": "05"
       },
-      "Gambugliano": {
-        "codice_comune": "024044",
-        "codice_provincia": "024",
-        "codice_regione": "05"
-      },
       "Grisignano di Zocco": {
         "codice_comune": "024046",
         "codice_provincia": "024",
@@ -39672,7 +39632,7 @@
         "codice_regione": "05"
       },
       "Sovizzo": {
-        "codice_comune": "024103",
+        "codice_comune": "024128",
         "codice_provincia": "024",
         "codice_regione": "05"
       },

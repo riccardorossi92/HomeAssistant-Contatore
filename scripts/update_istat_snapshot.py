@@ -1,6 +1,6 @@
 """Rigenera data/istat_comuni_snapshot.json dalla stessa sorgente usata a
 runtime dall'integrazione (istat_comuni.py), tramite la stessa funzione di
-trasformazione pura (istat_transform.comuni_list_to_tree) - cosi' lo
+trasformazione pura (istat_transform.comuni_csv_to_tree) - cosi' lo
 snapshot bundlato non puo' disallinearsi nel formato dal fetch live.
 
 Uso:
@@ -24,11 +24,14 @@ import requests
 sys.path.insert(
     0, str(Path(__file__).parent.parent / "custom_components" / "contatore_letture")
 )
-from istat_transform import comuni_list_to_tree  # noqa: E402
+from istat_transform import comuni_csv_to_tree  # noqa: E402
 
-COMUNI_JSON_URL = (
-    "https://raw.githubusercontent.com/matteocontrini/comuni-json/master/comuni.json"
+# Permalink ufficiale ISTAT, dichiarato immutabile ad ogni aggiornamento.
+# Il file e' in cp1252, non UTF-8.
+ISTAT_CSV_URL = (
+    "https://www.istat.it/storage/codici-unita-amministrative/Elenco-comuni-italiani.csv"
 )
+ISTAT_CSV_ENCODING = "cp1252"
 SNAPSHOT_PATH = (
     Path(__file__).parent.parent
     / "custom_components"
@@ -40,10 +43,9 @@ SNAPSHOT_PATH = (
 
 def main() -> int:
     try:
-        resp = requests.get(COMUNI_JSON_URL, timeout=30)
+        resp = requests.get(ISTAT_CSV_URL, timeout=60)
         resp.raise_for_status()
-        data = resp.json()
-        nuovo_albero = comuni_list_to_tree(data)
+        nuovo_albero = comuni_csv_to_tree(resp.content.decode(ISTAT_CSV_ENCODING))
     except Exception as exc:  # noqa: BLE001
         print(f"Errore nel fetch/trasformazione: {exc}", file=sys.stderr)
         return 2
