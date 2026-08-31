@@ -19,13 +19,15 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 
 ## Distributori supportati
 
-| Distributore | Autenticazione | Azioni | Stato |
-|---|---|---|---|
-| Duereti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | Login, lettura dati, import Energy Dashboard, multi-POD — tutto confermato funzionante |
-| Unareti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | Login, lettura dati, import Energy Dashboard, multi-POD — tutto confermato funzionante |
-| E-Distribuzione | Email + password + OTP | `recupera_storico` | Login, lettura dati, import Energy Dashboard, multi-POD — tutto confermato funzionante |
+| Distributore | Autenticazione | Azioni |
+|---|---|---|
+| Duereti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
+| Unareti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
+| E-Distribuzione | Email + password + OTP | `recupera_storico` |
 
-Dettagli sulle azioni in [Azioni](#azioni) più sotto.
+Per tutti: login, lettura dati, import nella Energy Dashboard e più POD
+per configurazione — tutto confermato funzionante. Dettagli sulle azioni
+in [Azioni](#azioni) più sotto.
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
@@ -57,8 +59,8 @@ dal distributore, che poi invia via email le credenziali (`client_id` e
 `secret_id`) da usare in questa integrazione.
 
 1. Accedi al **Portale Clienti Finali (PCF)** del tuo distributore:
-   - Duereti: `https://areaclienti.duereti.it/ClientiDueRetiWeb`
-   - Unareti: `https://areaclienti.unareti.it/ClientiWeb`
+   - Duereti: [areaclienti.duereti.it](https://areaclienti.duereti.it/ClientiDueRetiWeb)
+   - Unareti: [areaclienti.unareti.it](https://areaclienti.unareti.it/ClientiWeb)
 2. Assicurati di avere **almeno un'identificazione validata** dal
    backoffice del distributore sul tuo profilo: senza questo passaggio la
    richiesta di abilitazione API non compare nemmeno.
@@ -95,8 +97,7 @@ il tuo account ha più POD associati, potrai selezionarne più di uno.
 ### Tramite HACS (custom repository)
 
 1. HACS → menu (⋮) → **Repository personalizzate**
-2. Aggiungi `https://github.com/riccardorossi92/HomeAssistant-Contatore`,
-   categoria **Integrazione**
+2. Aggiungi l'URL di questo repository, categoria **Integrazione**
 3. Installa "Contatore Letture" e riavvia Home Assistant
 
 ### Manuale
@@ -143,7 +144,7 @@ dettaglio.
 | Entità | Dispositivo | Cosa mostra |
 |---|---|---|
 | Ultimo import | Account | Fine del periodo dell'ultimo import riuscito |
-| Attesa file (minuti) | Account | Da quanto è in corso l'attesa del file; `0` se non c'è nulla in coda |
+| Attesa file (minuti) | Account | Da quanto si attende il file; `0` se niente in coda |
 | POD configurati | Account | Quanti e quali POD in questa istanza |
 | Ultima data disponibile | POD | Ultimo giorno per cui esistono dati importati |
 | Consumo ultimo periodo | POD | kWh totali dell'ultimo periodo importato |
