@@ -26,7 +26,12 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | E-Distribuzione | Email + password + OTP | `recupera_storico` |
 
 Per tutti: login, lettura dati, import nella Energy Dashboard e più POD
-per configurazione — tutto confermato funzionante. Dettagli sulle azioni
+per configurazione — tutto confermato funzionante.
+
+**Ireti** è in fase di analisi: login e anagrafica già funzionanti,
+mancano gli endpoint dei consumi. Se hai una fornitura Ireti puoi
+aiutare — vedi
+[documentation/ireti-protocol.md](documentation/ireti-protocol.md). Dettagli sulle azioni
 in [Azioni](#azioni) più sotto.
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di

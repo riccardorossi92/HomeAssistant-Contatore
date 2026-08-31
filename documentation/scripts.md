@@ -39,3 +39,14 @@ Funzionalità:
 
 Non è un test automatico (richiede credenziali reali digitate a mano): per
 quello vedi `tests/edistribuzione/`.
+
+## `scripts/raccogli_dati_ireti.py`
+
+Per chi ha una fornitura **Ireti** e vuole aiutare a implementarne il
+supporto (non ancora disponibile). Fa login, legge l'anagrafica, estrae
+gli endpoint dal bundle JavaScript dell'app e prova quelli di misura,
+salvando un report **anonimizzato** (`ireti_report.json`) da allegare a
+una issue. Non invia nulla: scrive solo un file locale.
+
+Dettagli e stato della ricerca in
+[`ireti-protocol.md`](ireti-protocol.md).
