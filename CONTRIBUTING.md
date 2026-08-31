@@ -6,6 +6,24 @@ funziona un protocollo specifico prima di toccarlo, vedi
 [`documentation/`](documentation/) (architettura generale,
 `pcf-protocol.md`, `edistribuzione-protocol.md`).
 
+## Aiutare senza scrivere codice: raccolta dati
+
+Il collo di bottiglia per aggiungere un distributore quasi mai è il
+codice: è **avere accesso a una fornitura reale** su cui vedere come
+rispondono le sue API. Se hai una fornitura con un distributore non
+ancora supportato, puoi essere d'aiuto anche senza toccare Python.
+
+Caso già pronto: **Ireti**, dove autenticazione e anagrafica sono già
+state analizzate e mancano solo gli endpoint dei consumi. C'è uno script
+che raccoglie il necessario in un report anonimizzato — vedi
+[`documentation/ireti-protocol.md`](documentation/ireti-protocol.md).
+
+Per un distributore ancora del tutto inesplorato, la strada è una
+**cattura HAR** del portale (login + pagina dei consumi con un grafico
+caricato). Attenzione: una HAR grezza contiene token di sessione e dati
+personali in chiaro, quindi **non va allegata a una issue pubblica** —
+apri prima una issue per concordare come condividerla.
+
 ## Prima di tutto: che tipo di distributore stai aggiungendo?
 
 Ci sono due scenari molto diversi per costo/complessità.
