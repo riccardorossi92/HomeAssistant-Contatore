@@ -564,6 +564,18 @@ class PcfCoordinator(DataUpdateCoordinator):
             # automaticamente il flusso di reauth con async_step_reauth.
             raise ConfigEntryAuthFailed(f"Credenziali non valide: {err}") from err
         except PcfApiError as err:
+            # Se a essere rifiutata e' la richiesta di UN singolo giorno
+            # (ciclo giornaliero), quel giorno va in coda invece di andare
+            # perso: al ciclo successivo 'atteso' sarebbe gia' un altro
+            # giorno, lasciando un buco permanente nello storico. Osservato
+            # il 02/09/2026 con "errore nelle date inserite" sul giorno
+            # precedente - non e' confermato se quel messaggio significhi
+            # "dati non ancora pronti" o altro, ma accodare e' comunque la
+            # cosa giusta: se il problema e' transitorio il giorno viene
+            # recuperato, se e' permanente la coda si esaurisce da sola
+            # dopo MAX_TENTATIVI_PER_GIORNO.
+            if fase == FASE_GIORNALIERO and data_da == data_a:
+                self._accoda_giorno(data_da)
             raise UpdateFailed(f"Errore chiamando requestExport: {err}") from err
 
         self._ultima_richiesta = chiave
