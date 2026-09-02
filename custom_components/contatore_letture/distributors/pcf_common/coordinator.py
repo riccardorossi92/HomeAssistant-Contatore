@@ -96,12 +96,24 @@ def _inizio_n_mesi_prima(fine: date, n_mesi: int) -> date:
 
 
 class PcfCoordinator(DataUpdateCoordinator):
-    """Coordina il download mensile delle curve e il loro import come statistiche.
+    """Coordina il download giornaliero delle curve e il loro import come statistiche.
 
-    La pianificazione ha tre fasi (dettagli in _prossima_richiesta):
-    import iniziale del mese corrente fino a oggi-2, poi recupero storico a
-    ritroso in blocchi da 6 mesi, infine richiesta giornaliera del solo
-    giorno oggi-2.
+    Il ciclo automatico chiede UN SOLO GIORNO per volta (oggi meno
+    RITARDO_DATI_GIORNI), dopo l'orario configurato nelle opzioni. I giorni
+    per cui il distributore non ha ancora dati finiscono in una coda e
+    vengono riprovati nei cicli successivi, dal piu' vecchio, cosi' non si
+    creano buchi nello storico.
+
+    Il recupero di periodi passati NON e' automatico: si richiede a mano con
+    l'azione contatore_letture.recupera_storico (vedi async_recupera_storico),
+    che e' l'unico punto in cui si chiedono intervalli piu' lunghi di un
+    giorno.
+
+    Le costanti FASE_GIORNALIERO/FASE_STORICO/FASE_MANUALE non sono fasi di
+    una pianificazione automatica: sono etichette che indicano da DOVE
+    proviene un import (rispettivamente: ciclo automatico, azione
+    recupera_storico, azione recupera_ticket), usate per i sensori
+    diagnostici e per riprendere correttamente un ticket dopo un riavvio.
 
     requestExport è rapida e resta nel ciclo normale del coordinator.
     requestResult può invece restare in coda per ore (polling ogni ~30 minuti,
