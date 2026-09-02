@@ -93,8 +93,24 @@ def _risolvi_coordinator_e_pod_da_device(hass: HomeAssistant, device_id: str):
     if device is None:
         raise HomeAssistantError(f"Dispositivo non trovato (device_id={device_id!r})")
 
+    # Ricerca "a ritroso": si parte dalle nostre config entry attive e si
+    # guarda quali dispositivi appartengono a ciascuna, invece di leggere
+    # device.config_entries. Quel campo (insieme a
+    # config_entries_subentries e primary_config_entry) e' deprecato dalla
+    # ristrutturazione del device registry di HA 2026.8/2026.9, in favore
+    # dei nuovi config_entry_id/config_subentry_id singoli: resta
+    # funzionante fino a HA 2027.8, ma async_entries_for_config_entry e'
+    # un helper ufficiale stabile che evita del tutto la questione,
+    # senza dipendere ne' dal campo vecchio ne' da quello nuovo.
+    # Il ciclo e' su hass.data[DOMAIN], cioe' sulle sole config entry di
+    # questa integrazione (tipicamente una o due): nessun problema di costo.
     entry_id = next(
-        (eid for eid in device.config_entries if eid in hass.data.get(DOMAIN, {})), None
+        (
+            eid
+            for eid in hass.data.get(DOMAIN, {})
+            if any(d.id == device_id for d in dr.async_entries_for_config_entry(dev_reg, eid))
+        ),
+        None,
     )
     if entry_id is None:
         raise HomeAssistantError(
