@@ -487,13 +487,36 @@ class PcfCoordinator(DataUpdateCoordinator):
         # La coda ha la precedenza: i buchi si riempiono dal più vecchio, e i
         # giorni recenti tornerebbero comunque in coda se non fossero pronti.
         coda = self._leggi_coda()
-        arretrati = sorted(g for g in coda if date.fromisoformat(g) < atteso)
+        arretrati = sorted(date.fromisoformat(g) for g in coda if date.fromisoformat(g) < atteso)
         if arretrati:
-            giorno = date.fromisoformat(arretrati[0])
+            # UNA SOLA richiesta che copre dal più vecchio arretrato fino al
+            # giorno atteso: le API accettano intervalli (è così che funziona
+            # recupera_storico), quindi non serve una chiamata separata per
+            # ogni giorno. Conta soprattutto perché ogni richiesta produce un
+            # ticket il cui requestResult può restare in coda per ore: un
+            # giorno alla volta significherebbe attese seriali.
+            #
+            # Chiedere anche il giorno atteso, e non solo gli arretrati, evita
+            # un buco silenzioso: prima i cicli occupati a smaltire la coda
+            # non lo richiedevano affatto, e il giorno dopo 'atteso' era già
+            # avanzato - quel giorno non veniva più chiesto da nessuno.
+            #
+            # L'intervallo può includere giorni già importati (se i buchi non
+            # sono contigui): è innocuo, l'import fa merge e ricalcola le
+            # somme progressive, si scaricano solo un po' più di dati.
+            #
+            # Il limite serve a non superare MAX_DATE_RANGE_MONTHS: 150 giorni
+            # stanno sempre sotto i 6 mesi calendariali con cui l'API valida
+            # l'intervallo. In pratica non si attiva quasi mai, perché la coda
+            # tiene al massimo MAX_GIORNI_IN_CODA giorni.
+            data_da = max(arretrati[0], atteso - timedelta(days=150))
             _LOGGER.debug(
-                "Riprovo il giorno arretrato %s (%d ancora in coda)", giorno, len(arretrati)
+                "Richiedo %s - %s in un'unica chiamata (%d giorni arretrati in coda)",
+                data_da,
+                atteso,
+                len(arretrati),
             )
-            return FASE_GIORNALIERO, giorno, giorno
+            return FASE_GIORNALIERO, data_da, atteso
 
         return FASE_GIORNALIERO, atteso, atteso
 
@@ -576,18 +599,23 @@ class PcfCoordinator(DataUpdateCoordinator):
             # automaticamente il flusso di reauth con async_step_reauth.
             raise ConfigEntryAuthFailed(f"Credenziali non valide: {err}") from err
         except PcfApiError as err:
-            # Se a essere rifiutata e' la richiesta di UN singolo giorno
-            # (ciclo giornaliero), quel giorno va in coda invece di andare
-            # perso: al ciclo successivo 'atteso' sarebbe gia' un altro
-            # giorno, lasciando un buco permanente nello storico. Osservato
-            # il 02/09/2026 con "errore nelle date inserite" sul giorno
+            # Se a essere rifiutata e' la richiesta del ciclo giornaliero,
+            # TUTTI i giorni coinvolti vanno in coda invece di andare persi:
+            # al ciclo successivo 'atteso' sarebbe gia' un altro giorno,
+            # lasciando un buco permanente nello storico. Osservato il
+            # 02/09/2026 con "errore nelle date inserite" sul giorno
             # precedente - non e' confermato se quel messaggio significhi
             # "dati non ancora pronti" o altro, ma accodare e' comunque la
-            # cosa giusta: se il problema e' transitorio il giorno viene
-            # recuperato, se e' permanente la coda si esaurisce da sola
+            # cosa giusta: se il problema e' transitorio i giorni vengono
+            # recuperati, se e' permanente la coda si esaurisce da sola
             # dopo MAX_TENTATIVI_PER_GIORNO.
-            if fase == FASE_GIORNALIERO and data_da == data_a:
-                self._accoda_giorno(data_da)
+            #
+            # Il ciclo giornaliero puo' ora chiedere un INTERVALLO (vedi
+            # _prossima_richiesta), non piu' un giorno solo: per questo si
+            # itera sul periodo invece di controllare data_da == data_a.
+            if fase == FASE_GIORNALIERO:
+                for giorno in _giorni_nel_periodo(data_da, data_a):
+                    self._accoda_giorno(giorno)
             raise UpdateFailed(f"Errore chiamando requestExport: {err}") from err
 
         self._ultima_richiesta = chiave
