@@ -18,6 +18,17 @@ CONF_DATA_INSTALLAZIONE = "data_installazione"
 # subito: verificato sul campo che alle 10 del mattino il giorno precedente
 # spesso non c'è ancora, mentre in serata sì. (Osservato su Duereti; da
 # riconfermare su Unareti se emergono differenze.)
+#
+# ECCEZIONE NOTA - primi giorni del mese: il 02/09/2026 una requestExport
+# per il 01/09 è stata rifiutata con HTTP 400 "errore nelle date inserite",
+# mentre il 31/08 veniva accettata (verificato con una chiamata diretta,
+# stesso POD e stesse credenziali). Il distributore sembra non pubblicare i
+# giorni del mese corrente finché non ha chiuso il precedente.
+# NON si alza questa costante a 2 per gestirlo: perderemmo un giorno di
+# freschezza tutto l'anno per un problema che dura pochi giorni al mese, e
+# il resto del tempo il giorno precedente è regolarmente disponibile in
+# serata. Ci pensa la coda dei giorni da riprovare, che li riprende appena
+# il distributore inizia ad accettarli.
 RITARDO_DATI_GIORNI = 1
 
 # Giorni per cui il distributore non ha (ancora) restituito dati, in attesa
