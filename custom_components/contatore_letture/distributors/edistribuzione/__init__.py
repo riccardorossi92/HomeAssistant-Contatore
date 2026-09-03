@@ -29,5 +29,5 @@ def create_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> Edistribuzion
     return EdistribuzioneCoordinator(hass, entry)
 
 
-def build_sensor_entities(coordinator: EdistribuzioneCoordinator, entry: ConfigEntry) -> list:
-    return build_edistribuzione_entities(coordinator)
+def build_sensor_entities(hass, coordinator: EdistribuzioneCoordinator, entry: ConfigEntry) -> list:
+    return build_edistribuzione_entities(hass, coordinator)

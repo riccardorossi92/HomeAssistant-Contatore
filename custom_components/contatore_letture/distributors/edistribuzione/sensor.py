@@ -18,6 +18,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ...const import DOMAIN
+from ...device_helpers import assicura_dispositivo_padre, collega_al_padre
 from .coordinator import EdistribuzioneCoordinator
 
 
@@ -42,33 +43,47 @@ def _device_info_account(entry: ConfigEntry) -> DeviceInfo:
     )
 
 
-def _device_info_pod(entry: ConfigEntry, pod: str) -> DeviceInfo:
-    return DeviceInfo(
+def _device_info_pod(entry: ConfigEntry, pod: str, id_padre: str | None = None) -> DeviceInfo:
+    """Dispositivo per un singolo POD, agganciato all'account.
+
+    Il collegamento usa via_device_id su HA 2026.8+ e via_device sulle
+    versioni precedenti: vedi device_helpers.collega_al_padre.
+    """
+    info = DeviceInfo(
         identifiers={(DOMAIN, f"{entry.entry_id}_{pod}")},
         name=f"POD {pod}",
         manufacturer="E-Distribuzione",
         model="Punto di prelievo",
-        via_device=(DOMAIN, entry.entry_id),
     )
+    return collega_al_padre(info, {(DOMAIN, entry.entry_id)}, id_padre)
 
 
 def build_edistribuzione_entities(
-    coordinator: EdistribuzioneCoordinator,
+    hass, coordinator: EdistribuzioneCoordinator
 ) -> list[SensorEntity]:
     """Costruisce le entità sensor per una config entry E-Distribuzione,
     un dispositivo per ciascun POD configurato più uno "account" comune.
 
     Chiamata dal sensor.py di contatore_letture (non è un platform entry
     point autonomo: un solo sensor.py serve tutti i distributori)."""
+    entry = coordinator.entry
+
+    # Il dispositivo "account" va registrato PRIMA di quelli per POD, che lo
+    # referenziano come padre: su HA 2026.8+ serve il suo ID interno, che
+    # esiste solo dopo la registrazione.
+    id_padre = assicura_dispositivo_padre(
+        hass, entry.entry_id, dict(_device_info_account(entry))
+    )
+
     entities: list[SensorEntity] = [
-        EdistribuzionePodConfiguratiSensor(coordinator, coordinator.entry)
+        EdistribuzionePodConfiguratiSensor(coordinator, entry)
     ]
     for pod in coordinator.pods:
         entities.append(
-            EdistribuzioneUltimaDataDisponibileSensor(coordinator, coordinator.entry, pod)
+            EdistribuzioneUltimaDataDisponibileSensor(coordinator, entry, pod, id_padre)
         )
         entities.append(
-            EdistribuzioneConsumoGiornoSensor(coordinator, coordinator.entry, pod)
+            EdistribuzioneConsumoGiornoSensor(coordinator, entry, pod, id_padre)
         )
     return entities
 
@@ -110,13 +125,14 @@ class EdistribuzioneUltimaDataDisponibileSensor(
     _attr_icon = "mdi:calendar-check"
 
     def __init__(
-        self, coordinator: EdistribuzioneCoordinator, entry: ConfigEntry, pod: str
+        self, coordinator: EdistribuzioneCoordinator, entry: ConfigEntry, pod: str,
+        id_padre: str | None = None,
     ) -> None:
         super().__init__(coordinator)
         self._pod = pod
         self._attr_unique_id = f"{entry.entry_id}_{pod}_ultima_data_disponibile"
         self._attr_name = "Ultima data disponibile"
-        self._attr_device_info = _device_info_pod(entry, pod)
+        self._attr_device_info = _device_info_pod(entry, pod, id_padre)
         self._ripristinato: date | None = None
 
     async def async_added_to_hass(self) -> None:
@@ -155,13 +171,14 @@ class EdistribuzioneConsumoGiornoSensor(
     _attr_icon = "mdi:lightning-bolt"
 
     def __init__(
-        self, coordinator: EdistribuzioneCoordinator, entry: ConfigEntry, pod: str
+        self, coordinator: EdistribuzioneCoordinator, entry: ConfigEntry, pod: str,
+        id_padre: str | None = None,
     ) -> None:
         super().__init__(coordinator)
         self._pod = pod
         self._attr_unique_id = f"{entry.entry_id}_{pod}_consumo_giorno"
         self._attr_name = "Consumo ultimo giorno importato"
-        self._attr_device_info = _device_info_pod(entry, pod)
+        self._attr_device_info = _device_info_pod(entry, pod, id_padre)
         self._ripristinato: float | None = None
 
     async def async_added_to_hass(self) -> None:
