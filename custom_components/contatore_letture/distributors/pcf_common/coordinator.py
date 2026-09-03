@@ -22,15 +22,19 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from ...const import DOMAIN
 from .api import (
     PcfApiClient,
     PcfApiError,
     PcfAuthError,
     PcfNotFoundError,
     descrivi_errore,
+    parse_curve_zip,
 )
 from .const import (
     CONF_DATA_INSTALLAZIONE,
+    CONF_GIORNI_DA_RIPROVARE,
+    CONF_ORA_RICHIESTA,
     CONF_PENDING_DATA_A,
     CONF_PENDING_DATA_DA,
     CONF_PENDING_IS_BACKFILL,
@@ -39,17 +43,14 @@ from .const import (
     FASE_GIORNALIERO,
     FASE_MANUALE,
     FASE_STORICO,
-    CONF_GIORNI_DA_RIPROVARE,
     MAX_DATE_RANGE_MONTHS,
     MAX_GIORNI_IN_CODA,
     MAX_TENTATIVI_PER_GIORNO,
     MINUTI_ATTESA_SUGGERITI,
     MODE_CURVE,
-    CONF_ORA_RICHIESTA,
     ORA_MINIMA_RICHIESTA,
     RITARDO_DATI_GIORNI,
 )
-from ...const import DOMAIN
 from .statistics import async_get_ultima_data_disponibile, async_import_curva
 
 _LOGGER = logging.getLogger(__name__)
@@ -374,7 +375,7 @@ class PcfCoordinator(DataUpdateCoordinator):
         coda = self._entry.data.get(CONF_GIORNI_DA_RIPROVARE) or {}
         if isinstance(coda, list):
             # Formato delle prime versioni: solo la lista delle date.
-            return {g: 0 for g in coda}
+            return dict.fromkeys(coda, 0)
         return dict(coda)
 
     def _scrivi_coda(self, coda: dict[str, int]) -> None:
@@ -796,12 +797,12 @@ class PcfCoordinator(DataUpdateCoordinator):
         # (il sensore "Attesa file" continuerebbe a salire all'infinito pur
         # avendo già ricevuto i dati) e il ticket persistito non ripulito.
         try:
-            from .api import parse_curve_zip
-
             _LOGGER.debug(
                 "File ricevuto per il ticket %s (%d byte), avvio parsing", ticket, len(zip_bytes)
             )
-            risultati = parse_curve_zip(zip_bytes)
+            # unzip + decode + parsing CSV di un file anche multi-mese: sincrono
+            # e potenzialmente pesante, quindi fuori dall'event loop.
+            risultati = await self.hass.async_add_executor_job(parse_curve_zip, zip_bytes)
             _LOGGER.debug(
                 "Parsing completato: %d POD trovati nel file (%s)",
                 len(risultati),

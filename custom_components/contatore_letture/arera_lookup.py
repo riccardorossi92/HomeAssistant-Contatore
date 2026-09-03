@@ -65,7 +65,9 @@ async def async_query_distributore(
     except Exception as exc:  # noqa: BLE001
         raise AreraLookupError(f"Errore di rete verso ARERA: {exc}") from exc
 
-    return _parse_result(html)
+    # Il parsing BeautifulSoup e' sincrono e su una pagina ARERA piena puo'
+    # non essere istantaneo: lo spostiamo fuori dall'event loop.
+    return await hass.async_add_executor_job(_parse_result, html)
 
 
 def _parse_result(html: str) -> list[dict[str, str]]:
