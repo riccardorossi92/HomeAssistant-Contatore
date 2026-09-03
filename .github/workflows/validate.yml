@@ -11,6 +11,9 @@ on:
     # un giro settimanale li intercetta prima che lo faccia un utente.
     - cron: "0 5 * * 1"
 
+permissions:
+  contents: read
+
 jobs:
   hassfest:
     name: hassfest
