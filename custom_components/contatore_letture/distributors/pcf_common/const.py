@@ -40,11 +40,32 @@ CONF_GIORNI_DA_RIPROVARE = "giorni_da_riprovare"
 # Oltre questo numero di tentativi un giorno viene abbandonato: se dopo tanti
 # giorni il distributore non lo ha prodotto, con ogni probabilità non lo farà
 # mai (fornitura non attiva in quella data, o dato mai validato).
-MAX_TENTATIVI_PER_GIORNO = 10
+#
+# Il valore va letto insieme al ritmo dei tentativi, non come "numero di
+# giorni": il coordinator gira ogni ora ma chiede dati solo dopo
+# ORA_MINIMA_RICHIESTA, quindi restano ~5 cicli utili a sera (19-23) e ogni
+# ciclo incrementa il contatore di TUTTI i giorni in coda insieme (da quando
+# il ciclo giornaliero chiede un intervallo, vedi _prossima_richiesta, non
+# più un giorno alla volta).
+#
+# 30 tentativi ≈ 6 giorni di margine. Era 10 (≈2 giorni), troppo poco: a
+# inizio mese il distributore può metterci diversi giorni a pubblicare i
+# giorni del mese nuovo (osservato il 02/09/2026, vedi la nota su
+# RITARDO_DATI_GIORNI sopra), e quei giorni venivano abbandonati prima di
+# diventare disponibili, lasciando un buco permanente. Alzarlo non costa
+# richieste in più: i tentativi viaggiano dentro la stessa chiamata che
+# copre l'intero intervallo.
+MAX_TENTATIVI_PER_GIORNO = 30
 
 # Quanti giorni tenere in coda al massimo. Evita che un problema prolungato
 # faccia crescere la coda senza limite; i giorni più vecchi vengono lasciati
 # cadere per primi.
+#
+# Nel ciclo automatico questo limite non viene mai avvicinato: la coda si
+# stabilizza intorno ai giorni di margine concessi da
+# MAX_TENTATIVI_PER_GIORNO (~6). Serve invece quando un import copre un
+# periodo lungo e il file torna incompleto: lì vengono accodati molti giorni
+# in un colpo solo.
 MAX_GIORNI_IN_CODA = 30
 
 # Attesa suggerita all'utente quando il blocco riguarda l'autenticazione:

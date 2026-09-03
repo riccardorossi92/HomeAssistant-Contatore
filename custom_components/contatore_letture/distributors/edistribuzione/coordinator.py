@@ -54,6 +54,41 @@ from ...const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
+def _giorni_nel_periodo(data_da: date, data_a: date) -> list[date]:
+    """Elenco dei giorni compresi nell'intervallo, estremi inclusi."""
+    giorni, cursore = [], data_da
+    while cursore <= data_a:
+        giorni.append(cursore)
+        cursore += timedelta(days=1)
+    return giorni
+
+
+def _giorni_ricevuti(curva: list[dict]) -> set[date]:
+    """Giorni effettivamente presenti nella risposta (campo sampleDate,
+    formato YYYYMMDD), scartando quelli senza campioni."""
+    giorni: set[date] = set()
+    for elemento in curva:
+        readings = elemento.get("readings", {})
+        if not readings.get("sampleValues"):
+            continue
+        grezzo = readings.get("sampleDate")
+        try:
+            giorni.add(date(int(grezzo[:4]), int(grezzo[4:6]), int(grezzo[6:8])))
+        except (TypeError, ValueError, IndexError):
+            _LOGGER.warning("sampleDate non interpretabile, giorno ignorato: %r", grezzo)
+    return giorni
+
+
+def _kwh_del_giorno(curva: list[dict], giorno: date) -> float | None:
+    """Totale kWh di un singolo giorno dentro una risposta multi-giorno."""
+    atteso = giorno.strftime("%Y%m%d")
+    for elemento in curva:
+        readings = elemento.get("readings", {})
+        if readings.get("sampleDate") == atteso:
+            return sum(float(c.get("val", 0)) for c in readings.get("sampleValues", []))
+    return None
+
+
 def _curva_ha_dati(curva: list[dict]) -> bool:
     """True se la risposta di async_get_daily_load_profile contiene
     davvero dei campioni, non solo una struttura vuota."""
@@ -202,15 +237,22 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         _LOGGER.info("POD %s: dati ricevuti per %s, rimossi dalla coda", pod, ", ".join(rimossi))
         self._scrivi_code(code)
 
-    async def _prossima_richiesta(self, pod: str) -> date | None:
-        """Decide se c'è un giorno da chiedere per questo POD in questo ciclo.
+    async def _prossima_richiesta(self, pod: str) -> tuple[date, date] | None:
+        """Decide che intervallo chiedere per questo POD in questo ciclo.
 
         Stessa logica di pcf_common, applicata per singolo POD: al primo
         avvio chiede subito il giorno atteso (per verificare da subito che
         POD/token siano validi); nei cicli successivi aspetta l'orario
-        configurato, poi smaltisce prima la coda dei giorni arretrati (dal
-        più vecchio) e infine il giorno atteso - a meno che non risulti
-        già coperto dalle statistiche esistenti.
+        configurato, poi chiede in UNA SOLA richiesta l'intervallo che va
+        dal più vecchio giorno arretrato fino al giorno atteso - a meno che
+        quest'ultimo non risulti già coperto dalle statistiche esistenti.
+
+        Chiedere un intervallo invece di un giorno alla volta (verificato
+        il 20/08/2026 che l'endpoint restituisce fino a 181 giorni in
+        un'unica risposta) evita anche un buco silenzioso: prima, quando
+        c'erano arretrati, il giorno atteso non veniva richiesto affatto e
+        il giorno dopo 'atteso' era già avanzato - quel giorno non lo
+        chiedeva più nessuno.
 
         CONF_DATA_INSTALLAZIONE è condivisa da tutti i POD della entry
         (riflette quando la config entry è stata creata, non quando un
@@ -235,7 +277,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 atteso,
                 self._ora_richiesta,
             )
-            return atteso
+            return atteso, atteso
 
         adesso = dt_util.now()
         if adesso.hour < self._ora_richiesta:
@@ -243,15 +285,19 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
         code = self._leggi_code()
         coda = code.get(pod, {})
-        arretrati = sorted(g for g in coda if date.fromisoformat(g) < atteso)
+        arretrati = sorted(date.fromisoformat(g) for g in coda if date.fromisoformat(g) < atteso)
         if arretrati:
-            return date.fromisoformat(arretrati[0])
+            # Una sola richiesta dal più vecchio arretrato al giorno atteso.
+            # Il limite di 150 giorni tiene l'intervallo entro
+            # MAX_GIORNI_RECUPERO_STORICO; in pratica non si attiva quasi
+            # mai, perché la coda tiene al massimo MAX_GIORNI_IN_CODA giorni.
+            return max(arretrati[0], atteso - timedelta(days=150)), atteso
 
         ultima_disponibile = await async_get_ultima_data_disponibile(self.hass, pod)
         if ultima_disponibile and ultima_disponibile >= atteso:
             return None
 
-        return atteso
+        return atteso, atteso
 
     # ------------------------------------------------------------------
     # Ciclo di polling automatico
@@ -262,26 +308,40 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
         by_pod: dict[str, dict] = {}
         for pod in self.pods:
-            giorno_richiesto = await self._prossima_richiesta(pod)
+            richiesta = await self._prossima_richiesta(pod)
             kwh_ultimo_giorno_importato = None
-            if giorno_richiesto is not None:
+            ultimo_giorno_richiesto = None
+            if richiesta is not None:
+                data_da, data_a = richiesta
+                ultimo_giorno_richiesto = data_a
                 try:
-                    curva = await self._api.async_get_daily_load_profile(pod, giorno_richiesto)
+                    curva = await self._api.async_get_daily_load_profile(pod, data_da, data_a)
                 except EdistribuzioneApiError as err:
+                    # I giorni richiesti vanno in coda invece di andare persi:
+                    # al ciclo successivo 'atteso' sarebbe già avanzato.
+                    for giorno in _giorni_nel_periodo(data_da, data_a):
+                        self._accoda_giorno(pod, giorno)
                     raise UpdateFailed(
                         f"Errore chiamando async_get_daily_load_profile per il POD {pod}: {err}"
                     ) from err
 
                 if _curva_ha_dati(curva):
                     await async_import_curva_giornaliera(self.hass, pod, curva)
-                    self._rimuovi_dalla_coda(pod, [giorno_richiesto])
-                    kwh_ultimo_giorno_importato = sum(
-                        float(c.get("val", 0))
-                        for g in curva
-                        for c in g.get("readings", {}).get("sampleValues", [])
-                    )
+
+                    # L'intervallo può tornare parziale (i giorni più recenti
+                    # non ancora pubblicati): quelli ricevuti escono dalla
+                    # coda, quelli mancanti ci entrano.
+                    ricevuti = _giorni_ricevuti(curva)
+                    richiesti = _giorni_nel_periodo(data_da, data_a)
+                    self._rimuovi_dalla_coda(pod, [g for g in richiesti if g in ricevuti])
+                    for giorno in richiesti:
+                        if giorno not in ricevuti:
+                            self._accoda_giorno(pod, giorno)
+
+                    kwh_ultimo_giorno_importato = _kwh_del_giorno(curva, max(ricevuti)) if ricevuti else None
                 else:
-                    self._accoda_giorno(pod, giorno_richiesto)
+                    for giorno in _giorni_nel_periodo(data_da, data_a):
+                        self._accoda_giorno(pod, giorno)
 
             # 'reading'/'time_of_use' (letture ufficiali mensili) NON sono
             # piu' recuperati automaticamente qui - lo erano fino al ciclo
@@ -295,7 +355,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
             by_pod[pod] = {
                 "ultimo_giorno_curva_richiesto": (
-                    giorno_richiesto.isoformat() if giorno_richiesto else None
+                    ultimo_giorno_richiesto.isoformat() if ultimo_giorno_richiesto else None
                 ),
                 "ultima_data_disponibile": (
                     ultima_data_disponibile.isoformat() if ultima_data_disponibile else None

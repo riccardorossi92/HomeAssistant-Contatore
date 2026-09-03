@@ -84,7 +84,21 @@ CONF_DATA_INSTALLAZIONE = "data_installazione"
 CONF_GIORNI_DA_RIPROVARE = "giorni_da_riprovare"
 CONF_ORA_RICHIESTA = "ora_richiesta"
 
-MAX_TENTATIVI_PER_GIORNO = 10
+# Vedi la nota estesa in pcf_common/const.py: il numero va letto insieme al
+# ritmo dei tentativi, non come "numero di giorni". Il coordinator gira ogni
+# ora ma chiede dati solo dopo ORA_MINIMA_RICHIESTA, quindi restano ~5 cicli
+# utili a sera, e ogni ciclo incrementa il contatore di TUTTI i giorni in
+# coda insieme (il ciclo giornaliero chiede un intervallo, non un giorno
+# alla volta). 30 tentativi ≈ 6 giorni di margine, abbastanza da coprire
+# eventuali ritardi di pubblicazione senza accanirsi su date che non
+# arriveranno mai. Alzarlo non costa richieste in più: i tentativi viaggiano
+# dentro la stessa chiamata che copre l'intero intervallo.
+MAX_TENTATIVI_PER_GIORNO = 30
+
+# Nel ciclo automatico questo limite non viene mai avvicinato (la coda si
+# stabilizza sui giorni di margine concessi sopra): serve quando un import
+# copre un periodo lungo e la risposta torna incompleta, accodando molti
+# giorni in un colpo solo.
 MAX_GIORNI_IN_CODA = 30
 
 # Stesso default di Duereti (dove è stato osservato che i dati del giorno
