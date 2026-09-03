@@ -1,0 +1,32 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+  workflow_dispatch: {}
+  schedule:
+    # hassfest e la HACS Action possono iniziare a segnalare problemi senza
+    # che nulla nel repo sia cambiato (nuovi controlli, deprecazioni HA):
+    # un giro settimanale li intercetta prima che lo faccia un utente.
+    - cron: "0 5 * * 1"
+
+jobs:
+  hassfest:
+    name: hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # L'integrazione non e' (ancora) nel repo home-assistant/brands:
+          # e' dichiaratamente non ufficiale e distribuita come repo custom.
+          ignore: brands
