@@ -1,10 +1,11 @@
 """Platform sensor di contatore_letture.
 
-Un solo sensor.py per tutti i distributori: per quelli di tipo "pcf"
-(Duereti/Unareti) le entità sono costruite da pcf_common tramite il modulo
-del distributore specifico (che sa quale display_name usare). Per
-E-Distribuzione (ancora uno stub, nessun coordinator reale) non viene
-creata nessuna entità per ora.
+Un solo sensor.py per tutti i distributori: ciascun modulo distributore
+espone build_sensor_entities(coordinator, entry) e costruisce le proprie
+entità. Per quelli di tipo "pcf" (Duereti/Unareti) la costruzione è
+delegata a pcf_common tramite il modulo del distributore specifico (che sa
+quale display_name usare); E-Distribuzione ha il proprio modulo con le sue
+entità diagnostiche per POD.
 """
 from __future__ import annotations
 
