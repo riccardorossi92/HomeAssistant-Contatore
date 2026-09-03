@@ -32,6 +32,7 @@ from .api import (
     parse_curve_zip,
 )
 from .const import (
+    ABBANDONO_CODA_DOPO_GIORNI,
     CONF_DATA_INSTALLAZIONE,
     CONF_GIORNI_DA_RIPROVARE,
     CONF_ORA_RICHIESTA,
@@ -45,7 +46,6 @@ from .const import (
     FASE_STORICO,
     MAX_DATE_RANGE_MONTHS,
     MAX_GIORNI_IN_CODA,
-    MAX_TENTATIVI_PER_GIORNO,
     MINUTI_ATTESA_SUGGERITI,
     MODE_CURVE,
     ORA_MINIMA_RICHIESTA,
@@ -366,32 +366,49 @@ class PcfCoordinator(DataUpdateCoordinator):
             return ORA_MINIMA_RICHIESTA
         return ora
 
-    def _leggi_coda(self) -> dict[str, int]:
-        """Coda dei giorni da riprovare, come {data ISO: tentativi fatti}.
+    def _leggi_coda(self) -> dict[str, date]:
+        """Coda dei giorni da riprovare, come {giorno ISO: data di primo inserimento}.
 
-        Persistita sulla config entry: i dati possono arrivare con qualche
-        giorno di ritardo, e senza coda un giorno mancato resterebbe un buco
-        permanente nello storico.
+        Persistita sulla config entry come {stringa ISO: stringa ISO}: i dati
+        possono arrivare con qualche giorno di ritardo, e senza coda un giorno
+        mancato resterebbe un buco permanente nello storico. La data di primo
+        inserimento fa da timer: un giorno viene abbandonato dopo
+        ABBANDONO_CODA_DOPO_GIORNI a prescindere da quante volte lo si è
+        richiesto (vedi _scrivi_coda).
+
+        Retrocompatibile con i due formati precedenti - lista di date, e dict
+        {data: numero di tentativi}: in entrambi i casi non si sa da quando il
+        giorno è in coda, quindi gli si assegna "oggi", una tantum al primo
+        aggiornamento dopo l'upgrade.
         """
-        coda = self._entry.data.get(CONF_GIORNI_DA_RIPROVARE) or {}
-        if isinstance(coda, list):
-            # Formato delle prime versioni: solo la lista delle date.
-            return dict.fromkeys(coda, 0)
-        return dict(coda)
+        grezza = self._entry.data.get(CONF_GIORNI_DA_RIPROVARE) or {}
+        oggi = dt_util.now().date()
+        if isinstance(grezza, list):
+            return dict.fromkeys(grezza, oggi)
+        risultato: dict[str, date] = {}
+        for giorno, valore in grezza.items():
+            try:
+                risultato[giorno] = date.fromisoformat(valore)
+            except (TypeError, ValueError):
+                # Formato vecchio (il valore era un numero di tentativi) o
+                # valore corrotto: riparte il timer da oggi.
+                risultato[giorno] = oggi
+        return risultato
 
-    def _scrivi_coda(self, coda: dict[str, int]) -> None:
-        """Salva la coda, scartando i giorni esauriti e limitandone il numero."""
+    def _scrivi_coda(self, coda: dict[str, date]) -> None:
+        """Salva la coda, scartando i giorni troppo vecchi e limitandone il numero."""
+        oggi = dt_util.now().date()
         pulita = {
-            giorno: tentativi
-            for giorno, tentativi in coda.items()
-            if tentativi < MAX_TENTATIVI_PER_GIORNO
+            giorno: da
+            for giorno, da in coda.items()
+            if (oggi - da).days < ABBANDONO_CODA_DOPO_GIORNI
         }
         abbandonati = set(coda) - set(pulita)
         if abbandonati:
             _LOGGER.warning(
-                "Giorni abbandonati dopo %d tentativi senza dati da %s: %s. "
+                "Giorni abbandonati dopo %d giorni in coda senza dati da %s: %s. "
                 "Se servono, richiedili con l'azione contatore_letture.recupera_storico.",
-                MAX_TENTATIVI_PER_GIORNO,
+                ABBANDONO_CODA_DOPO_GIORNI,
                 self._display_name,
                 ", ".join(sorted(abbandonati)),
             )
@@ -407,23 +424,32 @@ class PcfCoordinator(DataUpdateCoordinator):
             )
             pulita = {g: pulita[g] for g in tenuti}
 
-        if pulita != self._entry.data.get(CONF_GIORNI_DA_RIPROVARE):
+        serializzata = {giorno: da.isoformat() for giorno, da in pulita.items()}
+        if serializzata != self._entry.data.get(CONF_GIORNI_DA_RIPROVARE):
             self.hass.config_entries.async_update_entry(
                 self._entry,
-                data={**self._entry.data, CONF_GIORNI_DA_RIPROVARE: pulita},
+                data={**self._entry.data, CONF_GIORNI_DA_RIPROVARE: serializzata},
             )
 
     def _accoda_giorno(self, giorno: date) -> None:
-        """Mette un giorno in coda, o incrementa i suoi tentativi."""
+        """Mette un giorno in coda se non c'è già; se c'è, lascia invariata la
+        data di primo inserimento (è quella che ne decide l'abbandono)."""
         coda = self._leggi_coda()
         chiave = giorno.isoformat()
-        coda[chiave] = coda.get(chiave, 0) + 1
-        _LOGGER.info(
-            "Giorno %s senza dati: messo in coda per riprovare (tentativo %d di %d)",
-            chiave,
-            coda[chiave],
-            MAX_TENTATIVI_PER_GIORNO,
-        )
+        if chiave in coda:
+            _LOGGER.info(
+                "Giorno %s ancora senza dati: in coda da %d giorni (max %d)",
+                chiave,
+                (dt_util.now().date() - coda[chiave]).days,
+                ABBANDONO_CODA_DOPO_GIORNI,
+            )
+        else:
+            coda[chiave] = dt_util.now().date()
+            _LOGGER.info(
+                "Giorno %s senza dati: messo in coda per riprovare (max %d giorni)",
+                chiave,
+                ABBANDONO_CODA_DOPO_GIORNI,
+            )
         self._scrivi_coda(coda)
 
     def _rimuovi_dalla_coda(self, giorni: list[date]) -> None:
@@ -610,7 +636,7 @@ class PcfCoordinator(DataUpdateCoordinator):
             # "dati non ancora pronti" o altro, ma accodare e' comunque la
             # cosa giusta: se il problema e' transitorio i giorni vengono
             # recuperati, se e' permanente la coda si esaurisce da sola
-            # dopo MAX_TENTATIVI_PER_GIORNO.
+            # dopo ABBANDONO_CODA_DOPO_GIORNI giorni.
             #
             # Il ciclo giornaliero puo' ora chiedere un INTERVALLO (vedi
             # _prossima_richiesta), non piu' un giorno solo: per questo si

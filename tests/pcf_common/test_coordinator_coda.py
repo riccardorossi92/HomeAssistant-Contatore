@@ -13,6 +13,7 @@ from freezegun import freeze_time
 
 from custom_components.contatore_letture.distributors.pcf_common.api import PcfApiError
 from custom_components.contatore_letture.distributors.pcf_common.const import (
+    ABBANDONO_CODA_DOPO_GIORNI,
     CONF_DATA_INSTALLAZIONE,
     CONF_GIORNI_DA_RIPROVARE,
     CONF_PENDING_DATA_A,
@@ -67,14 +68,14 @@ async def test_primo_avvio_richiede_il_giorno_atteso(hass, make_pcf_coordinator,
 
 async def test_giorno_mancante_nel_file_finisce_in_coda(hass, make_pcf_coordinator, pcf_io):
     """Se il file non contiene il giorno richiesto, quel giorno va in coda
-    (tentativo 1) invece di andare perso."""
+    (con 'oggi' come data di primo inserimento) invece di andare perso."""
     pcf_io.parse_zip.return_value = {}  # file vuoto: nessun dato per 'atteso'
     coordinator = make_pcf_coordinator(data={CONF_DATA_INSTALLAZIONE: "2026-01-01"})
 
     with freeze_time(ORA_SERA):
         await _aggiorna(hass, coordinator)
 
-    assert coordinator._leggi_coda() == {ATTESO.isoformat(): 1}
+    assert coordinator._leggi_coda() == {ATTESO.isoformat(): OGGI}
 
 
 async def test_arretrato_in_coda_richiesto_in_un_unico_intervallo(
@@ -90,7 +91,8 @@ async def test_arretrato_in_coda_richiesto_in_un_unico_intervallo(
     coordinator = make_pcf_coordinator(
         data={
             CONF_DATA_INSTALLAZIONE: "2026-01-01",
-            CONF_GIORNI_DA_RIPROVARE: {arretrato.isoformat(): 1},
+            # in coda da pochi giorni: non ancora da abbandonare
+            CONF_GIORNI_DA_RIPROVARE: {arretrato.isoformat(): arretrato.isoformat()},
         }
     )
 
@@ -143,4 +145,51 @@ async def test_export_rifiutata_accoda_i_giorni_e_segnala_fallimento(
         await _aggiorna(hass, coordinator)
 
     assert coordinator.last_update_success is False
-    assert coordinator._leggi_coda() == {ATTESO.isoformat(): 1}
+    assert coordinator._leggi_coda() == {ATTESO.isoformat(): OGGI}
+
+
+async def test_coda_abbandona_i_giorni_troppo_vecchi(hass, make_pcf_coordinator):
+    """Un giorno in coda da ABBANDONO_CODA_DOPO_GIORNI giorni o più viene
+    scartato al primo aggiornamento della coda; quelli più recenti restano."""
+    vecchio = (OGGI - timedelta(days=ABBANDONO_CODA_DOPO_GIORNI)).isoformat()
+    recente = (OGGI - timedelta(days=1)).isoformat()
+    coordinator = make_pcf_coordinator(
+        data={
+            CONF_GIORNI_DA_RIPROVARE: {
+                "2026-08-20": vecchio,
+                "2026-09-12": recente,
+            }
+        }
+    )
+
+    with freeze_time(ORA_SERA):
+        # Un qualunque tocco alla coda passa da _scrivi_coda, che applica lo scarto.
+        coordinator._accoda_giorno(date(2026, 9, 13))
+        coda = coordinator._leggi_coda()
+
+    assert set(coda) == {"2026-09-12", "2026-09-13"}
+
+
+async def test_coda_legacy_dict_di_tentativi_migra_a_data(hass, make_pcf_coordinator):
+    """Formato vecchio {data: n_tentativi}: al primo accesso ogni giorno prende
+    'oggi' come data di primo inserimento (il timer riparte una volta sola)."""
+    coordinator = make_pcf_coordinator(
+        data={CONF_GIORNI_DA_RIPROVARE: {"2026-09-10": 4, "2026-09-11": 12}}
+    )
+
+    with freeze_time(ORA_SERA):
+        coda = coordinator._leggi_coda()
+
+    assert coda == {"2026-09-10": OGGI, "2026-09-11": OGGI}
+
+
+async def test_coda_legacy_lista_migra_a_data(hass, make_pcf_coordinator):
+    """Formato piu' vecchio ancora (lista di date): stessa migrazione a 'oggi'."""
+    coordinator = make_pcf_coordinator(
+        data={CONF_GIORNI_DA_RIPROVARE: ["2026-09-10", "2026-09-11"]}
+    )
+
+    with freeze_time(ORA_SERA):
+        coda = coordinator._leggi_coda()
+
+    assert coda == {"2026-09-10": OGGI, "2026-09-11": OGGI}

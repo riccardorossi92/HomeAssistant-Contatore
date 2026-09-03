@@ -11,7 +11,6 @@ import pytest
 from custom_components.contatore_letture.distributors.pcf_common.const import (
     MAX_DATE_RANGE_MONTHS,
     MAX_GIORNI_IN_CODA,
-    MAX_TENTATIVI_PER_GIORNO,
     ORA_MINIMA_RICHIESTA,
     RITARDO_DATI_GIORNI,
 )
@@ -161,11 +160,9 @@ class TestCodaGiorniDaRiprovare:
         coda = {"2026-08-15": 2}
         assert self._prossimo_arretrato(coda, atteso) == atteso
 
-    def test_un_giorno_viene_abbandonato_dopo_il_limite(self):
-        coda = {"2026-01-01": MAX_TENTATIVI_PER_GIORNO - 1}
-        coda["2026-01-01"] += 1
-        rimasti = {g: t for g, t in coda.items() if t < MAX_TENTATIVI_PER_GIORNO}
-        assert rimasti == {}
+    # L'abbandono di un giorno è ora a tempo (ABBANDONO_CODA_DOPO_GIORNI dal
+    # primo inserimento) e la logica vive in _scrivi_coda: coperta dai test
+    # con l'harness in test_coordinator_coda.py.
 
     def test_la_coda_e_limitata_ai_giorni_piu_recenti(self):
         coda = {

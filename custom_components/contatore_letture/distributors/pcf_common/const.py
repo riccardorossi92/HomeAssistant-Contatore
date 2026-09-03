@@ -32,30 +32,26 @@ CONF_DATA_INSTALLAZIONE = "data_installazione"
 RITARDO_DATI_GIORNI = 1
 
 # Giorni per cui il distributore non ha (ancora) restituito dati, in attesa
-# di essere richiesti di nuovo. Salvati sulla config entry come lista di date
-# ISO: i dati possono arrivare con qualche giorno di ritardo, e senza una
-# coda un giorno mancato resterebbe un buco permanente nello storico.
+# di essere richiesti di nuovo. Salvati sulla config entry come dict
+# {giorno ISO: data di primo inserimento ISO}: i dati possono arrivare con
+# qualche giorno di ritardo, e senza coda un giorno mancato resterebbe un
+# buco permanente nello storico. Retrocompatibile con i formati precedenti
+# (lista di date; dict {data: numero di tentativi}) - vedi _leggi_coda.
 CONF_GIORNI_DA_RIPROVARE = "giorni_da_riprovare"
 
-# Oltre questo numero di tentativi un giorno viene abbandonato: se dopo tanti
-# giorni il distributore non lo ha prodotto, con ogni probabilità non lo farà
-# mai (fornitura non attiva in quella data, o dato mai validato).
+# Dopo quanti giorni IN CODA (contati dal primo inserimento, non dal numero
+# di tentativi) un giorno viene abbandonato: se dopo una settimana il dato
+# non c'è, con ogni probabilità non arriverà mai (fornitura non attiva quel
+# giorno, o misura mai validata). Chi lo volesse comunque può richiederlo a
+# mano con contatore_letture.recupera_storico.
 #
-# Il valore va letto insieme al ritmo dei tentativi, non come "numero di
-# giorni": il coordinator gira ogni ora ma chiede dati solo dopo
-# ORA_MINIMA_RICHIESTA, quindi restano ~5 cicli utili a sera (19-23) e ogni
-# ciclo incrementa il contatore di TUTTI i giorni in coda insieme (da quando
-# il ciclo giornaliero chiede un intervallo, vedi _prossima_richiesta, non
-# più un giorno alla volta).
-#
-# 30 tentativi ≈ 6 giorni di margine. Era 10 (≈2 giorni), troppo poco: a
-# inizio mese il distributore può metterci diversi giorni a pubblicare i
-# giorni del mese nuovo (osservato il 02/09/2026, vedi la nota su
-# RITARDO_DATI_GIORNI sopra), e quei giorni venivano abbandonati prima di
-# diventare disponibili, lasciando un buco permanente. Alzarlo non costa
-# richieste in più: i tentativi viaggiano dentro la stessa chiamata che
-# copre l'intero intervallo.
-MAX_TENTATIVI_PER_GIORNO = 30
+# Prima era MAX_TENTATIVI_PER_GIORNO, un contatore di tentativi. Ma il ritmo
+# dei tentativi dipende dal tipo di errore del distributore (~1 al giorno se
+# requestExport riesce ma il file è incompleto, ~5 a sera se requestExport
+# viene rifiutata e il ciclo orario ritenta), quindi "N tentativi" non
+# corrispondeva a un numero di giorni prevedibile. Il conteggio a tempo
+# rende esplicito il comportamento voluto: riprova per ~una settimana.
+ABBANDONO_CODA_DOPO_GIORNI = 7
 
 # Quanti giorni tenere in coda al massimo. Evita che un problema prolungato
 # faccia crescere la coda senza limite; i giorni più vecchi vengono lasciati
@@ -63,7 +59,7 @@ MAX_TENTATIVI_PER_GIORNO = 30
 #
 # Nel ciclo automatico questo limite non viene mai avvicinato: la coda si
 # stabilizza intorno ai giorni di margine concessi da
-# MAX_TENTATIVI_PER_GIORNO (~6). Serve invece quando un import copre un
+# ABBANDONO_CODA_DOPO_GIORNI (7). Serve invece quando un import copre un
 # periodo lungo e il file torna incompleto: lì vengono accodati molti giorni
 # in un colpo solo.
 MAX_GIORNI_IN_CODA = 30
