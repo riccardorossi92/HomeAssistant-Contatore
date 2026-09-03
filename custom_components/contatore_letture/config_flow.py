@@ -18,7 +18,7 @@ nostri 3 distributori invece che a centinaia.
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -30,6 +30,7 @@ from homeassistant.helpers.aiohttp_client import (
     async_get_clientsession,
 )
 from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
+from homeassistant.util import dt as dt_util
 
 from .arera_lookup import AreraLookupError, async_query_distributore
 from .const import (
@@ -340,7 +341,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     }
                     if self._ticket_verifica:
                         giorno = (
-                            date.today() - timedelta(days=RITARDO_VERIFICA_POD_GIORNI)
+                            dt_util.now().date() - timedelta(days=RITARDO_VERIFICA_POD_GIORNI)
                         ).isoformat()
                         dati.update({
                             CONF_PENDING_TICKET: self._ticket_verifica,

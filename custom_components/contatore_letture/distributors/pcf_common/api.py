@@ -400,6 +400,11 @@ class PcfApiClient:
         PcfAuthError per problemi di credenziali, PcfApiError per il
         resto.
         """
+        # date.today() e non dt_util: questo modulo non importa homeassistant
+        # di proposito (vedi requirements_test.txt). Qui il fuso non conta:
+        # RITARDO_VERIFICA_POD_GIORNI e' scelto apposta perche' il giorno
+        # richiesto sia disponibile con ampio margine, un eventuale scarto di
+        # un giorno per il fuso e' irrilevante.
         giorno = date.today() - timedelta(days=RITARDO_VERIFICA_POD_GIORNI)
         return await self.request_export(giorno, giorno, [{"pod": pod, "df": df}])
 

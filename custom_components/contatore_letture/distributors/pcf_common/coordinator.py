@@ -209,7 +209,7 @@ class PcfCoordinator(DataUpdateCoordinator):
             self._background_task.cancel()
 
         if data_da is None or data_a is None:
-            default_da, default_a = _mese_precedente_completo(date.today())
+            default_da, default_a = _mese_precedente_completo(dt_util.now().date())
             data_da = data_da or default_da
             data_a = data_a or default_a
 
@@ -250,7 +250,7 @@ class PcfCoordinator(DataUpdateCoordinator):
                 f"La data di inizio ({data_da}) è successiva a quella di fine ({data_a})."
             )
 
-        ultimo_utile = date.today() - timedelta(days=RITARDO_DATI_GIORNI)
+        ultimo_utile = dt_util.now().date() - timedelta(days=RITARDO_DATI_GIORNI)
         if data_a > ultimo_utile:
             raise ServiceValidationError(
                 f"La data di fine ({data_a}) è troppo recente: i dati sono disponibili con "
@@ -455,7 +455,7 @@ class PcfCoordinator(DataUpdateCoordinator):
         Restituisce (fase, data_da, data_a); fase è None se non c'è nulla da
         chiedere adesso.
         """
-        oggi = date.today()
+        oggi = dt_util.now().date()
         installazione = self._entry.data.get(CONF_DATA_INSTALLAZIONE)
         atteso = oggi - timedelta(days=RITARDO_DATI_GIORNI)
 
