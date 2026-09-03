@@ -37,6 +37,7 @@ from ...const import DOMAIN
 from .api import EdistribuzioneApiClient, EdistribuzioneApiError
 from .auth import EdistribuzioneAuthClient, EdistribuzioneAuthError
 from .const import (
+    ABBANDONO_CODA_DOPO_GIORNI,
     CONF_DATA_INSTALLAZIONE,
     CONF_GIORNI_DA_RIPROVARE,
     CONF_ORA_RICHIESTA,
@@ -45,7 +46,6 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     MAX_GIORNI_IN_CODA,
     MAX_GIORNI_RECUPERO_STORICO,
-    MAX_TENTATIVI_PER_GIORNO,
     ORA_MINIMA_RICHIESTA,
     RITARDO_DATI_GIORNI,
 )
@@ -158,36 +158,57 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
             return ORA_MINIMA_RICHIESTA
         return ora
 
-    def _leggi_code(self) -> dict[str, dict[str, int]]:
+    def _leggi_code(self) -> dict[str, dict[str, date]]:
         """Code dei giorni da riprovare, UNA PER POD:
-        {pod: {data ISO: tentativi fatti}}."""
+        {pod: {giorno ISO: data di primo inserimento}}.
+
+        La data di primo inserimento fa da timer: un giorno viene abbandonato
+        dopo ABBANDONO_CODA_DOPO_GIORNI a prescindere dal numero di tentativi
+        (vedi _scrivi_code).
+
+        Retrocompatibile con i formati precedenti: coda piatta a singolo POD
+        ({data: X}), e valore X come numero di tentativi invece che come data.
+        In entrambi i casi non si sa da quando il giorno è in coda, quindi gli
+        si assegna "oggi", una tantum al primo aggiornamento dopo l'upgrade.
+        """
         grezzo = self.entry.data.get(CONF_GIORNI_DA_RIPROVARE) or {}
-        # Retrocompatibilità: se esiste ancora il formato "vecchio" a singolo
-        # POD (una sola coda piatta, da quando la entry supportava un solo
-        # POD), la spostiamo sotto l'unico POD configurato al momento.
+        oggi = dt_util.now().date()
+
+        def _con_date(coda: dict) -> dict[str, date]:
+            risultato: dict[str, date] = {}
+            for giorno, valore in coda.items():
+                try:
+                    risultato[giorno] = date.fromisoformat(valore)
+                except (TypeError, ValueError):
+                    risultato[giorno] = oggi
+            return risultato
+
+        # Formato "vecchio" a singolo POD (una sola coda piatta, da quando la
+        # entry supportava un solo POD): la spostiamo sotto l'unico POD.
         if grezzo and not any(isinstance(v, dict) for v in grezzo.values()):
             if len(self.pods) == 1:
-                return {self.pods[0]: dict(grezzo)}
+                return {self.pods[0]: _con_date(grezzo)}
             return {}
-        return {pod: dict(coda) for pod, coda in grezzo.items()}
+        return {pod: _con_date(coda) for pod, coda in grezzo.items()}
 
-    def _scrivi_code(self, code: dict[str, dict[str, int]]) -> None:
-        """Salva le code, scartando i giorni esauriti e limitandone il numero, per ciascun POD."""
-        pulite: dict[str, dict[str, int]] = {}
+    def _scrivi_code(self, code: dict[str, dict[str, date]]) -> None:
+        """Salva le code, scartando i giorni troppo vecchi e limitandone il numero, per ciascun POD."""
+        oggi = dt_util.now().date()
+        pulite: dict[str, dict[str, str]] = {}
         for pod, coda in code.items():
             pulita = {
-                giorno: tentativi
-                for giorno, tentativi in coda.items()
-                if tentativi < MAX_TENTATIVI_PER_GIORNO
+                giorno: da
+                for giorno, da in coda.items()
+                if (oggi - da).days < ABBANDONO_CODA_DOPO_GIORNI
             }
             abbandonati = set(coda) - set(pulita)
             if abbandonati:
                 _LOGGER.warning(
-                    "POD %s: giorni abbandonati dopo %d tentativi senza dati da "
+                    "POD %s: giorni abbandonati dopo %d giorni in coda senza dati da "
                     "E-Distribuzione: %s. Se servono, richiedili con l'azione "
                     "contatore_letture.recupera_storico.",
                     pod,
-                    MAX_TENTATIVI_PER_GIORNO,
+                    ABBANDONO_CODA_DOPO_GIORNI,
                     ", ".join(sorted(abbandonati)),
                 )
 
@@ -204,7 +225,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 pulita = {g: pulita[g] for g in tenuti}
 
             if pulita:
-                pulite[pod] = pulita
+                pulite[pod] = {g: da.isoformat() for g, da in pulita.items()}
 
         if pulite != self.entry.data.get(CONF_GIORNI_DA_RIPROVARE):
             self.hass.config_entries.async_update_entry(
@@ -216,15 +237,24 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         code = self._leggi_code()
         coda = code.setdefault(pod, {})
         chiave = giorno.isoformat()
-        coda[chiave] = coda.get(chiave, 0) + 1
-        _LOGGER.info(
-            "POD %s: giorno %s senza dati da E-Distribuzione, messo in coda per "
-            "riprovare (tentativo %d di %d)",
-            pod,
-            chiave,
-            coda[chiave],
-            MAX_TENTATIVI_PER_GIORNO,
-        )
+        if chiave in coda:
+            _LOGGER.info(
+                "POD %s: giorno %s ancora senza dati da E-Distribuzione, in coda da "
+                "%d giorni (max %d)",
+                pod,
+                chiave,
+                (dt_util.now().date() - coda[chiave]).days,
+                ABBANDONO_CODA_DOPO_GIORNI,
+            )
+        else:
+            coda[chiave] = dt_util.now().date()
+            _LOGGER.info(
+                "POD %s: giorno %s senza dati da E-Distribuzione, messo in coda per "
+                "riprovare (max %d giorni)",
+                pod,
+                chiave,
+                ABBANDONO_CODA_DOPO_GIORNI,
+            )
         self._scrivi_code(code)
 
     def _rimuovi_dalla_coda(self, pod: str, giorni: list[date]) -> None:
