@@ -1,12 +1,15 @@
 """Test del config flow: wizard ARERA (regione->provincia->comune->lookup),
-ramo PCF (credenziali + POD), options flow e reauth.
+ramo PCF (credenziali + POD), ramo E-Distribuzione (login/OTP/POD),
+options flow e reauth.
 
 Tutto cio' che tocca la rete e' sostituito: async_get_comuni_tree (elenco
-ISTAT), async_query_distributore (lookup ARERA), e le funzioni di
-validazione credenziali/POD del modulo distributore.
+ISTAT), async_query_distributore (lookup ARERA), le funzioni di
+validazione credenziali/POD del modulo distributore, e i client
+EdistribuzioneAuthClient / EdistribuzioneApiClient.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -22,6 +25,20 @@ from custom_components.contatore_letture.const import (
     DOMAIN,
 )
 from custom_components.contatore_letture.distributors import duereti, unareti
+from custom_components.contatore_letture.distributors.edistribuzione import (
+    api as edist_api,
+)
+from custom_components.contatore_letture.distributors.edistribuzione import (
+    auth as edist_auth,
+)
+from custom_components.contatore_letture.distributors.edistribuzione.auth import (
+    EdistribuzioneInvalidCredentials,
+    EdistribuzioneInvalidOtp,
+    EdistribuzioneParsingError,
+)
+from custom_components.contatore_letture.distributors.edistribuzione.const import (
+    CONF_REFRESH_TOKEN,
+)
 from custom_components.contatore_letture.distributors.pcf_common.const import (
     CONF_ORA_RICHIESTA,
     CONF_PENDING_TICKET,
@@ -254,3 +271,193 @@ async def test_reauth_pcf_aggiorna_credenziali(hass, flow_mocks):
     assert res["type"] == FlowResultType.ABORT
     assert res["reason"] == "reauth_successful"
     assert entry.data[CONF_CLIENT_ID] == "nuovo"
+
+
+# --- ramo E-Distribuzione (login -> OTP -> POD) ----------------------------
+
+@pytest.fixture
+def edist_mocks(monkeypatch):
+    """Sostituisce EdistribuzioneAuthClient / EdistribuzioneApiClient e le
+    sessioni aiohttp. Default: login e OTP ok, un solo POD sull'account."""
+    auth = Mock()
+    auth.async_begin_login = AsyncMock(return_value=None)
+    auth.async_submit_otp = AsyncMock(
+        return_value=SimpleNamespace(access_token="acc", refresh_token="ref-nuovo")
+    )
+    auth.async_refresh_access_token = AsyncMock(
+        return_value=SimpleNamespace(access_token="acc2", refresh_token="ref-nuovo")
+    )
+    api = Mock()
+    api.async_get_supplies = AsyncMock(return_value=[{"IdPod": "IT001E00000009"}])
+
+    monkeypatch.setattr(edist_auth, "EdistribuzioneAuthClient", Mock(return_value=auth))
+    monkeypatch.setattr(edist_api, "EdistribuzioneApiClient", Mock(return_value=api))
+    monkeypatch.setattr(cf, "async_create_clientsession", lambda *a, **k: Mock())
+    monkeypatch.setattr(cf, "async_get_clientsession", lambda *a, **k: Mock())
+    return SimpleNamespace(auth=auth, api=api)
+
+
+async def _fino_a_edist_user(hass):
+    """user -> ... -> distributor_info -> submit, con ARERA che dà un
+    operatore non supportato e scelta manuale di E-Distribuzione."""
+    res = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"regione": "Lombardia"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"provincia": "Milano"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"comune": "Vimodrone"})
+    # manual_select -> scelgo edistribuzione
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"distributor": "edistribuzione"}
+    )
+    # distributor_info -> submit
+    return await hass.config_entries.flow.async_configure(res["flow_id"], {})
+
+
+@pytest.fixture
+def _arera_sconosciuto(monkeypatch):
+    monkeypatch.setattr(cf, "async_get_comuni_tree", AsyncMock(return_value=FAKE_TREE))
+    monkeypatch.setattr(
+        cf, "async_query_distributore", AsyncMock(return_value=[OP_SCONOSCIUTO])
+    )
+
+
+async def test_edist_credenziali_non_valide(hass, _arera_sconosciuto, edist_mocks):
+    edist_mocks.auth.async_begin_login.side_effect = EdistribuzioneInvalidCredentials("no")
+    res = await _fino_a_edist_user(hass)
+    assert res["step_id"] == "edistribuzione_user"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.FORM
+    assert res["errors"] == {"base": "invalid_auth"}
+
+
+async def test_edist_pagina_login_cambiata(hass, _arera_sconosciuto, edist_mocks):
+    edist_mocks.auth.async_begin_login.side_effect = EdistribuzioneParsingError("markup")
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    assert res["errors"] == {"base": "cannot_connect"}
+
+
+async def test_edist_otp_non_valido(hass, _arera_sconosciuto, edist_mocks):
+    edist_mocks.auth.async_submit_otp.side_effect = EdistribuzioneInvalidOtp("nope")
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    assert res["step_id"] == "edistribuzione_otp"
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"otp": "000000"})
+    assert res["errors"] == {"base": "invalid_otp"}
+
+
+async def test_edist_un_solo_pod_crea_entry_subito(hass, _arera_sconosciuto, edist_mocks):
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"otp": "123456"})
+    assert res["type"] == FlowResultType.CREATE_ENTRY
+    assert res["data"]["distributor"] == "edistribuzione"
+    assert res["data"][CONF_PODS] == ["IT001E00000009"]
+    assert res["data"][CONF_REFRESH_TOKEN] == "ref-nuovo"
+
+
+async def test_edist_nessun_pod_sull_account_abortisce(hass, _arera_sconosciuto, edist_mocks):
+    edist_mocks.api.async_get_supplies.return_value = []
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"otp": "123456"})
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "no_pods_found"
+
+
+async def test_edist_recupero_pod_fallito_abortisce(hass, _arera_sconosciuto, edist_mocks):
+    edist_mocks.api.async_get_supplies.side_effect = RuntimeError("boom")
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"otp": "123456"})
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "edistribuzione_supplies_failed"
+
+
+async def test_edist_piu_pod_si_scelgono(hass, _arera_sconosciuto, edist_mocks):
+    edist_mocks.api.async_get_supplies.return_value = [
+        {"IdPod": "IT001E00000009"},
+        {"IdPod": "IT001E00000010"},
+    ]
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"otp": "123456"})
+    assert res["step_id"] == "edistribuzione_pod"
+
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {CONF_PODS: ["IT001E00000010"]}
+    )
+    assert res["type"] == FlowResultType.CREATE_ENTRY
+    assert res["data"][CONF_PODS] == ["IT001E00000010"]
+
+
+def _entry_edist(hass, pods=("IT001E00000009",)):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "distributor": "edistribuzione",
+            CONF_PODS: list(pods),
+            CONF_REFRESH_TOKEN: "ref-vecchio",
+        },
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def test_edist_reauth_aggiorna_refresh_token(hass, edist_mocks):
+    entry = _entry_edist(hass)
+    res = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "reauth", "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    assert res["step_id"] == "edistribuzione_reauth_user"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"otp": "123456"})
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "reauth_successful"
+    assert entry.data[CONF_REFRESH_TOKEN] == "ref-nuovo"
+
+
+async def test_edist_opzioni_menu(hass):
+    entry = _entry_edist(hass)
+    res = await hass.config_entries.options.async_init(entry.entry_id)
+    assert res["type"] == FlowResultType.MENU
+    assert set(res["menu_options"]) == {
+        "edistribuzione_aggiungi_pod",
+        "edistribuzione_rimuovi_pod",
+        "orario",
+    }
+
+
+async def test_edist_opzioni_aggiungi_pod(hass, edist_mocks):
+    entry = _entry_edist(hass, pods=["IT001E00000009"])
+    edist_mocks.api.async_get_supplies.return_value = [
+        {"IdPod": "IT001E00000009"},
+        {"IdPod": "IT001E00000010"},
+    ]
+    res = await hass.config_entries.options.async_init(entry.entry_id)
+    res = await hass.config_entries.options.async_configure(
+        res["flow_id"], {"next_step_id": "edistribuzione_aggiungi_pod"}
+    )
+    assert res["step_id"] == "edistribuzione_aggiungi_pod"
+    res = await hass.config_entries.options.async_configure(
+        res["flow_id"], {"pods_da_aggiungere": ["IT001E00000010"]}
+    )
+    assert res["type"] == FlowResultType.CREATE_ENTRY
+    assert entry.data[CONF_PODS] == ["IT001E00000009", "IT001E00000010"]
