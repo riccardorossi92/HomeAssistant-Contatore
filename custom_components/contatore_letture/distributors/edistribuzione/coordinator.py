@@ -262,7 +262,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         coda per quel POD è vuota e async_get_ultima_data_disponibile
         restituisce None finché non ha dati.
         """
-        oggi = date.today()
+        oggi = dt_util.now().date()
         installazione = self.entry.data.get(CONF_DATA_INSTALLAZIONE)
         atteso = oggi - timedelta(days=RITARDO_DATI_GIORNI)
 
@@ -397,7 +397,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 f"La data di inizio ({data_da}) è successiva a quella di fine ({data_a})."
             )
 
-        ultimo_utile = date.today() - timedelta(days=RITARDO_DATI_GIORNI)
+        ultimo_utile = dt_util.now().date() - timedelta(days=RITARDO_DATI_GIORNI)
         if data_a > ultimo_utile:
             raise ServiceValidationError(
                 f"La data di fine ({data_a}) è troppo recente: al momento si assume che i "
