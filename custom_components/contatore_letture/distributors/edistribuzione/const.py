@@ -77,23 +77,21 @@ PIVA = "05779711000"  # confermata via scheda operatore ARERA (Id operatore 435,
 # documenta esplicitamente, quindi resta un valore dedotto dall'uso, non
 # garantito. Il meccanismo di coda lo rende comunque robusto anche se
 # sbagliato: se il ritardo vero fosse maggiore, il giorno finisce
-# semplicemente in coda finché non arriva, entro MAX_TENTATIVI_PER_GIORNO.
+# semplicemente in coda finché non arriva, entro ABBANDONO_CODA_DOPO_GIORNI.
 RITARDO_DATI_GIORNI = 1
 
 CONF_DATA_INSTALLAZIONE = "data_installazione"
 CONF_GIORNI_DA_RIPROVARE = "giorni_da_riprovare"
 CONF_ORA_RICHIESTA = "ora_richiesta"
 
-# Vedi la nota estesa in pcf_common/const.py: il numero va letto insieme al
-# ritmo dei tentativi, non come "numero di giorni". Il coordinator gira ogni
-# ora ma chiede dati solo dopo ORA_MINIMA_RICHIESTA, quindi restano ~5 cicli
-# utili a sera, e ogni ciclo incrementa il contatore di TUTTI i giorni in
-# coda insieme (il ciclo giornaliero chiede un intervallo, non un giorno
-# alla volta). 30 tentativi ≈ 6 giorni di margine, abbastanza da coprire
-# eventuali ritardi di pubblicazione senza accanirsi su date che non
-# arriveranno mai. Alzarlo non costa richieste in più: i tentativi viaggiano
-# dentro la stessa chiamata che copre l'intero intervallo.
-MAX_TENTATIVI_PER_GIORNO = 30
+# Vedi la nota estesa in pcf_common/const.py: un giorno resta in coda e viene
+# riprovato ai cicli successivi, e viene abbandonato dopo questo numero di
+# giorni REALI dal primo inserimento (non dopo N tentativi: il ritmo dei
+# tentativi dipende dal tipo di errore ed era imprevedibile come misura di
+# tempo). ~1 settimana copre eventuali ritardi di pubblicazione senza
+# accanirsi su date che non arriveranno mai; chi le volesse comunque può
+# richiederle a mano con contatore_letture.recupera_storico.
+ABBANDONO_CODA_DOPO_GIORNI = 7
 
 # Nel ciclo automatico questo limite non viene mai avvicinato (la coda si
 # stabilizza sui giorni di margine concessi sopra): serve quando un import
