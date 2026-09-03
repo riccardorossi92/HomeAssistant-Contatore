@@ -145,6 +145,7 @@ class PcfCoordinator(DataUpdateCoordinator):
             _LOGGER,
             name=f"{DOMAIN} ({display_name})",
             update_interval=timedelta(hours=DEFAULT_SCAN_INTERVAL_HOURS),
+            config_entry=entry,
         )
         self._entry = entry
         self._pods = pods

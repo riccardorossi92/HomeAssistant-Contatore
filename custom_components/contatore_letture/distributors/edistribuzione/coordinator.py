@@ -102,6 +102,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
             _LOGGER,
             name=f"{DOMAIN} (E-Distribuzione)",
             update_interval=timedelta(minutes=DEFAULT_UPDATE_INTERVAL_MINUTES),
+            config_entry=entry,
         )
         self.entry = entry
         self.pods: list[str] = list(entry.data[CONF_PODS])
