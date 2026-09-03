@@ -1,17 +1,15 @@
 """Plugin distributore E-Distribuzione.
 
 A differenza di Duereti/Unareti, protocollo completamente diverso (OAuth2+PKCE
-con OTP via Salesforce, non il protocollo PCF): non usa pcf_common. Auth/API
-sono state portate dalla bozza originale (auth.py, api.py) senza modifiche
-alla logica.
+con OTP via Salesforce, non il protocollo PCF): non usa pcf_common.
 
-STATO: auth.py/api.py/coordinator.py sono integrati e funzionanti (nella
-misura in cui lo era la bozza originale - vedi i caveat in auth.py sui
-regex di scraping non testati contro l'HTML reale). statistics.py NON è
-ancora scritto: manca lo schema JSON confermato della curva di carico
-(async_get_daily_load_profile/async_get_monthly_load_profile), quindi oggi
-non c'è importazione nella Energy Dashboard per questo distributore, solo
-i sensori diagnostici/di stato di sensor.py.
+Percorso completo funzionante: login email/password + OTP (auth.py) ->
+recupero POD e curva di carico giornaliera (api.py) -> import come external
+statistics nella Energy Dashboard (statistics.py), guidato dal coordinator
+(coordinator.py, con coda di retry per-POD). Caveat storico ancora valido:
+auth.py fa scraping di pagine Salesforce con dei regex fragili, che si
+rompono se Enel cambia il markup - vedi i commenti lì e
+scripts/verify_edistribuzione_login.py per verificarli contro l'HTML reale.
 """
 from __future__ import annotations
 

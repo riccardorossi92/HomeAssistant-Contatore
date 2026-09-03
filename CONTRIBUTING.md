@@ -75,7 +75,7 @@ punti dell'orchestratore condiviso.
 - `const.py` — costanti di protocollo, endpoint, e se serve import
   automatico giornaliero: `CONF_DATA_INSTALLAZIONE`,
   `CONF_GIORNI_DA_RIPROVARE`, `CONF_ORA_RICHIESTA`,
-  `RITARDO_DATI_GIORNI`, `MAX_TENTATIVI_PER_GIORNO`, `MAX_GIORNI_IN_CODA`,
+  `RITARDO_DATI_GIORNI`, `ABBANDONO_CODA_DOPO_GIORNI`, `MAX_GIORNI_IN_CODA`,
   `ORA_MINIMA_RICHIESTA` (stessi nomi di `edistribuzione/const.py`, per
   coerenza — anche se duplicati invece che condivisi, per scelta
   esplicita: vedi `documentation/architecture.md`).

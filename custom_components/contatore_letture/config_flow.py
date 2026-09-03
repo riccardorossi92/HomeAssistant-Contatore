@@ -366,10 +366,6 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     # ------------------------------------------------------------------
-    # Ramo E-Distribuzione (stub)
-    # ------------------------------------------------------------------
-
-    # ------------------------------------------------------------------
     # Ramo E-Distribuzione: login email/password -> OTP -> selezione POD
     # ------------------------------------------------------------------
 
