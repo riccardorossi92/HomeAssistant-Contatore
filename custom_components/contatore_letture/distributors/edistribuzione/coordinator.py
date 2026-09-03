@@ -33,6 +33,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from ...const import DOMAIN
 from .api import EdistribuzioneApiClient, EdistribuzioneApiError
 from .auth import EdistribuzioneAuthClient, EdistribuzioneAuthError
 from .const import (
@@ -49,7 +50,6 @@ from .const import (
     RITARDO_DATI_GIORNI,
 )
 from .statistics import async_get_ultima_data_disponibile, async_import_curva_giornaliera
-from ...const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 

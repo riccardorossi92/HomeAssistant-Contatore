@@ -173,15 +173,18 @@ con fixture basate su payload **reali**, non inventati, dove possibile).
 2. `pyflakes` sui file toccati — zero avvisi nuovi rispetto a quelli già
    noti (vedi `documentation/architecture.md` per l'elenco degli avvisi
    accettati e perché).
-3. `pytest tests/pcf_common/test_api.py tests/pcf_common/test_api_errori.py tests/edistribuzione/`
+3. `ruff check .` — pulito (config in `pyproject.toml`; è lo stesso
+   controllo che gira in CI nel workflow *Lint*).
+4. `pytest tests/pcf_common/test_api.py tests/pcf_common/test_api_errori.py tests/edistribuzione/`
    (i test che non richiedono Home Assistant installato) — devono
-   passare tutti.
-4. Se hai toccato `services.yaml`: verificalo con
+   passare tutti. La suite completa (`pytest`) gira in CI nel workflow
+   *Test*.
+5. Se hai toccato `services.yaml`: verificalo con
    `python3 -c "import yaml; yaml.safe_load(open('custom_components/contatore_letture/services.yaml'))"`
    **e** controlla che ogni campo abbia un solo `selector` (un YAML
    sintatticamente valido può comunque avere una struttura che Home
    Assistant rifiuta — è già successo, vedi cronologia dei commit).
-5. Se hai toccato la logica di un distributore con dati reali a
+6. Se hai toccato la logica di un distributore con dati reali a
    disposizione: preferisci verificarla con dati veri (script da
    terminale, o un confronto come quello fatto per confermare
    l'assunzione kWh di E-Distribuzione) piuttosto che assumere che il

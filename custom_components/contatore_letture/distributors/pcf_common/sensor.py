@@ -12,9 +12,9 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_PODS
 from ...const import DOMAIN
 from ...device_helpers import assicura_dispositivo_padre, collega_al_padre
+from .const import CONF_PODS
 
 
 def _device_info_account(entry: ConfigEntry, display_name: str) -> DeviceInfo:

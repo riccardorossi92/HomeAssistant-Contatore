@@ -41,13 +41,13 @@ from .const import (
 from .distributors import DISTRIBUTOR_REGISTRY, PIVA_TO_KEY
 from .distributors.pcf_common.config_flow_helpers import pod_gia_configurato
 from .distributors.pcf_common.const import (
+    CONF_ORA_RICHIESTA,
     CONF_PENDING_DATA_A,
     CONF_PENDING_DATA_DA,
     CONF_PENDING_IS_BACKFILL,
     CONF_PENDING_TICKET,
     FASE_GIORNALIERO,
     ORA_MINIMA_RICHIESTA,
-    CONF_ORA_RICHIESTA,
     RITARDO_VERIFICA_POD_GIORNI,
 )
 from .istat_comuni import async_get_comuni_tree
@@ -681,7 +681,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> "ContatoreLettureOptionsFlow":
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> ContatoreLettureOptionsFlow:
         return ContatoreLettureOptionsFlow()
 
 
