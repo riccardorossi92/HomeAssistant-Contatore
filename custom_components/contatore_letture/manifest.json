@@ -1,12 +1,14 @@
 {
   "domain": "contatore_letture",
   "name": "Contatore Letture",
+  "after_dependencies": [
+    "recorder"
+  ],
   "codeowners": [
     "@riccardorossi92"
   ],
   "config_flow": true,
   "documentation": "https://github.com/riccardorossi92/HomeAssistant-Contatore",
-  "homeassistant": "2025.4.0",
   "issue_tracker": "https://github.com/riccardorossi92/HomeAssistant-Contatore/issues",
   "iot_class": "cloud_polling",
   "requirements": [
