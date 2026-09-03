@@ -1,7 +1,7 @@
 """Platform sensor di contatore_letture.
 
 Un solo sensor.py per tutti i distributori: ciascun modulo distributore
-espone build_sensor_entities(coordinator, entry) e costruisce le proprie
+espone build_sensor_entities(hass, coordinator, entry) e costruisce le proprie
 entità. Per quelli di tipo "pcf" (Duereti/Unareti) la costruzione è
 delegata a pcf_common tramite il modulo del distributore specifico (che sa
 quale display_name usare); E-Distribuzione ha il proprio modulo con le sue
@@ -21,5 +21,5 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     info = DISTRIBUTOR_REGISTRY[distributor_key]
 
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    entità = info["module"].build_sensor_entities(coordinator, entry)
+    entità = info["module"].build_sensor_entities(hass, coordinator, entry)
     async_add_entities(entità)

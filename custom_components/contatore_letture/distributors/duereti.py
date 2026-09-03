@@ -48,5 +48,5 @@ async def async_valida_pod(hass, client_id: str, secret_id: str, pod: str, df: s
     return await config_flow_helpers.async_valida_pod(hass, client_id, secret_id, pod, df, BASE_URL)
 
 
-def build_sensor_entities(coordinator, entry: ConfigEntry) -> list:
-    return build_pcf_entities(coordinator, entry, DISPLAY_NAME)
+def build_sensor_entities(hass, coordinator, entry: ConfigEntry) -> list:
+    return build_pcf_entities(hass, coordinator, entry, DISPLAY_NAME)

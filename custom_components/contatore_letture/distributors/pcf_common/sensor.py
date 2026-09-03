@@ -14,6 +14,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import CONF_PODS
 from ...const import DOMAIN
+from ...device_helpers import assicura_dispositivo_padre, collega_al_padre
 
 
 def _device_info_account(entry: ConfigEntry, display_name: str) -> DeviceInfo:
@@ -26,23 +27,36 @@ def _device_info_account(entry: ConfigEntry, display_name: str) -> DeviceInfo:
     )
 
 
-def _device_info_pod(entry: ConfigEntry, pod: str, display_name: str) -> DeviceInfo:
-    """Dispositivo per un singolo POD, agganciato all'account come 'via_device'."""
-    return DeviceInfo(
+def _device_info_pod(
+    entry: ConfigEntry, pod: str, display_name: str, id_padre: str | None = None
+) -> DeviceInfo:
+    """Dispositivo per un singolo POD, agganciato all'account.
+
+    Il collegamento usa via_device_id su HA 2026.8+ e via_device sulle
+    versioni precedenti: vedi device_helpers.collega_al_padre.
+    """
+    info = DeviceInfo(
         identifiers={(DOMAIN, f"{entry.entry_id}_{pod}")},
         name=f"POD {pod}",
         manufacturer=display_name,
         model="Punto di prelievo",
-        via_device=(DOMAIN, entry.entry_id),
     )
+    return collega_al_padre(info, {(DOMAIN, entry.entry_id)}, id_padre)
 
 
-def build_pcf_entities(coordinator, entry: ConfigEntry, display_name: str) -> list:
+def build_pcf_entities(hass, coordinator, entry: ConfigEntry, display_name: str) -> list:
     """Costruisce le entità sensor condivise PCF per una config entry.
 
     Chiamata dal sensor.py di contatore_letture (non è un platform entry
     point autonomo: un solo sensor.py serve tutti i distributori)."""
     pods = entry.data.get(CONF_PODS, [])
+
+    # Il dispositivo "account" va registrato PRIMA di quelli per POD, che lo
+    # referenziano come padre: su HA 2026.8+ serve il suo ID interno, che
+    # esiste solo dopo la registrazione.
+    id_padre = assicura_dispositivo_padre(
+        hass, entry.entry_id, dict(_device_info_account(entry, display_name))
+    )
 
     entità = [
         PcfUltimoImportSensor(coordinator, entry, display_name),
@@ -51,10 +65,12 @@ def build_pcf_entities(coordinator, entry: ConfigEntry, display_name: str) -> li
     ]
     for pod_conf in pods:
         entità.append(
-            PcfUltimaDataDisponibileSensor(coordinator, entry, pod_conf["pod"], display_name)
+            PcfUltimaDataDisponibileSensor(
+                coordinator, entry, pod_conf["pod"], display_name, id_padre
+            )
         )
         entità.append(
-            PcfConsumoPeriodoSensor(coordinator, entry, pod_conf["pod"], display_name)
+            PcfConsumoPeriodoSensor(coordinator, entry, pod_conf["pod"], display_name, id_padre)
         )
 
     return entità
@@ -138,12 +154,15 @@ class PcfUltimaDataDisponibileSensor(CoordinatorEntity, RestoreEntity, SensorEnt
     # guarda il POD deve accorgersi che qualcosa non va; il dettaglio
     # dell'errore resta leggibile sul dispositivo "Account API".
 
-    def __init__(self, coordinator, entry: ConfigEntry, pod: str, display_name: str) -> None:
+    def __init__(
+        self, coordinator, entry: ConfigEntry, pod: str, display_name: str,
+        id_padre: str | None = None,
+    ) -> None:
         super().__init__(coordinator)
         self._pod = pod
         self._attr_unique_id = f"{entry.entry_id}_{pod}_ultima_data_disponibile"
         self._attr_name = "Ultima data disponibile"
-        self._attr_device_info = _device_info_pod(entry, pod, display_name)
+        self._attr_device_info = _device_info_pod(entry, pod, display_name, id_padre)
         self._ripristinato: date | None = None
 
     async def async_added_to_hass(self) -> None:
@@ -188,12 +207,15 @@ class PcfConsumoPeriodoSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
     _attr_native_unit_of_measurement = "kWh"
     _attr_icon = "mdi:lightning-bolt"
 
-    def __init__(self, coordinator, entry: ConfigEntry, pod: str, display_name: str) -> None:
+    def __init__(
+        self, coordinator, entry: ConfigEntry, pod: str, display_name: str,
+        id_padre: str | None = None,
+    ) -> None:
         super().__init__(coordinator)
         self._pod = pod
         self._attr_unique_id = f"{entry.entry_id}_{pod}_consumo_periodo"
         self._attr_name = "Consumo ultimo periodo"
-        self._attr_device_info = _device_info_pod(entry, pod, display_name)
+        self._attr_device_info = _device_info_pod(entry, pod, display_name, id_padre)
         self._ripristinato: float | None = None
 
     async def async_added_to_hass(self) -> None:
