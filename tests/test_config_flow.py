@@ -7,7 +7,7 @@ validazione credenziali/POD del modulo distributore.
 """
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from homeassistant.data_entry_flow import FlowResultType
@@ -42,6 +42,17 @@ FAKE_TREE = {
 OP_DUERETI = {"ragione_sociale": "DUERETI S.P.A.", "piva": duereti.PIVA}
 OP_UNARETI = {"ragione_sociale": "UNARETI S.P.A.", "piva": unareti.PIVA}
 OP_SCONOSCIUTO = {"ragione_sociale": "ACME Energia", "piva": "00000000000"}
+
+
+@pytest.fixture(autouse=True)
+def _mock_setup_entry():
+    """Evita che una CREATE_ENTRY (o un async_reload dopo reauth/opzioni)
+    faccia partire il setup reale della entry - coordinator, sessione
+    aiohttp, primo refresh: qui interessa solo l'esito del flow."""
+    with patch(
+        "custom_components.contatore_letture.async_setup_entry", return_value=True
+    ):
+        yield
 
 
 @pytest.fixture
