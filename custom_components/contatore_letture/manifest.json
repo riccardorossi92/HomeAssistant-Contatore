@@ -9,8 +9,8 @@
   ],
   "config_flow": true,
   "documentation": "https://github.com/riccardorossi92/HomeAssistant-Contatore",
-  "issue_tracker": "https://github.com/riccardorossi92/HomeAssistant-Contatore/issues",
   "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/riccardorossi92/HomeAssistant-Contatore/issues",
   "requirements": [
     "beautifulsoup4>=4.12.0"
   ],
