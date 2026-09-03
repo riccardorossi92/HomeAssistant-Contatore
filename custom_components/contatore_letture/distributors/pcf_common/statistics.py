@@ -29,8 +29,8 @@ from homeassistant.components.recorder.statistics import (
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .api import RisultatoLetture
 from ...const import DOMAIN
+from .api import RisultatoLetture
 
 _LOGGER = logging.getLogger(__name__)
 

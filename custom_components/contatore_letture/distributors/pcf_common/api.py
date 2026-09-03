@@ -27,8 +27,8 @@ from .const import (
     MAX_SUPPLY_POINTS_PER_REQUEST,
     MODE_CURVE,
     RESULT_POLL_INTERVAL_SECONDS,
-    RITARDO_VERIFICA_POD_GIORNI,
     RESULT_POLL_MAX_ATTEMPTS,
+    RITARDO_VERIFICA_POD_GIORNI,
     TOKEN_SAFETY_MARGIN_SECONDS,
     TOKEN_VALIDITY_SECONDS,
 )
@@ -194,7 +194,7 @@ class PcfNotFoundError(PcfApiError):
 class CurvaPunto:
     """Un singolo punto curva (timestamp + valore)."""
 
-    timestamp: "datetime"  # noqa: F821 - import sotto per evitare cicli
+    timestamp: datetime  # noqa: F821 - import sotto per evitare cicli
     valore_kwh: float
     # Valore grezzo della colonna FL_ORA_LEGALE del CSV. Serve a disambiguare
     # l'ora ripetuta al passaggio da ora legale a ora solare: il timestamp da
@@ -361,10 +361,10 @@ class PcfApiClient:
 
         try:
             data = _json.loads(testo)
-        except ValueError:
+        except ValueError as err:
             raise PcfApiError(
                 f"Risposta non JSON (HTTP {resp.status}): {testo[:300]}", http_status=resp.status
-            )
+            ) from err
 
         if resp.status == 200:
             return data
@@ -591,7 +591,7 @@ class PcfApiClient:
 class LetturaRiga:
     """Una riga di lettura periodica (mode=LETTURE), formato confermato via test reale."""
 
-    data_lettura: "datetime"  # noqa: F821
+    data_lettura: datetime  # noqa: F821
     tipo_lettura: str  # es. "SALDO"
     valore: float
     tipologia_misura: str  # es. "Energia attiva F3"
@@ -616,8 +616,9 @@ def parse_letture_zip(zip_bytes: bytes) -> dict[str, list[LetturaRiga]]:
     serva anche l'import delle letture periodiche. Richiede 'openpyxl'
     (import lazy per non renderlo una dipendenza hard dell'integrazione).
     """
-    import openpyxl
     from datetime import datetime
+
+    import openpyxl
 
     risultati: dict[str, list[LetturaRiga]] = {}
 

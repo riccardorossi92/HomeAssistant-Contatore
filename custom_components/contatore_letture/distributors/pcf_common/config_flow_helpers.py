@@ -11,6 +11,7 @@ import logging
 
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from ...const import DOMAIN
 from .api import (
     PcfApiClient,
     PcfApiError,
@@ -18,7 +19,6 @@ from .api import (
     PcfRateLimitError,
     PcfValidationError,
 )
-from ...const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
