@@ -254,8 +254,8 @@ documentato o auto-imposto, targeting per singolo POD) vedi
 intervallo di date, l'intervallo scelto viene convertito nei mesi solari
 che attraversa e per ciascuno si importa il mese intero.
 
-**`contatore_letture.recupera_ticket`** — solo Duereti/Unareti
-(E-Distribuzione non ha il concetto di ticket): riprende un ticket già
+**`contatore_letture.recupera_ticket`** — solo Duereti/Unareti (gli altri
+distributori non hanno il concetto di ticket): riprende un ticket già
 esistente presso il distributore, saltando la richiesta di un nuovo export.
 
 ```yaml
