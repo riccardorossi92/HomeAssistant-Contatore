@@ -104,6 +104,12 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._edistribuzione_access_token: str | None = None
         self._edistribuzione_refresh_token: str | None = None
         self._edistribuzione_pods: list[dict] = []
+        # Stato del ramo Areti
+        self._areti_session = None
+        self._areti_api = None
+        self._areti_email: str | None = None
+        self._areti_password: str | None = None
+        self._areti_pods: list[str] = []
 
     # ------------------------------------------------------------------
     # Wizard ARERA: regione -> provincia -> comune -> lookup
@@ -251,6 +257,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             if info["kind"] == "pcf":
                 return await self.async_step_pcf_credentials()
+            if info["kind"] == "areti":
+                return await self.async_step_areti_user()
             return await self.async_step_edistribuzione_user()
 
         return self.async_show_form(
@@ -531,6 +539,173 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         })
 
     # ------------------------------------------------------------------
+    # Ramo Areti: login email/password (nessun OTP osservato) -> aggiunta
+    # POD a mano, uno alla volta (a differenza di E-Distribuzione, non e'
+    # verificato un endpoint che elenchi "tutti i POD dell'account" - vedi
+    # documentation/areti-protocol.md).
+    # ------------------------------------------------------------------
+
+    async def async_step_areti_user(self, user_input: dict[str, Any] | None = None):
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            from aiohttp import TCPConnector
+
+            from .distributors.areti.auth import (
+                AretiAuthClient,
+                AretiInvalidCredentials,
+                AretiParsingError,
+                build_ssl_context,
+            )
+
+            # Sessione dedicata (non quella condivisa): serve il contesto
+            # SSL con l'intermedio DigiCert aggiunto (vedi
+            # auth.build_ssl_context, "Gotcha TLS" in
+            # areti-protocol.md) e una jar di cookie propria. Creata una
+            # sola volta e riusata tra i retry di questo stesso flow.
+            if self._areti_session is None:
+                self._areti_session = async_create_clientsession(
+                    self.hass, connector=TCPConnector(ssl=build_ssl_context())
+                )
+            auth = AretiAuthClient(self._areti_session)
+
+            try:
+                contesto = await auth.async_login(user_input["email"], user_input["password"])
+            except AretiInvalidCredentials:
+                errors["base"] = "invalid_auth"
+            except AretiParsingError:
+                _LOGGER.exception("Parsing della pagina di login Areti fallito")
+                errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                _LOGGER.exception("Errore imprevisto durante il login Areti")
+                errors["base"] = "cannot_connect"
+            else:
+                from .distributors.areti.api import AretiApiClient
+
+                self._areti_email = user_input["email"]
+                self._areti_password = user_input["password"]
+                self._areti_api = AretiApiClient(self._areti_session, contesto)
+                return await self.async_step_areti_add_pod()
+
+        return self.async_show_form(
+            step_id="areti_user",
+            data_schema=vol.Schema({
+                vol.Required("email"): str,
+                vol.Required("password"): str,
+            }),
+            errors=errors,
+        )
+
+    async def async_step_areti_add_pod(self, user_input: dict[str, Any] | None = None):
+        """Aggiunge uno o più POD, uno alla volta - come pcf_add_pod, ma
+        senza il campo 'df' (dato fiscale): getConfigurations lo risolve
+        da solo per ogni POD dall'account già autenticato."""
+        errors: dict[str, str] = {}
+        conflitto: str | None = None
+
+        if user_input is not None:
+            pod = user_input["pod"].strip().upper()
+            conflitto = pod_gia_configurato(self.hass, pod, pods_gia_in_flow=self._areti_pods)
+            if conflitto:
+                errors["pod"] = "pod_duplicato"
+            else:
+                from .distributors.areti.api import AretiApiError
+
+                try:
+                    await self._areti_api.async_get_configurations(pod)
+                except AretiApiError:
+                    errors["pod"] = "areti_pod_non_valido"
+                except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                    _LOGGER.exception("Errore imprevisto verificando il POD Areti %s", pod)
+                    errors["pod"] = "cannot_connect"
+                else:
+                    self._areti_pods.append(pod)
+                    if user_input.get("aggiungi_altro"):
+                        return await self.async_step_areti_add_pod()
+
+                    from .distributors.areti.const import CONF_EMAIL, CONF_PASSWORD
+
+                    titolo = self._areti_pods[0] if len(self._areti_pods) == 1 else f"{len(self._areti_pods)} POD"
+                    return self.async_create_entry(
+                        title=f"Areti ({titolo})",
+                        data={
+                            "distributor": "areti",
+                            "comune": self._comune_name,
+                            CONF_EMAIL: self._areti_email,
+                            CONF_PASSWORD: self._areti_password,
+                            CONF_PODS: self._areti_pods,
+                        },
+                    )
+
+        return self.async_show_form(
+            step_id="areti_add_pod",
+            data_schema=vol.Schema({
+                vol.Required("pod"): str,
+                vol.Optional("aggiungi_altro", default=False): bool,
+            }),
+            errors=errors,
+            description_placeholders={"pod_conflitto": conflitto or ""},
+        )
+
+    # ------------------------------------------------------------------
+    # Reauth Areti: stesso login dell'onboarding, niente selezione POD
+    # (la entry esistente ha già i suoi) - aggiorna email/password sulla
+    # entry esistente. Nessun OTP, quindi un solo step (a differenza di
+    # E-Distribuzione).
+    # ------------------------------------------------------------------
+
+    async def async_step_areti_reauth_user(self, user_input: dict[str, Any] | None = None):
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            from aiohttp import TCPConnector
+
+            from .distributors.areti.auth import (
+                AretiAuthClient,
+                AretiInvalidCredentials,
+                AretiParsingError,
+                build_ssl_context,
+            )
+            from .distributors.areti.const import CONF_EMAIL, CONF_PASSWORD
+
+            session = async_create_clientsession(
+                self.hass, connector=TCPConnector(ssl=build_ssl_context())
+            )
+            auth = AretiAuthClient(session)
+
+            try:
+                await auth.async_login(user_input["email"], user_input["password"])
+            except AretiInvalidCredentials:
+                errors["base"] = "invalid_auth"
+            except AretiParsingError:
+                _LOGGER.exception("Parsing della pagina di login Areti fallito (reauth)")
+                errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                _LOGGER.exception("Errore imprevisto durante il login Areti (reauth)")
+                errors["base"] = "cannot_connect"
+            else:
+                nuovi_dati = {
+                    **self._reauth_entry.data,
+                    CONF_EMAIL: user_input["email"],
+                    CONF_PASSWORD: user_input["password"],
+                }
+                self.hass.config_entries.async_update_entry(self._reauth_entry, data=nuovi_dati)
+                await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="areti_reauth_user",
+            data_schema=vol.Schema({
+                vol.Required("email"): str,
+                vol.Required("password"): str,
+            }),
+            errors=errors,
+            description_placeholders={
+                "pod_correnti": ", ".join(self._reauth_entry.data.get(CONF_PODS, []))
+            },
+        )
+
+    # ------------------------------------------------------------------
     # Reauth E-Distribuzione: stesso login+OTP dell'onboarding iniziale,
     # ma niente selezione POD (la entry esistente ha gia' i suoi) - alla
     # fine aggiorna il refresh_token sulla entry esistente invece di
@@ -641,6 +816,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_reauth_confirm()
         if kind == "edistribuzione":
             return await self.async_step_edistribuzione_reauth_user()
+        if kind == "areti":
+            return await self.async_step_areti_reauth_user()
         return self.async_abort(reason="reauth_not_supported")
 
     async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None):
@@ -710,6 +887,15 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
                     "edistribuzione_rimuovi_pod",
                     "orario",
                 ],
+            )
+        if kind == "areti":
+            # Niente voce "orario": a differenza di PCF/E-Distribuzione non
+            # sappiamo a che ora del giorno Areti pubblica un mese appena
+            # chiuso (vedi const.py di areti), quindi non c'e' ancora una
+            # base per renderlo configurabile.
+            return self.async_show_menu(
+                step_id="init",
+                menu_options=["areti_aggiungi_pod", "areti_rimuovi_pod"],
             )
         return self.async_abort(reason="options_not_supported")
 
@@ -912,3 +1098,106 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
                 selector.SelectSelectorConfig(options=pods, multiple=True)
             )
         })
+
+    # ------------------------------------------------------------------
+    # Areti: aggiungi/rimuovi POD
+    #
+    # A differenza di E-Distribuzione, non e' verificato un endpoint che
+    # elenchi "tutti i POD dell'account": aggiungere un POD significa
+    # digitarlo a mano e validarlo (come i PCF), non sceglierlo da un
+    # elenco scoperto automaticamente.
+    # ------------------------------------------------------------------
+
+    async def async_step_areti_aggiungi_pod(self, user_input: dict[str, Any] | None = None):
+        from aiohttp import TCPConnector
+
+        from .distributors.areti.api import AretiApiClient, AretiApiError
+        from .distributors.areti.auth import (
+            AretiAuthClient,
+            AretiAuthError,
+            build_ssl_context,
+        )
+        from .distributors.areti.const import CONF_EMAIL, CONF_PASSWORD
+
+        pods = list(self.config_entry.data.get(CONF_PODS, []))
+        errors: dict[str, str] = {}
+        conflitto: str | None = None
+
+        if user_input is not None:
+            pod = user_input["pod"].strip().upper()
+            conflitto = pod_gia_configurato(
+                self.hass, pod, pods_gia_in_flow=pods, escludi_entry_id=self.config_entry.entry_id
+            )
+            if conflitto:
+                errors["pod"] = "pod_duplicato"
+            else:
+                session = async_create_clientsession(
+                    self.hass, connector=TCPConnector(ssl=build_ssl_context())
+                )
+                auth = AretiAuthClient(session)
+                try:
+                    contesto = await auth.async_login(
+                        self.config_entry.data[CONF_EMAIL], self.config_entry.data[CONF_PASSWORD]
+                    )
+                    api = AretiApiClient(session, contesto)
+                    await api.async_get_configurations(pod)
+                except AretiApiError:
+                    errors["pod"] = "areti_pod_non_valido"
+                except AretiAuthError:
+                    _LOGGER.exception("Login Areti fallito nelle opzioni (aggiungi POD)")
+                    return self.async_abort(reason="areti_login_failed")
+                except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                    _LOGGER.exception("Errore imprevisto verificando il POD Areti %s", pod)
+                    errors["pod"] = "cannot_connect"
+
+                if not errors:
+                    pods.append(pod)
+                    new_data = {**self.config_entry.data, CONF_PODS: pods}
+                    self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+                    await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                    return self.async_create_entry(title="", data={})
+
+        return self.async_show_form(
+            step_id="areti_aggiungi_pod",
+            data_schema=vol.Schema({vol.Required("pod"): str}),
+            errors=errors,
+            description_placeholders={
+                "pod_correnti": ", ".join(pods) or "nessuno",
+                "pod_conflitto": conflitto or "",
+            },
+        )
+
+    async def async_step_areti_rimuovi_pod(self, user_input: dict[str, Any] | None = None):
+        from .distributors.areti.const import CONF_MESE_DA_IMPORTARE
+
+        pods = list(self.config_entry.data.get(CONF_PODS, []))
+        if not pods:
+            return self.async_abort(reason="nessun_pod")
+
+        if user_input is not None:
+            da_rimuovere = set(user_input.get("pods_da_rimuovere", []))
+            if len(da_rimuovere) >= len(pods):
+                return self.async_show_form(
+                    step_id="areti_rimuovi_pod",
+                    data_schema=self._schema_rimuovi_edistribuzione(pods),
+                    errors={"pods_da_rimuovere": "non_puoi_rimuoverli_tutti"},
+                )
+            pods_rimasti = [p for p in pods if p not in da_rimuovere]
+            cursori = {
+                pod: mese
+                for pod, mese in self.config_entry.data.get(CONF_MESE_DA_IMPORTARE, {}).items()
+                if pod in pods_rimasti
+            }
+            new_data = {
+                **self.config_entry.data,
+                CONF_PODS: pods_rimasti,
+                CONF_MESE_DA_IMPORTARE: cursori,
+            }
+            self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            return self.async_create_entry(title="", data={})
+
+        return self.async_show_form(
+            step_id="areti_rimuovi_pod",
+            data_schema=self._schema_rimuovi_edistribuzione(pods),
+        )

@@ -24,11 +24,6 @@ caricato). Attenzione: una HAR grezza contiene token di sessione e dati
 personali in chiaro, quindi **non va allegata a una issue pubblica** —
 apri prima una issue per concordare come condividerla.
 
-Non tutti i distributori sono fattibili: **Areti** (Roma) è stato
-analizzato e scartato — il suo portale non espone i consumi. La ricerca
-è in [`documentation/areti-protocol.md`](documentation/areti-protocol.md),
-utile per non ripartire da zero.
-
 ## Prima di tutto: che tipo di distributore stai aggiungendo?
 
 Ci sono due scenari molto diversi per costo/complessità.
@@ -167,6 +162,14 @@ con fixture basate su payload **reali**, non inventati, dove possibile).
   molto più veloce che passare dalla UI di Home Assistant, e l'unico modo
   per sapere se un cambiamento lato Enel ha rotto qualcosa (è già successo
   più volte, vedi `documentation/edistribuzione-protocol.md`).
+- **Cambi ad Areti**: quasi tutto vive in `distributors/areti/`. Se tocchi
+  `auth.py` (login) o il parsing delle risposte Aura, verifica con
+  `scripts/verify_areti_login.py` prima di aprire una PR — più veloce
+  della UI di Home Assistant, e l'unico modo per sapere se un cambiamento
+  lato Areti/Salesforce ha rotto qualcosa (vedi
+  `documentation/areti-protocol.md`). Il "Gotcha TLS" (intermedio DigiCert
+  mancante, `auth.build_ssl_context`) va verificato di nuovo se cambia il
+  certificato del sito.
 - **`strings.json`/`translations/it.json`**: vanno sempre tenuti
   **identici** (l'italiano è al momento l'unica lingua supportata,
   duplicata in entrambi i file). Se aggiungi/cambi una chiave in uno,

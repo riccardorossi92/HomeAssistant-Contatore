@@ -37,18 +37,27 @@ def pod_gia_configurato(
     nazionale, quindi non ha senso permettere lo stesso POD sotto due
     distributori diversi. Restituisce il titolo della config entry in
     conflitto, o None se il POD e' libero.
+
+    'pods' ha due forme diverse a seconda del distributore: lista di dict
+    {"pod": ..., "df": ...} per i PCF, lista di stringhe per
+    edistribuzione/areti (nessun dato fiscale per POD, sono gia' tutti
+    sull'utenza autenticata) - gestite entrambe qui, dato che il
+    controllo e' esplicitamente cross-distributore.
     """
     pod_norm = pod.strip().upper()
 
+    def _codice(p) -> str:
+        return p["pod"] if isinstance(p, dict) else p
+
     for p in pods_gia_in_flow or []:
-        if p["pod"].strip().upper() == pod_norm:
+        if _codice(p).strip().upper() == pod_norm:
             return "questa stessa configurazione"
 
     for entry in hass.config_entries.async_entries(DOMAIN):
         if entry.entry_id == escludi_entry_id:
             continue
         for p in entry.data.get("pods", []):
-            if p["pod"].strip().upper() == pod_norm:
+            if _codice(p).strip().upper() == pod_norm:
                 return entry.title
 
     return None

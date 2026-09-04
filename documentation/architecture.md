@@ -2,7 +2,7 @@
 
 ```
 contatore_letture/
-  config_flow.py         # orchestratore: wizard ARERA + step "pcf"/"edistribuzione" + reauth + options
+  config_flow.py         # orchestratore: wizard ARERA + step "pcf"/"edistribuzione"/"areti" + reauth + options
   __init__.py             # setup/unload, dispatch per distributore, servizi condivisi
   sensor.py                # dispatch verso il modulo del distributore
   istat_comuni.py           # elenco comuni: fetch live + fallback snapshot
@@ -26,6 +26,13 @@ contatore_letture/
       sensor.py                        # entità diagnostiche per POD (ultima data disponibile, consumo giorno)
       statistics.py                     # import external statistics (curva di carico)
       const.py                           # costanti di protocollo + schedulazione
+    areti/                          # pacchetto a sé, sessione a cookie su Salesforce Aura, nessun OTP
+      auth.py                       # login Visualforce/JSF -> frontdoor.jsp -> contesto Aura
+      api.py                         # client Aura (getConfigurations, getMisurazioni)
+      coordinator.py                  # cursore mensile persistito per POD (non coda/ritardo)
+      sensor.py                        # entità diagnostiche per POD (ultima data disponibile, consumo mese)
+      statistics.py                     # import external statistics (curva di carico a 15 min)
+      const.py                           # costanti di protocollo
 ```
 
 Ogni distributore (o gruppo di distributori che condividono un
@@ -40,8 +47,9 @@ logica specifica di un singolo distributore al suo interno — quella
 vive tutta dentro il pacchetto del distributore.
 
 Per i dettagli specifici di ciascun protocollo, vedi
-[`pcf-protocol.md`](pcf-protocol.md) (Duereti/Unareti) e
-[`edistribuzione-protocol.md`](edistribuzione-protocol.md).
+[`pcf-protocol.md`](pcf-protocol.md) (Duereti/Unareti),
+[`edistribuzione-protocol.md`](edistribuzione-protocol.md) e
+[`areti-protocol.md`](areti-protocol.md).
 
 ## Prima di usarlo su un'installazione reale
 
