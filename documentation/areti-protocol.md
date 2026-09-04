@@ -27,6 +27,7 @@ con POD attivo):
 
 | | |
 |---|---|
+| P.IVA | `05816611007` — confermata via scheda operatore ARERA (Id operatore 338, gruppo Acea) |
 | Area riservata | `https://areariservataclienti.areti.it/portaleareti/s/` |
 | Piattaforma | Salesforce Experience Cloud, framework **Aura** |
 | Org ID | `00D5I000000D0zj` |
@@ -351,22 +352,19 @@ File da toccare in `__init__.py` (oltre al nuovo pacchetto
 2. **`fwuid` nel tempo** — è l'id di build del framework Aura, cambia a
    ogni release Salesforce (qualche volta l'anno): va riletto dall'HTML
    della pagina `/s/` a ogni sessione, non hardcodato.
-3. **P.IVA / codice operatore ARERA** — ancora da confermare via
-   risposta ARERA per un comune servito da Areti, per popolare
-   `DISTRIBUTOR_REGISTRY`.
-4. **Credenziali errate / OTP occasionale** — non osservati in questa
+3. **Credenziali errate / OTP occasionale** — non osservati in questa
    cattura (un solo login riuscito, da dispositivo già noto). Se in
    produzione compare un passaggio diverso, va gestito quando si
    presenta.
-5. Verificare se `getMisurazioni` supporta anche `UA` in modo utile per
-   chi ha un impianto di produzione (fuori dallo scope minimo, ma utile
-   saperlo per non doverci tornare).
+4. Verificare se `getMisurazioni` supporta anche `UA` in modo utile per
+   chi ha un impianto di produzione (fuori dallo scope minimo attuale,
+   ma utile saperlo per non doverci tornare).
 
-Il modulo è scrivibile: pacchetto `distributors/areti/` (caso B di
-`CONTRIBUTING.md`), con `auth.py` per il login a form + gestione
-cookie/`aura.token`/`fwuid`, `api.py` per la catena di chiamate sopra,
-`coordinator.py`/`statistics.py` sul modello di `edistribuzione/` per
-l'import della curva a 15 minuti nella Energy Dashboard.
+Il modulo è implementato: pacchetto `distributors/areti/` (`auth.py` per
+il login a form + gestione cookie/`aura.token`/`fwuid`, `api.py` per la
+catena di chiamate sopra, `coordinator.py`/`statistics.py` sul modello
+di `edistribuzione/` per l'import della curva a 15 minuti nella Energy
+Dashboard), rilasciato in v0.5.0.
 
 ## Come contribuire
 
