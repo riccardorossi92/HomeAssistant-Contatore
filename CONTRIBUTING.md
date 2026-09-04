@@ -24,6 +24,11 @@ caricato). Attenzione: una HAR grezza contiene token di sessione e dati
 personali in chiaro, quindi **non va allegata a una issue pubblica** —
 apri prima una issue per concordare come condividerla.
 
+Non tutti i distributori sono fattibili: **Areti** (Roma) è stato
+analizzato e scartato — il suo portale non espone i consumi. La ricerca
+è in [`documentation/areti-protocol.md`](documentation/areti-protocol.md),
+utile per non ripartire da zero.
+
 ## Prima di tutto: che tipo di distributore stai aggiungendo?
 
 Ci sono due scenari molto diversi per costo/complessità.

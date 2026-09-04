@@ -39,6 +39,15 @@ uno di quelli supportati, o si ferma con un messaggio chiaro altrimenti.
 consumi. Se hai una fornitura Ireti puoi aiutare a completarlo — vedi
 [documentation/ireti-protocol.md](documentation/ireti-protocol.md).
 
+### Valutati e non fattibili
+
+**Areti** (Roma e Formello): l'area riservata Areti è un portale di
+pratiche/segnalazioni e non espone consumi né curve di carico (verificato
+sul route map completo del portale). Per i distributori locali il dato di
+misura passa dal SII, accessibile solo via portale del venditore o
+Portale Consumi ARERA (SPID/CIE). Dettagli in
+[documentation/areti-protocol.md](documentation/areti-protocol.md).
+
 ## Come funziona il rilevamento del distributore
 
 1. Selezioni regione → provincia → comune (elenco ISTAT, aggiornato
