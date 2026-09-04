@@ -24,7 +24,7 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | Duereti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
 | Unareti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
 | E-Distribuzione | Email + password + OTP | `recupera_storico` |
-| Areti (Roma e Formello) | Email + password | `recupera_storico` |
+| Areti | Email + password | `recupera_storico` |
 
 Per Duereti/Unareti/E-Distribuzione: login, lettura dati, import nella
 Energy Dashboard e più POD per configurazione — tutto confermato

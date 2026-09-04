@@ -1,4 +1,4 @@
-"""Plugin distributore Areti (Roma e Formello, gruppo ACEA).
+"""Plugin distributore Areti (gruppo ACEA).
 
 Protocollo completamente diverso da PCF (Duereti/Unareti) e da OAuth2+OTP
 (E-Distribuzione): sessione a cookie su un portale Salesforce Experience
