@@ -18,7 +18,7 @@ delle risposte), sul modello di `pcf-protocol.md`/
 |---|---|
 | Portale distributore espone consumi/curve di carico? | **Sì** — curva a 15 minuti + aggregato giornaliero, verificato con dati reali (agosto 2026) |
 | Meccanismo di login | **Verificato** — email/password su form Visualforce/JSF + ticket-exchange Salesforce, **nessun OTP** osservato |
-| Implementazione | **Fatta**: `distributors/areti/` (auth.py/api.py/coordinator.py/sensor.py/statistics.py), agganciata a config_flow/reauth/options/recupera_storico. Test in `tests/areti/`. |
+| Implementazione | **Fatta**: `distributors/areti/` (auth.py/api.py/coordinator.py/sensor.py/statistics.py), agganciata a config_flow/reauth/options/recupera_storico. Test in `tests/areti/`. **Non ancora testata su un'installazione Home Assistant reale** (v0.5.0, appena rilasciata) — solo login/curva verificati da terminale con `scripts/verify_areti_login.py`. |
 
 ## Quadro generale
 
