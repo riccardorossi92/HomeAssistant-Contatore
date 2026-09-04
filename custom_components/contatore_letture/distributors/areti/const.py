@@ -1,4 +1,4 @@
-"""Costanti del protocollo Areti (Roma e Formello, gruppo ACEA).
+"""Costanti del protocollo Areti (gruppo ACEA).
 
 Reverse-engineered da catture reali (HAR) del 04/09/2026, documentate per
 esteso in documentation/areti-protocol.md - questo file riporta solo le
