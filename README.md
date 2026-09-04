@@ -48,6 +48,13 @@ misura passa dal SII, accessibile solo via portale del venditore o
 Portale Consumi ARERA (SPID/CIE). Dettagli in
 [documentation/areti-protocol.md](documentation/areti-protocol.md).
 
+**Edyna** (Alto Adige / Südtirol): ricerca sospesa. Il portale
+distributore è una web form stateful tipo *Instant Developer* (endpoint
+unico a postback, nessuna API), e la cattura disponibile è di un account
+senza POD associato, quindi non arriva alle pagine di consumo. Serve un
+HAR nuovo da un account con POD — dettagli in
+[documentation/edyna-protocol.md](documentation/edyna-protocol.md).
+
 ## Come funziona il rilevamento del distributore
 
 1. Selezioni regione → provincia → comune (elenco ISTAT, aggiornato
