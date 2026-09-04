@@ -26,11 +26,19 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | E-Distribuzione | Email + password + OTP | `recupera_storico` |
 | Areti (Roma e Formello) | Email + password | `recupera_storico` |
 
-Per tutti: login, lettura dati, import nella Energy Dashboard e più POD
-per configurazione — tutto confermato funzionante. Dettagli sulle azioni
-in [Azioni](#azioni) più sotto. Areti importa a **mese** intero (non
-giorno per giorno come gli altri): vedi
-[Cosa fa una volta configurata](#cosa-fa-una-volta-configurata).
+Per Duereti/Unareti/E-Distribuzione: login, lettura dati, import nella
+Energy Dashboard e più POD per configurazione — tutto confermato
+funzionante su installazioni reali. Dettagli sulle azioni in
+[Azioni](#azioni) più sotto.
+
+> [!NOTE]
+> **Areti** è nuovo (v0.5.0): il protocollo è verificato con dati reali
+> (login, curva di carico), ma **non ancora testato ufficialmente
+> dentro Home Assistant** — nessuna installazione reale lo ha ancora
+> usato in produzione (config flow, import automatico, sensori). Se lo
+> provi e trovi un problema, apri una issue. Importa a **mese** intero
+> (non giorno per giorno come gli altri): vedi
+> [Cosa fa una volta configurata](#cosa-fa-una-volta-configurata).
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
@@ -214,6 +222,10 @@ di salvare.
 | POD configurati | Account | Quanti e quali POD in questa istanza |
 | Ultima data disponibile | POD | Ultimo giorno per cui esistono dati importati |
 | Consumo ultimo mese importato | POD | kWh totali dell'ultimo mese importato (con negli attributi il mese e il prossimo mese in attesa) |
+
+Stessa struttura di E-Distribuzione (stesso numero di entità: un
+dispositivo "Account" più due per POD) — cambia solo che qui il consumo
+è per mese, non per giorno, coerente con come Areti pubblica i dati.
 
 </details>
 
