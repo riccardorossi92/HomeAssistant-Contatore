@@ -81,6 +81,30 @@
         "title": "E-Distribuzione - Codice OTP",
         "description": "Inserisci il codice OTP ricevuto via email o SMS",
         "data": { "otp": "Codice OTP" }
+      },
+      "areti_user": {
+        "title": "Areti - Accedi",
+        "description": "Usa le stesse credenziali dell'area riservata Areti (areariservataclienti.areti.it). Nessun codice OTP richiesto.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "areti_add_pod": {
+        "title": "Areti - Aggiungi POD",
+        "description": "{pod_conflitto}",
+        "data": {
+          "pod": "Codice POD",
+          "aggiungi_altro": "Aggiungi un altro POD"
+        }
+      },
+      "areti_reauth_user": {
+        "title": "Areti - Accedi di nuovo",
+        "description": "Le credenziali salvate non sono più valide per i POD: {pod_correnti}. Accedi di nuovo con email e password.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -88,6 +112,7 @@
       "cannot_connect": "Impossibile contattare le API del distributore",
       "pod_duplicato": "Questo POD è già configurato in: {pod_conflitto}",
       "pod_non_valido": "POD o dato fiscale non riconosciuti dal distributore. Controlla il codice POD (inizia con IT e lo trovi in bolletta) e il codice fiscale o la partita IVA dell'intestatario della fornitura.",
+      "areti_pod_non_valido": "POD non riconosciuto su questo account Areti. Controlla il codice (inizia con IT e lo trovi in bolletta) e che sia associato all'account con cui hai fatto accesso.",
       "invalid_otp": "Codice OTP errato o scaduto",
       "nessun_pod_selezionato": "Seleziona almeno un POD"
     },
@@ -107,6 +132,8 @@
           "rimuovi_pod": "Rimuovi un POD",
           "edistribuzione_aggiungi_pod": "Aggiungi un POD",
           "edistribuzione_rimuovi_pod": "Rimuovi un POD",
+          "areti_aggiungi_pod": "Aggiungi un POD",
+          "areti_rimuovi_pod": "Rimuovi un POD",
           "orario": "Cambia l'orario della richiesta giornaliera"
         }
       },
@@ -145,12 +172,28 @@
         "data": {
           "ora_richiesta": "Ora (0-23)"
         }
+      },
+      "areti_aggiungi_pod": {
+        "title": "Aggiungi POD",
+        "description": "POD attualmente configurati: {pod_correnti}",
+        "data": {
+          "pod": "Codice POD"
+        }
+      },
+      "areti_rimuovi_pod": {
+        "title": "Rimuovi POD",
+        "description": "Seleziona i POD da rimuovere. I dati storici già importati nelle statistiche esterne non vengono cancellati.",
+        "data": {
+          "pods_da_rimuovere": "POD da rimuovere"
+        }
       }
     },
     "error": {
       "pod_duplicato": "Questo POD è già configurato in: {pod_conflitto}",
       "non_puoi_rimuoverli_tutti": "Non puoi rimuovere tutti i POD da qui: rimuovi direttamente l'integrazione se vuoi svuotarla del tutto",
-      "pod_non_valido": "POD o dato fiscale non riconosciuti dal distributore. Controlla il codice POD (inizia con IT e lo trovi in bolletta) e il codice fiscale o la partita IVA dell'intestatario della fornitura."
+      "pod_non_valido": "POD o dato fiscale non riconosciuti dal distributore. Controlla il codice POD (inizia con IT e lo trovi in bolletta) e il codice fiscale o la partita IVA dell'intestatario della fornitura.",
+      "areti_pod_non_valido": "POD non riconosciuto su questo account Areti. Controlla il codice (inizia con IT e lo trovi in bolletta) e che sia associato all'account con cui hai fatto accesso.",
+      "cannot_connect": "Impossibile contattare le API del distributore"
     },
     "abort": {
       "nessun_pod": "Non ci sono POD configurati da rimuovere",
@@ -158,7 +201,8 @@
       "nessun_pod_selezionato": "Seleziona almeno un POD da aggiungere",
       "nessun_pod_da_aggiungere": "Tutti i POD del tuo account sono già configurati qui",
       "edistribuzione_refresh_failed": "Non è stato possibile rinnovare l'accesso a E-Distribuzione. Riprova più tardi; se il problema persiste potrebbe servire un nuovo login (rimuovi e riconfigura l'integrazione).",
-      "edistribuzione_supplies_failed": "Errore imprevisto nel recupero dei POD dall'account. Riprova più tardi."
+      "edistribuzione_supplies_failed": "Errore imprevisto nel recupero dei POD dall'account. Riprova più tardi.",
+      "areti_login_failed": "Non è stato possibile accedere ad Areti con le credenziali salvate. Riprova più tardi; se il problema persiste potrebbe servire un nuovo login (rimuovi e riconfigura l'integrazione)."
     }
   }
 }

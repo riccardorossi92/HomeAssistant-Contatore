@@ -6,7 +6,7 @@ Unofficial meta-integration for Italian electricity distributor meter data in Ho
 [![GitHub Release](https://img.shields.io/github/v/release/riccardorossi92/HomeAssistant-Contatore.svg?style=for-the-badge&color=blue)](https://github.com/riccardorossi92/HomeAssistant-Contatore/releases)
 [![Integration Usage](https://img.shields.io/badge/dynamic/json?color=41BDF5&style=for-the-badge&logo=home-assistant&label=usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$['contatore_letture'].total)](https://analytics.home-assistant.io/)
 
-> **Disclaimer:** This is an unofficial integration and is not affiliated with or endorsed by ARERA, Duereti, Unareti, E-Distribuzione, or any other distributor in any way.
+> **Disclaimer:** This is an unofficial integration and is not affiliated with or endorsed by ARERA, Duereti, Unareti, E-Distribuzione, Areti, or any other distributor in any way.
 
 Integrazione per Home Assistant che, dato il tuo comune, individua
 automaticamente il distributore elettrico competente (interrogando
@@ -24,10 +24,13 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | Duereti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
 | Unareti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
 | E-Distribuzione | Email + password + OTP | `recupera_storico` |
+| Areti (Roma e Formello) | Email + password | `recupera_storico` |
 
 Per tutti: login, lettura dati, import nella Energy Dashboard e più POD
 per configurazione — tutto confermato funzionante. Dettagli sulle azioni
-in [Azioni](#azioni) più sotto.
+in [Azioni](#azioni) più sotto. Areti importa a **mese** intero (non
+giorno per giorno come gli altri): vedi
+[Cosa fa una volta configurata](#cosa-fa-una-volta-configurata).
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
@@ -40,13 +43,6 @@ consumi. Se hai una fornitura Ireti puoi aiutare a completarlo — vedi
 [documentation/ireti-protocol.md](documentation/ireti-protocol.md).
 
 ### Valutati e non fattibili
-
-**Areti** (Roma e Formello): l'area riservata Areti è un portale di
-pratiche/segnalazioni e non espone consumi né curve di carico (verificato
-sul route map completo del portale). Per i distributori locali il dato di
-misura passa dal SII, accessibile solo via portale del venditore o
-Portale Consumi ARERA (SPID/CIE). Dettagli in
-[documentation/areti-protocol.md](documentation/areti-protocol.md).
 
 **Edyna** (Alto Adige / Südtirol): ricerca sospesa. Il portale
 distributore è una web form stateful tipo *Instant Developer* (endpoint
@@ -114,6 +110,17 @@ il tuo account ha più POD associati, potrai selezionarne più di uno.
 
 </details>
 
+<details>
+<summary><b>Areti (email + password)</b></summary>
+
+Nessuna richiesta di abilitazione preventiva e **nessun OTP**: usa le
+stesse credenziali dell'[area riservata Areti](https://areariservataclienti.areti.it/portaleareti/s/).
+A differenza di E-Distribuzione, non esiste (per quanto verificato) un
+endpoint che elenchi tutti i POD dell'account: il wizard ti chiede di
+inserirli a mano, uno alla volta, e li verifica subito.
+
+</details>
+
 ## Installazione
 
 ### Tramite HACS (custom repository)
@@ -138,9 +145,10 @@ il tuo account ha più POD associati, potrai selezionarne più di uno.
 4. Inserisci le credenziali del tuo distributore (vedi
    [Prerequisiti](#prerequisiti) sopra)
 
-Dopo la configurazione, puoi aggiungere/rimuovere POD e cambiare l'orario
-della richiesta giornaliera in qualsiasi momento da **Configura**
-sull'integrazione (Opzioni) — per qualunque distributore.
+Dopo la configurazione, puoi aggiungere/rimuovere POD in qualsiasi momento
+da **Configura** sull'integrazione (Opzioni) — per qualunque distributore.
+Per Duereti/Unareti/E-Distribuzione puoi anche cambiare l'orario della
+richiesta giornaliera (per Areti non c'è, vedi sotto).
 
 ## Cosa fa una volta configurata
 
@@ -154,6 +162,15 @@ richiesto il giorno precedente. Se non è ancora stato pubblicato finisce
 in una coda e viene riprovato nei giorni successivi, così non si creano
 buchi nello storico. **Lo storico non viene recuperato automaticamente**:
 si richiede con l'azione `recupera_storico` (vedi [Azioni](#azioni) sotto).
+
+**Areti funziona diversamente**: il distributore pubblica i dati a **mese
+solare chiuso**, non giorno per giorno, quindi non c'è un orario
+configurabile. L'integrazione controlla **una volta al giorno** se il
+mese che sta aspettando è arrivato: se sì lo importa e passa al
+successivo, se no riprova al giro dopo — senza mai abbandonare un mese in
+attesa (a differenza degli altri distributori, dove un giorno molto
+vecchio viene infine abbandonato). Anche qui lo storico pregresso non
+viene recuperato automaticamente: usa `recupera_storico`.
 
 Tutte le entità esposte sono diagnostiche — i consumi stanno nelle
 statistiche, non in un sensore — raggruppate in un dispositivo "Account"
@@ -189,6 +206,17 @@ di salvare.
 
 </details>
 
+<details>
+<summary><b>Entità esposte — Areti</b></summary>
+
+| Entità | Dispositivo | Cosa mostra |
+|---|---|---|
+| POD configurati | Account | Quanti e quali POD in questa istanza |
+| Ultima data disponibile | POD | Ultimo giorno per cui esistono dati importati |
+| Consumo ultimo mese importato | POD | kWh totali dell'ultimo mese importato (con negli attributi il mese e il prossimo mese in attesa) |
+
+</details>
+
 ## Azioni
 
 **`contatore_letture.recupera_storico`** — richiede un periodo passato e lo
@@ -210,7 +238,9 @@ data:
 
 Per le sfumature specifiche di ciascun distributore (limite di 6 mesi
 documentato o auto-imposto, targeting per singolo POD) vedi
-[`documentation/`](documentation/).
+[`documentation/`](documentation/). Per Areti, che non ha una vera API a
+intervallo di date, l'intervallo scelto viene convertito nei mesi solari
+che attraversa e per ciascuno si importa il mese intero.
 
 **`contatore_letture.recupera_ticket`** — solo Duereti/Unareti
 (E-Distribuzione non ha il concetto di ticket): riprende un ticket già

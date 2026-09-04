@@ -1,6 +1,6 @@
 # Script disponibili
 
-Due script in `scripts/`, entrambi attivamente in uso.
+Script in `scripts/`, tutti attivamente in uso.
 
 ## `scripts/update_istat_snapshot.py`
 
@@ -50,3 +50,24 @@ una issue. Non invia nulla: scrive solo un file locale.
 
 Dettagli e stato della ricerca in
 [`ireti-protocol.md`](ireti-protocol.md).
+
+## `scripts/verify_areti_login.py`
+
+Testa da terminale il login **Areti** (email/password → ticket-exchange
+`frontdoor.jsp` → sessione Lightning) e il recupero della curva di
+carico a 15 minuti per un mese scelto, implementando da zero il
+protocollo documentato in [`areti-protocol.md`](areti-protocol.md) - non
+importa `distributors/areti/` (a differenza di
+`verify_edistribuzione_login.py`, che importa `auth.py`/`api.py` reali),
+per restare utilizzabile anche per verificare che il protocollo non sia
+cambiato lato Areti/Salesforce indipendentemente dal codice
+dell'integrazione.
+
+Alla fine salva la risposta completa in `areti_misure_debug.json` (file
+locale, escluso da git — contiene POD, codice fiscale e consumi reali,
+non va mai condiviso senza ripulirlo prima).
+
+Non è un test automatico (richiede credenziali reali digitate a mano):
+utile per iterare più velocemente di quanto permetta la UI di Home
+Assistant, e come primo controllo se il login smette di funzionare in
+produzione.
