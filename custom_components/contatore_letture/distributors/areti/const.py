@@ -18,13 +18,7 @@ AURA_URL = f"{BASE_URL}/portaleareti/s/sfsites/aura"
 HOME_URL = f"{BASE_URL}/portaleareti/s/"
 
 DISPLAY_NAME = "Areti"
-# Non ancora confermata via risposta ARERA (CONTRIBUTING.md chiede di non
-# inventarla): finché non lo è, resta None - PIVA_TO_KEY in
-# distributors/__init__.py scarta le entry senza piva, quindi Areti non
-# viene selezionata automaticamente dal lookup ARERA, solo manualmente
-# (async_step_manual_select). Vedi documentation/areti-protocol.md,
-# "Cosa resta aperto".
-PIVA = None
+PIVA = "05816611007"  # confermata via scheda operatore ARERA (Id operatore 338, gruppo Acea)
 
 CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
