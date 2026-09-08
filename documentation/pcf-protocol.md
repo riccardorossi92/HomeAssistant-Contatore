@@ -7,6 +7,49 @@ manuale via portale), a due fasi: richiesta di un ticket di export
 (`requestResult`) e download del file (CSV per la curva, XLSX per le
 letture periodiche).
 
+## Modello dati: mese solare chiuso (dal 08/09/2026)
+
+I manuali `Manuale_PCF_Rich_API` di Unareti e Duereti (identici tra loro a
+parte l'`HOST_NAME`), rivisti l'8 settembre 2026, dichiarano per le CURVE:
+
+> Le CURVE … sono disponibili solo i dati degli ultimi 5 anni **fino al
+> mese appena concluso**; … non è possibile ricevere CURVE per date …
+> **relative al mese corrente**. … non è possibile richiedere dati prima
+> della data di installazione del contatore 2G.
+
+Prima si poteva chiedere il singolo giorno (`dataDa == dataA` a `oggi-1`);
+ora il mese corrente non è più disponibile per le curve. `requestExport`
+accetta comunque un intervallo `dataDa`/`dataA` arbitrario (max 6 mesi),
+purché non entri nel mese corrente. Le LETTURE resterebbero disponibili
+fino a ieri, ma l'integrazione importa solo `MODE_CURVE`.
+
+Di conseguenza `pcf_common` usa lo **stesso modello di Areti**: un
+**cursore mensile persistito per POD** su `entry.data`
+(`CONF_MESE_DA_IMPORTARE = {pod: "YYYY-MM"}` = prossimo mese da importare).
+Ogni ciclo (una volta al giorno):
+
+- si prende il più vecchio tra i cursori che puntano a un **mese già
+  chiuso** e si fa **una** `requestExport` per il gruppo di POD che
+  condividono quel mese (c'è un solo slot `CONF_PENDING_TICKET`, e ogni
+  `requestResult` può restare in coda per ore: N export separati
+  significherebbero attese seriali);
+- quando il file arriva, ogni POD del gruppo per cui contiene dati avanza
+  il cursore al mese successivo; gli altri restano fermi e vengono
+  riprovati. **Nessun abbandono automatico** (scelta deliberata, come
+  Areti): un mese mai pubblicato blocca il cursore di quel POD finché non
+  arriva. L'escape è `contatore_letture.recupera_storico`;
+- primo avvio (o POD aggiunto dalle opzioni): il cursore parte dal mese
+  corrente, nessun backfill automatico;
+- se le external statistics coprono già il mese del cursore (cursore
+  perso, import fatto a mano) il ciclo avanza il cursore senza rifare la
+  richiesta.
+
+Non c'è più un "orario della richiesta" configurabile per Duereti/Unareti
+(la voce resta solo per E-Distribuzione, che pubblica ancora giorno per
+giorno). Gli helper di mese puri stanno in `pcf_common/date_utils.py`
+(nessun import da `homeassistant`, così `api.py` li può usare per la
+verifica del POD in configurazione).
+
 `pcf_common/*` è condiviso tra Duereti e Unareti.
 `distributors/duereti.py` e `distributors/unareti.py` sono comunque
 volutamente **file separati** (non un'unica classe parametrizzata): se
@@ -32,9 +75,17 @@ scriptate per minimizzare il rischio di errori di trascrizione:
 - parametrizzato `base_url` nel client API (prima hardcoded su Duereti);
 - parametrizzato `display_name` in coordinator/sensor/statistics per i
   messaggi utente-facing e i nomi delle entità;
-- **nessuna modifica alla logica**: retry del WAF, gestione dei
-  409/429/404, coda dei giorni da riprovare, calcolo del mese precedente
-  completo, gestione del cambio ora legale — tutto identico all'originale.
+- **nessuna modifica alla logica** al momento del porting: retry del WAF,
+  gestione dei 409/429/404, coda dei giorni da riprovare, calcolo del mese
+  precedente completo, gestione del cambio ora legale — tutto identico
+  all'originale.
+
+> [!NOTE]
+> Il `coordinator.py` è poi **divergito dall'originale** con il passaggio
+> al modello a mese chiuso (08/09/2026, vedi sopra): la coda dei giorni da
+> riprovare e l'orario configurabile sono stati rimossi, sostituiti dal
+> cursore mensile per POD. `api.py` (parsing, WAF, gestione HTTP) è invece
+> rimasto quello portato.
 
 Verificato dopo la trasformazione:
 - sintassi Python valida su tutti i file (`py_compile`);

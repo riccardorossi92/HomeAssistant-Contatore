@@ -37,8 +37,8 @@ funzionante su installazioni reali. Dettagli sulle azioni in
 > dentro Home Assistant** — nessuna installazione reale lo ha ancora
 > usato in produzione (config flow, import automatico, sensori). Se lo
 > provi e trovi un problema, apri una issue. Importa a **mese** intero
-> (non giorno per giorno come gli altri): vedi
-> [Cosa fa una volta configurata](#cosa-fa-una-volta-configurata).
+> (come Duereti/Unareti; solo E-Distribuzione resta giorno per giorno):
+> vedi [Cosa fa una volta configurata](#cosa-fa-una-volta-configurata).
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
@@ -155,8 +155,9 @@ inserirli a mano, uno alla volta, e li verifica subito.
 
 Dopo la configurazione, puoi aggiungere/rimuovere POD in qualsiasi momento
 da **Configura** sull'integrazione (Opzioni) — per qualunque distributore.
-Per Duereti/Unareti/E-Distribuzione puoi anche cambiare l'orario della
-richiesta giornaliera (per Areti non c'è, vedi sotto).
+Per **E-Distribuzione** puoi anche cambiare l'orario della richiesta
+giornaliera (per Duereti/Unareti/Areti non serve: importano a mese chiuso,
+vedi sotto).
 
 ## Cosa fa una volta configurata
 
@@ -165,20 +166,22 @@ I dati importati sono visibili come **external statistics**
 Statistiche**, utilizzabili nella Energy Dashboard, per tutti i
 distributori supportati.
 
-**Ogni sera dopo le 19:00** (orario configurabile dalle opzioni) viene
-richiesto il giorno precedente. Se non è ancora stato pubblicato finisce
-in una coda e viene riprovato nei giorni successivi, così non si creano
-buchi nello storico. **Lo storico non viene recuperato automaticamente**:
-si richiede con l'azione `recupera_storico` (vedi [Azioni](#azioni) sotto).
+**Duereti, Unareti e Areti** pubblicano i dati a **mese solare chiuso**,
+non giorno per giorno (per Duereti/Unareti è un cambio imposto dai
+distributori a settembre 2026: prima si poteva chiedere il singolo
+giorno). L'integrazione tiene, per ogni POD, il **mese che sta
+aspettando**, e **una volta al giorno** controlla se è disponibile: se sì
+lo importa e passa al successivo, se no riprova al giro dopo — senza mai
+abbandonare un mese in attesa. Un POD nuovo parte dal mese corrente:
+niente backfill automatico.
 
-**Areti funziona diversamente**: il distributore pubblica i dati a **mese
-solare chiuso**, non giorno per giorno, quindi non c'è un orario
-configurabile. L'integrazione controlla **una volta al giorno** se il
-mese che sta aspettando è arrivato: se sì lo importa e passa al
-successivo, se no riprova al giro dopo — senza mai abbandonare un mese in
-attesa (a differenza degli altri distributori, dove un giorno molto
-vecchio viene infine abbandonato). Anche qui lo storico pregresso non
-viene recuperato automaticamente: usa `recupera_storico`.
+**E-Distribuzione** invece pubblica giorno per giorno: **ogni sera dopo le
+19:00** (orario configurabile dalle opzioni) viene richiesto il giorno
+precedente; se non è ancora pubblicato finisce in una coda e viene
+riprovato nei giorni successivi, così non si creano buchi.
+
+Per tutti, **lo storico pregresso non viene recuperato automaticamente**:
+si richiede con l'azione `recupera_storico` (vedi [Azioni](#azioni) sotto).
 
 Tutte le entità esposte sono diagnostiche — i consumi stanno nelle
 statistiche, non in un sensore — raggruppate in un dispositivo "Account"
@@ -191,10 +194,10 @@ dettaglio.
 | Entità | Dispositivo | Cosa mostra |
 |---|---|---|
 | Ultimo import | Account | Fine del periodo dell'ultimo import riuscito |
-| Attesa file (minuti) | Account | Da quanto si attende il file; `0` se niente in coda |
+| Attesa file (minuti) | Account | Da quanto si attende il file; `0` se non c'è una richiesta in corso |
 | POD configurati | Account | Quanti e quali POD in questa istanza |
 | Ultima data disponibile | POD | Ultimo giorno per cui esistono dati importati |
-| Consumo ultimo periodo | POD | kWh totali dell'ultimo periodo importato |
+| Consumo ultimo periodo | POD | kWh totali dell'ultimo mese importato |
 
 *Attesa file* è utile per un'automazione di allerta: se resta alto per ore,
 qualcosa si è inceppato. POD e dato fiscale vengono verificati subito in

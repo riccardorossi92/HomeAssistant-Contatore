@@ -14,7 +14,8 @@ contatore_letture/
     unareti.py                  # BASE_URL/DISPLAY_NAME/PIVA Unareti (sottile)
     pcf_common/                   # libreria condivisa Duereti/Unareti
       api.py                       # client requestToken/requestExport/requestResult
-      coordinator.py                 # polling, coda giorni da riprovare, retry ticket
+      coordinator.py                 # cursore mensile per POD (mese chiuso), retry ticket
+      date_utils.py                   # helper di mese puri (no import da homeassistant)
       statistics.py                   # import external statistics + gestione DST
       sensor.py                        # entità diagnostiche (parametrizzate su display_name)
       config_flow_helpers.py            # validazione credenziali/POD condivisa
