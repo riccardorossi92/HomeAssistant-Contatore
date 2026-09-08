@@ -1,10 +1,10 @@
 """Fixture per i test che istanziano davvero il PcfCoordinator.
 
-I test esistenti (test_api*.py, test_coordinator_dates.py) coprono funzioni
-isolate. Questi invece esercitano il coordinator completo - coda dei giorni
-da riprovare, ripresa di un ticket in sospeso, pianificazione oraria -
-sostituendo rete e recorder con fake controllabili, cosi' restano
-deterministici e senza I/O.
+I test in test_api*.py / test_date_utils.py coprono funzioni isolate.
+Questi invece esercitano il coordinator completo nel modello a mese chiuso
+- cursori 'mese_da_importare' per POD, ripresa di un ticket in sospeso,
+recupero storico - sostituendo rete e recorder con fake controllabili,
+cosi' restano deterministici e senza I/O.
 
 Che cosa viene sostituito:
 - PcfApiClient -> FakePcfApi (i tre metodi che il coordinator chiama)
@@ -52,8 +52,8 @@ def curva(*giorni: date, pod: str = POD_TEST, kwh: float = 1.0) -> dict[str, Ris
     """Risultato tipo parse_curve_zip: un punto (a mezzanotte) per ogni giorno.
 
     Serve a simulare cosa contiene il file restituito dal distributore: il
-    coordinator confronta i giorni presenti nel file con quelli richiesti per
-    decidere cosa togliere/mettere in coda.
+    coordinator guarda per quali POD il file contiene dati per decidere se
+    avanzarne il cursore mensile.
     """
     punti = [
         CurvaPunto(timestamp=datetime(g.year, g.month, g.day), valore_kwh=kwh)
