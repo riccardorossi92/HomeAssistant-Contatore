@@ -18,7 +18,6 @@ nostri 3 distributori invece che a centinaia.
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -30,7 +29,6 @@ from homeassistant.helpers.aiohttp_client import (
     async_get_clientsession,
 )
 from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
-from homeassistant.util import dt as dt_util
 
 from .arera_lookup import AreraLookupError, async_query_distributore
 from .const import (
@@ -40,16 +38,14 @@ from .const import (
     DOMAIN,
 )
 from .distributors import DISTRIBUTOR_REGISTRY, PIVA_TO_KEY
+from .distributors.edistribuzione.const import CONF_ORA_RICHIESTA, ORA_MINIMA_RICHIESTA
 from .distributors.pcf_common.config_flow_helpers import pod_gia_configurato
 from .distributors.pcf_common.const import (
-    CONF_ORA_RICHIESTA,
     CONF_PENDING_DATA_A,
     CONF_PENDING_DATA_DA,
     CONF_PENDING_IS_BACKFILL,
     CONF_PENDING_TICKET,
-    FASE_GIORNALIERO,
-    ORA_MINIMA_RICHIESTA,
-    RITARDO_VERIFICA_POD_GIORNI,
+    FASE_AUTOMATICA,
 )
 from .istat_comuni import async_get_comuni_tree
 
@@ -96,7 +92,10 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._client_id: str | None = None
         self._secret_id: str | None = None
         self._pods: list[dict] = []
-        self._ticket_verifica: str | None = None
+        # (ticket, data_da, data_a) del job accodato dalla verifica del primo
+        # POD: l'ultimo mese solare concluso. Salvato come pendente sulla
+        # entry così il primo ciclo lo riprende invece di rifare l'export.
+        self._ticket_verifica: tuple | None = None
         self._reauth_entry: config_entries.ConfigEntry | None = None
         # Stato del ramo E-Distribuzione
         self._edistribuzione_auth = None
@@ -328,15 +327,15 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if conflitto:
                 errors["pod"] = "pod_duplicato"
             else:
-                errore, ticket = await modulo.async_valida_pod(
+                errore, verifica = await modulo.async_valida_pod(
                     self.hass, self._client_id, self._secret_id, user_input["pod"], user_input["df"]
                 )
                 if errore:
                     errors["pod"] = errore
                 else:
                     self._pods.append({"pod": user_input["pod"], "df": user_input["df"]})
-                    if ticket and not self._ticket_verifica:
-                        self._ticket_verifica = ticket
+                    if verifica and not self._ticket_verifica:
+                        self._ticket_verifica = verifica
                     if user_input.get("aggiungi_altro"):
                         return await self.async_step_pcf_add_pod()
 
@@ -348,14 +347,12 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_PODS: self._pods,
                     }
                     if self._ticket_verifica:
-                        giorno = (
-                            dt_util.now().date() - timedelta(days=RITARDO_VERIFICA_POD_GIORNI)
-                        ).isoformat()
+                        ticket, data_da, data_a = self._ticket_verifica
                         dati.update({
-                            CONF_PENDING_TICKET: self._ticket_verifica,
-                            CONF_PENDING_DATA_DA: giorno,
-                            CONF_PENDING_DATA_A: giorno,
-                            CONF_PENDING_IS_BACKFILL: FASE_GIORNALIERO,
+                            CONF_PENDING_TICKET: ticket,
+                            CONF_PENDING_DATA_DA: data_da.isoformat(),
+                            CONF_PENDING_DATA_A: data_a.isoformat(),
+                            CONF_PENDING_IS_BACKFILL: FASE_AUTOMATICA,
                         })
                     return self.async_create_entry(
                         title=f"{modulo.DISPLAY_NAME} ({len(self._pods)} POD)",
@@ -875,9 +872,13 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
         distributor_key = self.config_entry.data["distributor"]
         kind = DISTRIBUTOR_REGISTRY[distributor_key]["kind"]
         if kind == "pcf":
+            # Niente voce "orario": dal passaggio al modello a mese chiuso
+            # (i dati si pubblicano a mese solare concluso, non a una certa
+            # ora del giorno) non c'è più un orario di pubblicazione da
+            # configurare per Duereti/Unareti.
             return self.async_show_menu(
                 step_id="init",
-                menu_options=["aggiungi_pod", "rimuovi_pod", "orario"],
+                menu_options=["aggiungi_pod", "rimuovi_pod"],
             )
         if kind == "edistribuzione":
             return self.async_show_menu(
@@ -935,7 +936,10 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
             if conflitto:
                 errors["pod"] = "pod_duplicato"
             else:
-                errore, _ticket = await modulo.async_valida_pod(
+                # Il POD aggiunto dopo parte dal mese corrente (nessun
+                # backfill automatico, come Areti): il ticket dell'ultimo
+                # mese concluso qui non serve, lo storico si recupera a mano.
+                errore, _verifica = await modulo.async_valida_pod(
                     self.hass,
                     self.config_entry.data[CONF_CLIENT_ID],
                     self.config_entry.data[CONF_SECRET_ID],
