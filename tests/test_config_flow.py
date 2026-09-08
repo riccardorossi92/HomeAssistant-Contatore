@@ -9,6 +9,7 @@ EdistribuzioneAuthClient / EdistribuzioneApiClient.
 """
 from __future__ import annotations
 
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -37,10 +38,12 @@ from custom_components.contatore_letture.distributors.edistribuzione.auth import
     EdistribuzioneParsingError,
 )
 from custom_components.contatore_letture.distributors.edistribuzione.const import (
+    CONF_ORA_RICHIESTA,
     CONF_REFRESH_TOKEN,
 )
 from custom_components.contatore_letture.distributors.pcf_common.const import (
-    CONF_ORA_RICHIESTA,
+    CONF_PENDING_DATA_A,
+    CONF_PENDING_DATA_DA,
     CONF_PENDING_TICKET,
 )
 
@@ -75,13 +78,18 @@ def _mock_setup_entry():
 @pytest.fixture
 def flow_mocks(monkeypatch):
     """Sostituisce ISTAT + ARERA + validazioni. Default: ARERA trova Duereti,
-    credenziali e POD validi (POD con ticket 'TCK')."""
+    credenziali e POD validi. La verifica del POD restituisce il job accodato
+    per l'ultimo mese solare concluso: (ticket, data_da, data_a)."""
     query = AsyncMock(return_value=[OP_DUERETI])
     monkeypatch.setattr(cf, "async_get_comuni_tree", AsyncMock(return_value=FAKE_TREE))
     monkeypatch.setattr(cf, "async_query_distributore", query)
     monkeypatch.setattr(cf, "pod_gia_configurato", Mock(return_value=None))
     monkeypatch.setattr(duereti, "async_valida_credenziali", AsyncMock(return_value=None))
-    monkeypatch.setattr(duereti, "async_valida_pod", AsyncMock(return_value=(None, "TCK")))
+    monkeypatch.setattr(
+        duereti,
+        "async_valida_pod",
+        AsyncMock(return_value=(None, ("TCK", date(2026, 8, 1), date(2026, 8, 31)))),
+    )
     return {"query": query}
 
 
@@ -156,8 +164,11 @@ async def test_pcf_happy_path_crea_entry_con_ticket(hass, flow_mocks):
     assert res["type"] == FlowResultType.CREATE_ENTRY
     assert res["data"]["distributor"] == "duereti"
     assert res["data"][CONF_PODS] == [{"pod": "IT001E00000001", "df": "RSSMRA80A01H501U"}]
-    # il ticket di verifica POD viene salvato come pendente
+    # il ticket di verifica POD viene salvato come pendente, con il periodo
+    # (l'ultimo mese solare concluso) su cui è stato accodato
     assert res["data"][CONF_PENDING_TICKET] == "TCK"
+    assert res["data"][CONF_PENDING_DATA_DA] == "2026-08-01"
+    assert res["data"][CONF_PENDING_DATA_A] == "2026-08-31"
 
 
 async def test_pcf_credenziali_non_valide_mostra_errore(hass, flow_mocks):
@@ -222,14 +233,17 @@ def _entry_pcf(hass):
 
 
 async def test_opzioni_menu_pcf(hass):
+    """Dal passaggio al modello a mese chiuso il ramo PCF non ha più la voce
+    'orario': i dati non si pubblicano a una certa ora del giorno."""
     entry = _entry_pcf(hass)
     res = await hass.config_entries.options.async_init(entry.entry_id)
     assert res["type"] == FlowResultType.MENU
-    assert set(res["menu_options"]) == {"aggiungi_pod", "rimuovi_pod", "orario"}
+    assert set(res["menu_options"]) == {"aggiungi_pod", "rimuovi_pod"}
 
 
 async def test_opzioni_orario_salva_valore(hass):
-    entry = _entry_pcf(hass)
+    """Lo step 'orario' resta per E-Distribuzione (import ancora giornaliero)."""
+    entry = _entry_edist(hass)
     res = await hass.config_entries.options.async_init(entry.entry_id)
     res = await hass.config_entries.options.async_configure(
         res["flow_id"], {"next_step_id": "orario"}
