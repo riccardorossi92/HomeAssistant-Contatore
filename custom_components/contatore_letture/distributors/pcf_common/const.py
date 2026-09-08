@@ -9,90 +9,32 @@ CONF_CLIENT_ID = "client_id"
 CONF_SECRET_ID = "secret_id"
 CONF_PODS = "pods"  # lista di dict: {"pod": "IT001...", "df": "RSSMRA..."} - df = dato fiscale (CF o P.IVA)
 
-# Data (ISO) del giorno in cui l'integrazione è stata configurata. Al primo
-# avvio non si richiedono dati: ci si limita a validare le credenziali, e le
-# richieste giornaliere partono dal giorno successivo.
-CONF_DATA_INSTALLAZIONE = "data_installazione"
+# Cursore mensile persistito PER POD, su entry.data: {pod: "YYYY-MM"} = il
+# prossimo mese solare da importare per quel POD. Dal 08/09/2026 i manuali
+# Unareti/Duereti dichiarano che le CURVE sono disponibili "solo fino al
+# mese appena concluso" e "non è possibile ricevere CURVE relative al mese
+# corrente": il dato non è più giornaliero, si pubblica a mese chiuso (come
+# Areti). Non essendoci un ritardo fisso da cui dedurre quale mese chiedere,
+# il coordinator avanza un cursore per POD invece del vecchio schema
+# "sempre il giorno/mese precedente rispetto a oggi" - vedi
+# coordinator.PcfCoordinator.
+CONF_MESE_DA_IMPORTARE = "mese_da_importare"
 
-# I dati di un giorno risultano disponibili il giorno successivo, ma non da
-# subito: verificato sul campo che alle 10 del mattino il giorno precedente
-# spesso non c'è ancora, mentre in serata sì. (Osservato su Duereti; da
-# riconfermare su Unareti se emergono differenze.)
-#
-# ECCEZIONE NOTA - primi giorni del mese: il 02/09/2026 una requestExport
-# per il 01/09 è stata rifiutata con HTTP 400 "errore nelle date inserite",
-# mentre il 31/08 veniva accettata (verificato con una chiamata diretta,
-# stesso POD e stesse credenziali). Il distributore sembra non pubblicare i
-# giorni del mese corrente finché non ha chiuso il precedente.
-# NON si alza questa costante a 2 per gestirlo: perderemmo un giorno di
-# freschezza tutto l'anno per un problema che dura pochi giorni al mese, e
-# il resto del tempo il giorno precedente è regolarmente disponibile in
-# serata. Ci pensa la coda dei giorni da riprovare, che li riprende appena
-# il distributore inizia ad accettarli.
-RITARDO_DATI_GIORNI = 1
-
-# Giorni per cui il distributore non ha (ancora) restituito dati, in attesa
-# di essere richiesti di nuovo. Salvati sulla config entry come dict
-# {giorno ISO: data di primo inserimento ISO}: i dati possono arrivare con
-# qualche giorno di ritardo, e senza coda un giorno mancato resterebbe un
-# buco permanente nello storico. Retrocompatibile con i formati precedenti
-# (lista di date; dict {data: numero di tentativi}) - vedi _leggi_coda.
-CONF_GIORNI_DA_RIPROVARE = "giorni_da_riprovare"
-
-# Dopo quanti giorni IN CODA (contati dal primo inserimento, non dal numero
-# di tentativi) un giorno viene abbandonato: se dopo una settimana il dato
-# non c'è, con ogni probabilità non arriverà mai (fornitura non attiva quel
-# giorno, o misura mai validata). Chi lo volesse comunque può richiederlo a
-# mano con contatore_letture.recupera_storico.
-#
-# Prima era MAX_TENTATIVI_PER_GIORNO, un contatore di tentativi. Ma il ritmo
-# dei tentativi dipende dal tipo di errore del distributore (~1 al giorno se
-# requestExport riesce ma il file è incompleto, ~5 a sera se requestExport
-# viene rifiutata e il ciclo orario ritenta), quindi "N tentativi" non
-# corrispondeva a un numero di giorni prevedibile. Il conteggio a tempo
-# rende esplicito il comportamento voluto: riprova per ~una settimana.
-ABBANDONO_CODA_DOPO_GIORNI = 7
-
-# Quanti giorni tenere in coda al massimo. Evita che un problema prolungato
-# faccia crescere la coda senza limite; i giorni più vecchi vengono lasciati
-# cadere per primi.
-#
-# Nel ciclo automatico questo limite non viene mai avvicinato: la coda si
-# stabilizza intorno ai giorni di margine concessi da
-# ABBANDONO_CODA_DOPO_GIORNI (7). Serve invece quando un import copre un
-# periodo lungo e il file torna incompleto: lì vengono accodati molti giorni
-# in un colpo solo.
-MAX_GIORNI_IN_CODA = 30
-
-# Attesa suggerita all'utente quando il blocco riguarda l'autenticazione:
+# Minuti suggeriti all'utente quando il blocco riguarda l'autenticazione:
 # in quel caso il problema è generalizzato e non serve riprovare subito.
 MINUTI_ATTESA_SUGGERITI = 10
-
-# Giorni indietro usati dalla verifica del POD in fase di configurazione.
-# Uno in più del ritardo normale: la verifica può avvenire a qualunque ora,
-# anche di notte, quando i dati del giorno precedente potrebbero non essere
-# ancora pronti. Chiedendo un giorno più vecchio il ticket che ne risulta
-# punta a dati quasi certamente disponibili, quindi è subito utile invece di
-# restare a lungo in coda.
-RITARDO_VERIFICA_POD_GIORNI = RITARDO_DATI_GIORNI + 1
 
 # Fasi con cui viene marcato un ticket in sospeso, per sapere come trattarlo
 # quando viene ripreso. Stanno qui e non nel coordinator perché servono anche
 # al config flow, che altrimenti creerebbe un'importazione circolare.
-FASE_GIORNALIERO = "giornaliero"
+#
+# FASE_AUTOMATICA aveva valore "giornaliero" prima del passaggio al modello
+# a mese chiuso: _fase_da_entry ricade comunque su FASE_AUTOMATICA per
+# qualunque valore non riconosciuto, quindi i ticket pendenti salvati dalle
+# versioni precedenti restano gestiti correttamente.
+FASE_AUTOMATICA = "automatica"
 FASE_STORICO = "storico"
 FASE_MANUALE = "manuale"
-
-# Prima di quest'ora (locale) non si chiede nulla. Alle 10 i dati del giorno
-# precedente risultavano spesso non ancora pronti; alle 19 sì (verificato più
-# volte, su Duereti). L'orario esatto di pubblicazione non è documentato e
-# può variare, quindi è modificabile dalle opzioni dell'integrazione: questo
-# è solo il valore di partenza. In ogni caso un giorno non restituito finisce
-# comunque nella coda dei giorni da riprovare, quindi non va perso.
-ORA_MINIMA_RICHIESTA = 19
-
-# Chiave con cui l'orario scelto dall'utente è salvato nelle opzioni.
-CONF_ORA_RICHIESTA = "ora_richiesta"
 
 # Ticket requestExport in sospeso, salvato sulla config entry (sopravvive ai
 # reload/riavvii) così un reload non perde di vista un ticket già ottenuto
@@ -122,13 +64,14 @@ MODE_LETTURE = "LETTURE"
 RESULT_POLL_INTERVAL_SECONDS = 1800  # 30 minuti
 RESULT_POLL_MAX_ATTEMPTS = 12  # ~6 ore totali di attesa massima
 
-# I dati vengono probabilmente validati/chiusi a fine mese, non giorno per
-# giorno: il coordinator richiede sempre l'intero mese precedente completo
-# (vedi coordinator._mese_precedente_completo) e si auto-limita a non
-# rifare la stessa richiesta più volte per lo stesso mese. Un controllo
-# giornaliero va bene: se il mese è già stato importato, il coordinator
-# non rifà comunque la chiamata.
-DEFAULT_SCAN_INTERVAL_HOURS = 1
+# I dati si pubblicano a mese solare chiuso, non giorno per giorno: la
+# granularità utile è mensile, quindi un controllo al giorno è sufficiente
+# (come per Areti). Ogni ciclo, per ciascun POD, il coordinator guarda il
+# suo cursore: se punta a un mese già chiuso lo chiede, altrimenti resta
+# fermo. Il polling del file di un ticket già ottenuto è su un task in
+# background a parte (RESULT_POLL_INTERVAL_SECONDS), indipendente da questo
+# intervallo.
+DEFAULT_SCAN_INTERVAL_HOURS = 24
 
 ESITO_OK = 0
 # Non usata: il codice verifica esito != ESITO_OK. Documentata per
@@ -141,3 +84,9 @@ ESITO_ERRORE = 1
 MAX_CONCURRENT_REQUESTS = 5
 MAX_SUPPLY_POINTS_PER_REQUEST = 200
 MAX_DATE_RANGE_MONTHS = 6
+
+# Le CURVE sono disponibili solo per "gli ultimi 5 anni fino al mese appena
+# concluso" (manuale, sezione requestExport): recupera_storico rifiuta le
+# date più vecchie di così invece di far restare un ticket in coda per un
+# periodo che il distributore non ha.
+MAX_ANNI_STORICO = 5

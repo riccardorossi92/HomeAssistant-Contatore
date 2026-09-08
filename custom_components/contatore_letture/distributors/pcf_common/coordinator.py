@@ -1,8 +1,19 @@
 """DataUpdateCoordinator condiviso PCF (Duereti/Unareti).
 
-Logica di polling/coda/retry identica tra i due distributori (verificato
-sui rispettivi manuali); le sole differenze sono base_url e display_name,
-passati dal chiamante (vedi distributors/duereti.py, distributors/unareti.py).
+Logica identica tra i due distributori (verificato sui rispettivi
+manuali); le sole differenze sono base_url e display_name, passati dal
+chiamante (vedi distributors/duereti.py, distributors/unareti.py).
+
+Modello dati: MESE SOLARE CHIUSO, con un CURSORE PERSISTITO PER POD.
+Dal 08/09/2026 i manuali dichiarano che le CURVE sono disponibili "solo
+fino al mese appena concluso" e non "relative al mese corrente": il dato
+non è più giornaliero. Non essendoci un ritardo fisso da cui dedurre
+quale mese chiedere ad ogni ciclo, il coordinator tiene su entry.data un
+cursore {pod: "YYYY-MM"} = prossimo mese da importare per quel POD, e lo
+avanza solo quando quel mese è stato importato con successo (stesso
+schema del coordinator Areti). Un mese mai pubblicato blocca il cursore
+di quel POD finché non arriva: nessun abbandono automatico, l'escape è
+l'azione contatore_letture.recupera_storico.
 """
 from __future__ import annotations
 
@@ -32,54 +43,37 @@ from .api import (
     parse_curve_zip,
 )
 from .const import (
-    ABBANDONO_CODA_DOPO_GIORNI,
-    CONF_DATA_INSTALLAZIONE,
-    CONF_GIORNI_DA_RIPROVARE,
-    CONF_ORA_RICHIESTA,
+    CONF_MESE_DA_IMPORTARE,
     CONF_PENDING_DATA_A,
     CONF_PENDING_DATA_DA,
     CONF_PENDING_IS_BACKFILL,
     CONF_PENDING_TICKET,
     DEFAULT_SCAN_INTERVAL_HOURS,
-    FASE_GIORNALIERO,
+    FASE_AUTOMATICA,
     FASE_MANUALE,
     FASE_STORICO,
+    MAX_ANNI_STORICO,
     MAX_DATE_RANGE_MONTHS,
-    MAX_GIORNI_IN_CODA,
     MINUTI_ATTESA_SUGGERITI,
     MODE_CURVE,
-    ORA_MINIMA_RICHIESTA,
-    RITARDO_DATI_GIORNI,
+)
+from .date_utils import (
+    mese_e_chiuso,
+    mese_precedente_completo,
+    mese_str,
+    mese_successivo,
+    primo_giorno_mese,
+    ultimo_giorno_mese,
+    ultimo_mese_chiuso,
 )
 from .statistics import async_get_ultima_data_disponibile, async_import_curva
 
 _LOGGER = logging.getLogger(__name__)
 
-
-
-
-def _mese_precedente_completo(oggi: date) -> tuple[date, date]:
-    """Calcola primo/ultimo giorno del mese precedente a 'oggi'.
-
-    Le curve/misure dei distributori vengono in genere validate e chiuse a
-    fine mese, non giorno per giorno: chiedere dati di pochi giorni fa
-    (mese ancora in corso) rischia di far restare il job in coda a tempo
-    indeterminato perché quei dati semplicemente non esistono ancora.
-    """
-    primo_giorno_mese_corrente = oggi.replace(day=1)
-    ultimo_giorno_mese_precedente = primo_giorno_mese_corrente - timedelta(days=1)
-    primo_giorno_mese_precedente = ultimo_giorno_mese_precedente.replace(day=1)
-    return primo_giorno_mese_precedente, ultimo_giorno_mese_precedente
-
-
-def _giorni_nel_periodo(data_da: date, data_a: date) -> list[date]:
-    """Elenca i giorni di un periodo, estremi inclusi."""
-    giorni = []
-    giorno = data_da
-    while giorno <= data_a:
-        giorni.append(giorno)
-        giorno += timedelta(days=1)
-    return giorni
+# Chiavi di entry.data lasciate dalle versioni "a giorno" (coda dei giorni
+# da riprovare, data di installazione): non più lette da nessuno, vengono
+# rimosse al primo ciclo dopo l'aggiornamento per non lasciare stato morto.
+_CHIAVI_OBSOLETE = ("giorni_da_riprovare", "data_installazione")
 
 
 def _inizio_n_mesi_prima(fine: date, n_mesi: int) -> date:
@@ -97,32 +91,36 @@ def _inizio_n_mesi_prima(fine: date, n_mesi: int) -> date:
 
 
 class PcfCoordinator(DataUpdateCoordinator):
-    """Coordina il download giornaliero delle curve e il loro import come statistiche.
+    """Coordina il download mensile delle curve e il loro import come statistiche.
 
-    Il ciclo automatico chiede UN SOLO GIORNO per volta (oggi meno
-    RITARDO_DATI_GIORNI), dopo l'orario configurato nelle opzioni. I giorni
-    per cui il distributore non ha ancora dati finiscono in una coda e
-    vengono riprovati nei cicli successivi, dal piu' vecchio, cosi' non si
-    creano buchi nello storico.
+    Il ciclo automatico, una volta al giorno (la granularità utile è
+    mensile), per ciascun POD guarda il suo cursore 'mese_da_importare':
 
-    Il recupero di periodi passati NON e' automatico: si richiede a mano con
-    l'azione contatore_letture.recupera_storico (vedi async_recupera_storico),
-    che e' l'unico punto in cui si chiedono intervalli piu' lunghi di un
-    giorno.
+    - se punta a un mese GIÀ CHIUSO, il coordinator sceglie il più vecchio
+      tra tutti i cursori arretrati e chiede quel mese per il gruppo di POD
+      che lo condividono (una sola requestExport per ciclo: c'è un solo
+      slot per il ticket pendente, e ogni requestResult può restare in coda
+      per ore);
+    - quando il file arriva, ogni POD per cui contiene dati avanza il suo
+      cursore al mese successivo; gli altri restano fermi e vengono
+      riprovati al ciclo dopo. Nessun abbandono automatico.
+    - primo avvio (o POD aggiunto dopo): il cursore parte dal mese corrente,
+      nessun backfill automatico. Per lo storico c'è
+      contatore_letture.recupera_storico.
 
-    Le costanti FASE_GIORNALIERO/FASE_STORICO/FASE_MANUALE non sono fasi di
-    una pianificazione automatica: sono etichette che indicano da DOVE
-    proviene un import (rispettivamente: ciclo automatico, azione
-    recupera_storico, azione recupera_ticket), usate per i sensori
-    diagnostici e per riprendere correttamente un ticket dopo un riavvio.
+    Le costanti FASE_AUTOMATICA/FASE_STORICO/FASE_MANUALE non sono fasi di
+    una pianificazione: sono etichette che indicano da DOVE proviene un
+    import (ciclo automatico, azione recupera_storico, azione
+    recupera_ticket), usate per i sensori diagnostici, per riprendere
+    correttamente un ticket dopo un riavvio e per decidere se avanzare i
+    cursori (solo FASE_AUTOMATICA li tocca).
 
     requestExport è rapida e resta nel ciclo normale del coordinator.
-    requestResult può invece restare in coda per ore (polling ogni ~30 minuti,
-    vedi const.RESULT_POLL_INTERVAL_SECONDS/MAX_ATTEMPTS): bloccare qui il
-    coordinator farebbe fallire il primo setup dell'integrazione, che HA
-    considera fallito dopo pochi minuti di attesa. Il polling+import viene
-    quindi eseguito in un task in background, disaccoppiato dal ciclo del
-    coordinator.
+    requestResult può invece restare in coda per ore (polling ogni ~30
+    minuti, vedi const.RESULT_POLL_INTERVAL_SECONDS/MAX_ATTEMPTS): bloccare
+    qui il coordinator farebbe fallire il primo setup dell'integrazione,
+    che HA considera fallito dopo pochi minuti. Il polling+import viene
+    quindi eseguito in un task in background, disaccoppiato dal ciclo.
     """
 
     def __init__(
@@ -138,8 +136,8 @@ class PcfCoordinator(DataUpdateCoordinator):
         """base_url e display_name identificano il distributore concreto
         (Duereti/Unareti): vedi distributors/duereti.py e
         distributors/unareti.py, che istanziano questa classe passando i
-        rispettivi valori. Il resto della logica (polling, coda di retry,
-        gestione ticket) e' condivisa e non dipende dal distributore."""
+        rispettivi valori. Il resto della logica (cursori, gestione ticket,
+        polling in background) è condivisa e non dipende dal distributore."""
         super().__init__(
             hass,
             _LOGGER,
@@ -153,7 +151,6 @@ class PcfCoordinator(DataUpdateCoordinator):
         session = async_get_clientsession(hass)
         self.api = PcfApiClient(session, client_id, secret_id, base_url)
         self._background_task = None
-        self._ultima_richiesta: str | None = None  # chiave del periodo già richiesto
         self.pending_since: datetime | None = None  # per il sensore di stato/attesa
         self.pending_ticket: str | None = None
         # True finché requestToken funziona. Distingue un problema di
@@ -182,6 +179,57 @@ class PcfCoordinator(DataUpdateCoordinator):
             )
             self._background_task.cancel()
 
+    # ------------------------------------------------------------------
+    # Cursore mensile persistito, per POD
+    # ------------------------------------------------------------------
+
+    def _cursori(self) -> dict[str, str]:
+        """{pod: "YYYY-MM"} = prossimo mese da importare per ogni POD
+        configurato. I POD non ancora presenti (primo avvio, o POD aggiunto
+        dalle opzioni) vengono inizializzati al MESE CORRENTE - nessun
+        backfill automatico, esattamente come il coordinator Areti - e la
+        modifica viene persistita subito.
+        """
+        salvati = dict(self._entry.data.get(CONF_MESE_DA_IMPORTARE) or {})
+        mese_corrente = mese_str(dt_util.now().date())
+        codici = [p["pod"] for p in self._pods]
+        # Solo i POD configurati adesso: inizializza i mancanti al mese
+        # corrente e lascia cadere eventuali cursori di POD rimossi.
+        aggiornato = {pod: salvati.get(pod, mese_corrente) for pod in codici}
+        if aggiornato != salvati:
+            self.hass.config_entries.async_update_entry(
+                self._entry,
+                data={**self._entry.data, CONF_MESE_DA_IMPORTARE: aggiornato},
+            )
+        return aggiornato
+
+    def _scrivi_cursore(self, pod: str, mese: str) -> None:
+        cursori = dict(self._entry.data.get(CONF_MESE_DA_IMPORTARE) or {})
+        if cursori.get(pod) == mese:
+            return
+        cursori[pod] = mese
+        self.hass.config_entries.async_update_entry(
+            self._entry,
+            data={**self._entry.data, CONF_MESE_DA_IMPORTARE: cursori},
+        )
+
+    def _avanza_cursore(self, pod: str) -> None:
+        """Porta il cursore di un POD al mese successivo a quello attuale."""
+        cursori = self._entry.data.get(CONF_MESE_DA_IMPORTARE) or {}
+        attuale = cursori.get(pod)
+        if attuale is None:
+            return
+        nuovo = mese_successivo(attuale)
+        self._scrivi_cursore(pod, nuovo)
+        _LOGGER.info("POD %s: mese %s importato, cursore avanzato a %s", pod, attuale, nuovo)
+
+    def _pulisci_chiavi_obsolete(self) -> None:
+        """Rimuove da entry.data lo stato lasciato dalle versioni 'a giorno'."""
+        if not any(k in self._entry.data for k in _CHIAVI_OBSOLETE):
+            return
+        nuovi = {k: v for k, v in self._entry.data.items() if k not in _CHIAVI_OBSOLETE}
+        self.hass.config_entries.async_update_entry(self._entry, data=nuovi)
+
     async def async_forza_ticket(
         self, ticket: str, data_da: date | None = None, data_a: date | None = None
     ) -> None:
@@ -189,12 +237,13 @@ class PcfCoordinator(DataUpdateCoordinator):
 
         Serve quando si è ottenuto un ticket per altre vie (es. una chiamata
         fatta a mano con curl/Bruno, o un ticket che l'integrazione aveva
-        perso) e lo si vuole far elaborare senza chiedere a Duereti un nuovo
-        export - operazione che il WAF blocca spesso.
+        perso) e lo si vuole far elaborare senza chiedere un nuovo export -
+        operazione che il WAF blocca spesso.
 
         Se le date non vengono indicate si assume il mese precedente completo:
         servono solo come etichetta del periodo nei sensori diagnostici, non
-        influenzano i dati, che arrivano interamente dal file.
+        influenzano i dati, che arrivano interamente dal file. NON tocca i
+        cursori dell'import automatico (fase manuale).
         """
         if self._background_task and not self._background_task.done():
             # Forzare un ticket è un'azione deliberata dell'utente: ha la
@@ -209,7 +258,7 @@ class PcfCoordinator(DataUpdateCoordinator):
             self._background_task.cancel()
 
         if data_da is None or data_a is None:
-            default_da, default_a = _mese_precedente_completo(dt_util.now().date())
+            default_da, default_a = mese_precedente_completo(dt_util.now().date())
             data_da = data_da or default_da
             data_a = data_a or default_a
 
@@ -222,13 +271,12 @@ class PcfCoordinator(DataUpdateCoordinator):
             CONF_PENDING_TICKET: ticket,
             CONF_PENDING_DATA_DA: data_da.isoformat(),
             CONF_PENDING_DATA_A: data_a.isoformat(),
-            CONF_PENDING_IS_BACKFILL: False,
+            CONF_PENDING_IS_BACKFILL: FASE_MANUALE,
         }
         self.hass.config_entries.async_update_entry(self._entry, data=nuovi_dati)
 
         self.pending_since = dt_util.utcnow()
         self.pending_ticket = ticket
-        self._ultima_richiesta = None  # non è una richiesta nostra: non marcare il periodo
         self._background_task = self.hass.async_create_background_task(
             self._poll_and_import(ticket, data_da, data_a, fase=FASE_MANUALE),
             name=f"{DOMAIN}_poll_import_forzato_{ticket}",
@@ -237,24 +285,35 @@ class PcfCoordinator(DataUpdateCoordinator):
     async def async_recupera_storico(self, data_da: date, data_a: date) -> None:
         """Avvia manualmente il recupero di un periodo storico.
 
-        Il recupero dello storico non è automatico: le API Duereti accettano
-        al massimo 6 mesi per richiesta e ogni richiesta può restare in coda
+        Il recupero dello storico non è automatico: le API accettano al
+        massimo 6 mesi per richiesta e ogni richiesta può restare in coda
         per ore, quindi è l'utente a decidere quando e quanto recuperare.
+        Vale per l'intera configurazione (tutti i POD) e NON tocca i cursori
+        dell'import automatico: è un percorso indipendente.
 
         Solleva ServiceValidationError se il periodo non è valido: meglio un
         errore immediato e comprensibile in interfaccia che una richiesta che
-        Duereti rifiuterebbe ore dopo.
+        il distributore rifiuterebbe ore dopo.
         """
         if data_da > data_a:
             raise ServiceValidationError(
                 f"La data di inizio ({data_da}) è successiva a quella di fine ({data_a})."
             )
 
-        ultimo_utile = dt_util.now().date() - timedelta(days=RITARDO_DATI_GIORNI)
+        oggi = dt_util.now().date()
+        ultimo_utile = ultimo_giorno_mese(ultimo_mese_chiuso(oggi))
         if data_a > ultimo_utile:
             raise ServiceValidationError(
-                f"La data di fine ({data_a}) è troppo recente: i dati sono disponibili con "
-                f"un giorno di ritardo, quindi al massimo fino al {ultimo_utile}."
+                f"La data di fine ({data_a}) è troppo recente: le CURVE si fermano "
+                f"al mese solare concluso, quindi al massimo fino al {ultimo_utile}."
+            )
+
+        piu_vecchia_ammessa = date(oggi.year - MAX_ANNI_STORICO, oggi.month, 1)
+        if data_da < piu_vecchia_ammessa:
+            raise ServiceValidationError(
+                f"La data di inizio ({data_da}) è troppo lontana: le CURVE sono "
+                f"disponibili solo per gli ultimi {MAX_ANNI_STORICO} anni "
+                f"(non prima del {piu_vecchia_ammessa})."
             )
 
         limite = _inizio_n_mesi_prima(data_a, MAX_DATE_RANGE_MONTHS)
@@ -329,226 +388,41 @@ class PcfCoordinator(DataUpdateCoordinator):
         """Legge la fase del ticket pendente dalla config entry.
 
         Retrocompatibile con le versioni che salvavano un booleano o nomi di
-        fasi non più esistenti: in dubbio si ricade su giornaliero.
+        fasi non più esistenti (es. il vecchio "giornaliero"): in dubbio si
+        ricade su FASE_AUTOMATICA.
         """
         valore = self._entry.data.get(CONF_PENDING_IS_BACKFILL)
-        if isinstance(valore, str) and valore in (FASE_GIORNALIERO, FASE_STORICO, FASE_MANUALE):
+        if isinstance(valore, str) and valore in (FASE_AUTOMATICA, FASE_STORICO, FASE_MANUALE):
             return valore
-        return FASE_GIORNALIERO
-
-    @property
-    def _ora_richiesta(self) -> int:
-        """Ora (locale) a partire dalla quale chiedere i dati del giorno prima.
-
-        Configurabile dalle opzioni dell'integrazione: l'orario in cui Duereti
-        pubblica i dati non è documentato e può variare, quindi se l'utente
-        vede spesso richieste senza dati può spostarlo più avanti.
-        """
-        valore = self._entry.options.get(CONF_ORA_RICHIESTA)
-        if valore is None:
-            return ORA_MINIMA_RICHIESTA
-        try:
-            # Accettiamo anche float o stringa: il selettore numerico
-            # restituisce float, e ignorare in silenzio la scelta dell'utente
-            # sarebbe peggio che convertirla.
-            ora = int(float(valore))
-        except (TypeError, ValueError):
-            _LOGGER.warning(
-                "Ora richiesta non valida nelle opzioni (%r): uso le %d:00",
-                valore,
-                ORA_MINIMA_RICHIESTA,
-            )
-            return ORA_MINIMA_RICHIESTA
-        if not 0 <= ora <= 23:
-            _LOGGER.warning(
-                "Ora richiesta fuori intervallo (%r): uso le %d:00", valore, ORA_MINIMA_RICHIESTA
-            )
-            return ORA_MINIMA_RICHIESTA
-        return ora
-
-    def _leggi_coda(self) -> dict[str, date]:
-        """Coda dei giorni da riprovare, come {giorno ISO: data di primo inserimento}.
-
-        Persistita sulla config entry come {stringa ISO: stringa ISO}: i dati
-        possono arrivare con qualche giorno di ritardo, e senza coda un giorno
-        mancato resterebbe un buco permanente nello storico. La data di primo
-        inserimento fa da timer: un giorno viene abbandonato dopo
-        ABBANDONO_CODA_DOPO_GIORNI a prescindere da quante volte lo si è
-        richiesto (vedi _scrivi_coda).
-
-        Retrocompatibile con i due formati precedenti - lista di date, e dict
-        {data: numero di tentativi}: in entrambi i casi non si sa da quando il
-        giorno è in coda, quindi gli si assegna "oggi", una tantum al primo
-        aggiornamento dopo l'upgrade.
-        """
-        grezza = self._entry.data.get(CONF_GIORNI_DA_RIPROVARE) or {}
-        oggi = dt_util.now().date()
-        if isinstance(grezza, list):
-            return dict.fromkeys(grezza, oggi)
-        risultato: dict[str, date] = {}
-        for giorno, valore in grezza.items():
-            try:
-                risultato[giorno] = date.fromisoformat(valore)
-            except (TypeError, ValueError):
-                # Formato vecchio (il valore era un numero di tentativi) o
-                # valore corrotto: riparte il timer da oggi.
-                risultato[giorno] = oggi
-        return risultato
-
-    def _scrivi_coda(self, coda: dict[str, date]) -> None:
-        """Salva la coda, scartando i giorni troppo vecchi e limitandone il numero."""
-        oggi = dt_util.now().date()
-        pulita = {
-            giorno: da
-            for giorno, da in coda.items()
-            if (oggi - da).days < ABBANDONO_CODA_DOPO_GIORNI
-        }
-        abbandonati = set(coda) - set(pulita)
-        if abbandonati:
-            _LOGGER.warning(
-                "Giorni abbandonati dopo %d giorni in coda senza dati da %s: %s. "
-                "Se servono, richiedili con l'azione contatore_letture.recupera_storico.",
-                ABBANDONO_CODA_DOPO_GIORNI,
-                self._display_name,
-                ", ".join(sorted(abbandonati)),
-            )
-
-        if len(pulita) > MAX_GIORNI_IN_CODA:
-            # Teniamo i più recenti: hanno più probabilità di essere prodotti.
-            tenuti = sorted(pulita, reverse=True)[:MAX_GIORNI_IN_CODA]
-            scartati = set(pulita) - set(tenuti)
-            _LOGGER.warning(
-                "Coda dei giorni da riprovare oltre %d elementi: scarto i più vecchi (%s)",
-                MAX_GIORNI_IN_CODA,
-                ", ".join(sorted(scartati)),
-            )
-            pulita = {g: pulita[g] for g in tenuti}
-
-        serializzata = {giorno: da.isoformat() for giorno, da in pulita.items()}
-        if serializzata != self._entry.data.get(CONF_GIORNI_DA_RIPROVARE):
-            self.hass.config_entries.async_update_entry(
-                self._entry,
-                data={**self._entry.data, CONF_GIORNI_DA_RIPROVARE: serializzata},
-            )
-
-    def _accoda_giorno(self, giorno: date) -> None:
-        """Mette un giorno in coda se non c'è già; se c'è, lascia invariata la
-        data di primo inserimento (è quella che ne decide l'abbandono)."""
-        coda = self._leggi_coda()
-        chiave = giorno.isoformat()
-        if chiave in coda:
-            _LOGGER.info(
-                "Giorno %s ancora senza dati: in coda da %d giorni (max %d)",
-                chiave,
-                (dt_util.now().date() - coda[chiave]).days,
-                ABBANDONO_CODA_DOPO_GIORNI,
-            )
-        else:
-            coda[chiave] = dt_util.now().date()
-            _LOGGER.info(
-                "Giorno %s senza dati: messo in coda per riprovare (max %d giorni)",
-                chiave,
-                ABBANDONO_CODA_DOPO_GIORNI,
-            )
-        self._scrivi_coda(coda)
-
-    def _rimuovi_dalla_coda(self, giorni: list[date]) -> None:
-        """Toglie dalla coda i giorni per cui sono arrivati i dati."""
-        coda = self._leggi_coda()
-        rimossi = [g.isoformat() for g in giorni if g.isoformat() in coda]
-        if not rimossi:
-            return
-        for chiave in rimossi:
-            del coda[chiave]
-        _LOGGER.info("Dati ricevuti per %s: rimossi dalla coda", ", ".join(rimossi))
-        self._scrivi_coda(coda)
+        return FASE_AUTOMATICA
 
     def _prossima_richiesta(self) -> tuple[str | None, date, date]:
-        """Decide se c'è qualcosa da chiedere a Duereti in questo ciclo.
+        """Decide quale mese chiedere in questo ciclo.
 
-        Si chiede un giorno per volta:
-
-        - al primo avvio dopo l'installazione, subito il giorno atteso
-          (oggi-RITARDO_DATI_GIORNI) senza attendere l'orario configurato:
-          serve a verificare da subito che POD e dato fiscale siano validi;
-        - dai giorni successivi, dopo l'orario configurato, prima si smaltisce
-          la coda dei giorni per cui Duereti non aveva ancora dati (dal più
-          vecchio, per riempire i buchi in ordine), poi il giorno atteso.
-
-        Il recupero dello storico non è automatico: si avvia a mano con
-        l'azione contatore_letture.recupera_storico.
+        Guarda i cursori di tutti i POD: se almeno uno punta a un mese già
+        CHIUSO, sceglie il più vecchio tra quelli arretrati e restituisce il
+        suo primo/ultimo giorno. Se nessun cursore è arretrato (tutti fermi
+        al mese corrente, in attesa che si chiuda) non c'è nulla da chiedere.
 
         Restituisce (fase, data_da, data_a); fase è None se non c'è nulla da
         chiedere adesso.
         """
         oggi = dt_util.now().date()
-        installazione = self._entry.data.get(CONF_DATA_INSTALLAZIONE)
-        atteso = oggi - timedelta(days=RITARDO_DATI_GIORNI)
-
-        if not installazione:
-            # Primo avvio: nessuna attesa. Se POD o dato fiscale sono errati,
-            # requestExport risponde subito con un errore di validazione e il
-            # problema emerge ora invece che il giorno seguente.
-            self.hass.config_entries.async_update_entry(
-                self._entry,
-                data={**self._entry.data, CONF_DATA_INSTALLAZIONE: oggi.isoformat()},
-            )
-            _LOGGER.info(
-                "Primo avvio: richiedo i dati del %s per verificare POD e dato fiscale. "
-                "Da domani le richieste partiranno dopo le %d:00 (modificabile dalle "
-                "opzioni); per lo storico usa l'azione contatore_letture.recupera_storico.",
-                atteso,
-                self._ora_richiesta,
-            )
-            return FASE_GIORNALIERO, atteso, atteso
-
-        adesso = dt_util.now()
-        if adesso.hour < self._ora_richiesta:
+        cursori = self._cursori()
+        arretrati = [m for m in cursori.values() if mese_e_chiuso(m, oggi)]
+        if not arretrati:
             _LOGGER.debug(
-                "Sono le %02d:%02d, attendo le %d:00 prima di chiedere i dati",
-                adesso.hour,
-                adesso.minute,
-                self._ora_richiesta,
+                "Nessun cursore punta a un mese chiuso (cursori: %s): niente da chiedere",
+                cursori,
             )
             return None, oggi, oggi
 
-        # La coda ha la precedenza: i buchi si riempiono dal più vecchio, e i
-        # giorni recenti tornerebbero comunque in coda se non fossero pronti.
-        coda = self._leggi_coda()
-        arretrati = sorted(date.fromisoformat(g) for g in coda if date.fromisoformat(g) < atteso)
-        if arretrati:
-            # UNA SOLA richiesta che copre dal più vecchio arretrato fino al
-            # giorno atteso: le API accettano intervalli (è così che funziona
-            # recupera_storico), quindi non serve una chiamata separata per
-            # ogni giorno. Conta soprattutto perché ogni richiesta produce un
-            # ticket il cui requestResult può restare in coda per ore: un
-            # giorno alla volta significherebbe attese seriali.
-            #
-            # Chiedere anche il giorno atteso, e non solo gli arretrati, evita
-            # un buco silenzioso: prima i cicli occupati a smaltire la coda
-            # non lo richiedevano affatto, e il giorno dopo 'atteso' era già
-            # avanzato - quel giorno non veniva più chiesto da nessuno.
-            #
-            # L'intervallo può includere giorni già importati (se i buchi non
-            # sono contigui): è innocuo, l'import fa merge e ricalcola le
-            # somme progressive, si scaricano solo un po' più di dati.
-            #
-            # Il limite serve a non superare MAX_DATE_RANGE_MONTHS: 150 giorni
-            # stanno sempre sotto i 6 mesi calendariali con cui l'API valida
-            # l'intervallo. In pratica non si attiva quasi mai, perché la coda
-            # tiene al massimo MAX_GIORNI_IN_CODA giorni.
-            data_da = max(arretrati[0], atteso - timedelta(days=150))
-            _LOGGER.debug(
-                "Richiedo %s - %s in un'unica chiamata (%d giorni arretrati in coda)",
-                data_da,
-                atteso,
-                len(arretrati),
-            )
-            return FASE_GIORNALIERO, data_da, atteso
-
-        return FASE_GIORNALIERO, atteso, atteso
+        mese = min(arretrati)
+        return FASE_AUTOMATICA, primo_giorno_mese(mese), ultimo_giorno_mese(mese)
 
     async def _async_update_data(self) -> dict:
+        self._pulisci_chiavi_obsolete()
+
         if self._background_task and not self._background_task.done():
             _LOGGER.debug("Import precedente ancora in corso, salto questo ciclo")
             return await self._con_ultime_date(
@@ -560,8 +434,8 @@ class PcfCoordinator(DataUpdateCoordinator):
             # C'era già un ticket ottenuto da un requestExport riuscito prima
             # di un reload/riavvio: lo riprendiamo direttamente invece di
             # rifare requestExport da capo (che rischierebbe di essere
-            # bloccato dal WAF proprio mentre Duereti sta già lavorando sul
-            # ticket precedente).
+            # bloccato dal WAF proprio mentre il distributore sta già
+            # lavorando sul ticket precedente).
             _LOGGER.info("Riprendo il ticket %s salvato da un ciclo precedente", ticket_pendente)
             data_da = date.fromisoformat(self._entry.data[CONF_PENDING_DATA_DA])
             data_a = date.fromisoformat(self._entry.data[CONF_PENDING_DATA_A])
@@ -585,26 +459,29 @@ class PcfCoordinator(DataUpdateCoordinator):
         fase, data_da, data_a = self._prossima_richiesta()
         if fase is None:
             return await self._con_ultime_date(
-                self.data or {"stato": "nessuna richiesta necessaria al momento"}
+                self.data or {"stato": "nessun mese chiuso da importare"}
             )
 
-        chiave = f"{fase}:{data_da.isoformat()}_{data_a.isoformat()}"
+        mese = mese_str(data_da)
 
-        if chiave == self._ultima_richiesta:
+        # Gruppo = i POD il cui cursore è proprio questo mese. Una sola
+        # requestExport li copre tutti (il file contiene tutti i POD del
+        # gruppo): c'è un solo slot per il ticket pendente, e ogni
+        # requestResult può restare in coda per ore.
+        cursori = self._cursori()
+        gruppo = [p for p in self._pods if cursori.get(p["pod"]) == mese]
+        codici_gruppo = [p["pod"] for p in gruppo]
+
+        if await self._periodo_gia_coperto(data_a, codici_gruppo):
             _LOGGER.debug(
-                "Periodo %s già richiesto in questa sessione, nessuna nuova richiesta", chiave
+                "Mese %s già coperto dalle statistiche esistenti per %s: avanzo i cursori",
+                mese,
+                ", ".join(codici_gruppo),
             )
+            for pod in codici_gruppo:
+                self._avanza_cursore(pod)
             return await self._con_ultime_date(
-                self.data or {"stato": f"periodo {chiave} già richiesto"}
-            )
-
-        if await self._periodo_gia_coperto(data_a):
-            _LOGGER.debug(
-                "Periodo %s già coperto dalle statistiche esistenti: nessuna richiesta", chiave
-            )
-            self._ultima_richiesta = chiave
-            return await self._con_ultime_date(
-                self.data or {"stato": f"periodo {chiave} già coperto dai dati esistenti"}
+                self.data or {"stato": f"mese {mese} già coperto dai dati esistenti"}
             )
 
         # Prima la chiamata di autenticazione: il suo esito determina lo stato
@@ -621,32 +498,19 @@ class PcfCoordinator(DataUpdateCoordinator):
             self.token_ok = True
 
         try:
-            ticket = await self.api.request_export(data_da, data_a, self._pods, mode=MODE_CURVE)
+            ticket = await self.api.request_export(data_da, data_a, gruppo, mode=MODE_CURVE)
         except PcfAuthError as err:
             # Solleva ConfigEntryAuthFailed: HA lo gestisce da solo avviando
             # automaticamente il flusso di reauth con async_step_reauth.
             raise ConfigEntryAuthFailed(f"Credenziali non valide: {err}") from err
         except PcfApiError as err:
-            # Se a essere rifiutata e' la richiesta del ciclo giornaliero,
-            # TUTTI i giorni coinvolti vanno in coda invece di andare persi:
-            # al ciclo successivo 'atteso' sarebbe gia' un altro giorno,
-            # lasciando un buco permanente nello storico. Osservato il
-            # 02/09/2026 con "errore nelle date inserite" sul giorno
-            # precedente - non e' confermato se quel messaggio significhi
-            # "dati non ancora pronti" o altro, ma accodare e' comunque la
-            # cosa giusta: se il problema e' transitorio i giorni vengono
-            # recuperati, se e' permanente la coda si esaurisce da sola
-            # dopo ABBANDONO_CODA_DOPO_GIORNI giorni.
-            #
-            # Il ciclo giornaliero puo' ora chiedere un INTERVALLO (vedi
-            # _prossima_richiesta), non piu' un giorno solo: per questo si
-            # itera sul periodo invece di controllare data_da == data_a.
-            if fase == FASE_GIORNALIERO:
-                for giorno in _giorni_nel_periodo(data_da, data_a):
-                    self._accoda_giorno(giorno)
+            # Nessuna coda da alimentare: i cursori del gruppo restano dove
+            # sono e il mese viene richiesto di nuovo al ciclo successivo. Se
+            # il problema è transitorio si recupera da solo; se è permanente
+            # (mese mai pubblicato) il cursore resta fermo lì e l'utente ha
+            # comunque contatore_letture.recupera_storico.
             raise UpdateFailed(f"Errore chiamando requestExport: {err}") from err
 
-        self._ultima_richiesta = chiave
         self.pending_since = dt_util.utcnow()
         self.pending_ticket = ticket
 
@@ -661,7 +525,7 @@ class PcfCoordinator(DataUpdateCoordinator):
 
         self._background_task = self.hass.async_create_background_task(
             self._poll_and_import(ticket, data_da, data_a, fase),
-            name=f"{DOMAIN}_poll_import_{chiave}",
+            name=f"{DOMAIN}_poll_import_{fase}_{mese}",
         )
 
         return await self._con_ultime_date(
@@ -673,18 +537,19 @@ class PcfCoordinator(DataUpdateCoordinator):
             }
         )
 
-    async def _periodo_gia_coperto(self, data_a: date) -> bool:
-        """True se TUTTI i POD configurati hanno già dati persistenti (nelle
+    async def _periodo_gia_coperto(self, data_a: date, pods: list[str]) -> bool:
+        """True se TUTTI i POD indicati hanno già dati persistenti (nelle
         external statistics) che coprono almeno fino a 'data_a'.
 
-        Usa lo stesso stato che legge il sensore 'Ultima data disponibile',
-        quindi sopravvive a reload/riavvii - a differenza di
-        self._ultima_richiesta, che è solo in memoria.
+        Usa lo stesso stato che legge il sensore 'Ultima data disponibile':
+        se i dati di un mese esistono già ma il cursore era rimasto indietro
+        (cursore perso, import fatto a mano), il ciclo lo fa avanzare senza
+        rifare la richiesta.
         """
-        if not self._pods:
+        if not pods:
             return False
-        for pod_conf in self._pods:
-            data_disp = await async_get_ultima_data_disponibile(self.hass, pod_conf["pod"])
+        for pod in pods:
+            data_disp = await async_get_ultima_data_disponibile(self.hass, pod)
             if data_disp is None or data_disp < data_a:
                 return False
         return True
@@ -701,12 +566,13 @@ class PcfCoordinator(DataUpdateCoordinator):
         """
         note = (self.data or {}).get("ultime_date_per_pod", {})
         ultime_date = dict(note)
+        cursori = self._entry.data.get(CONF_MESE_DA_IMPORTARE) or {}
         for pod_conf in self._pods:
             pod = pod_conf["pod"]
             data_disp = await async_get_ultima_data_disponibile(self.hass, pod)
             if data_disp is not None:
                 ultime_date[pod] = data_disp.isoformat()
-        return {**dati, "ultime_date_per_pod": ultime_date}
+        return {**dati, "ultime_date_per_pod": ultime_date, "mese_da_importare_per_pod": dict(cursori)}
 
     def _avvia_reauth(self) -> None:
         """Avvia il flusso di reauth manualmente: serve perché questo viene
@@ -779,17 +645,14 @@ class PcfCoordinator(DataUpdateCoordinator):
             self.async_set_updated_data(dati)
             return
         except PcfNotFoundError as err:
-            # Unico caso in cui ha senso scartare il ticket: Duereti dice
-            # esplicitamente che non è collegato a nessun dato.
+            # Unico caso in cui ha senso scartare il ticket: il distributore
+            # dice esplicitamente che non è collegato a nessun dato.
             _LOGGER.error("Ticket %s non valido lato %s: %s", ticket, self._display_name, err)
             self.pending_since = None
             self.pending_ticket = None
             self._pulisci_ticket_pendente()
-            if fase == FASE_GIORNALIERO and "dat" in str(err).lower():
-                # "Nessun dato trovato": il periodo non è (ancora) disponibile.
-                # Lo mettiamo in coda invece di perderlo.
-                for giorno in _giorni_nel_periodo(data_da, data_a):
-                    self._accoda_giorno(giorno)
+            # I cursori del gruppo NON vengono avanzati: il mese verrà
+            # richiesto di nuovo al prossimo ciclo (nessuna coda).
             dati = await self._con_ultime_date(
                 {**(self.data or {}), "stato": f"ticket non valido: {err}", "ultimo_errore": str(err)}
             )
@@ -797,8 +660,8 @@ class PcfCoordinator(DataUpdateCoordinator):
             return
         except PcfApiError as err:
             # Timeout del polling, blocco WAF, errore di rete: il ticket lato
-            # Duereti resta valido, quindi lo CONSERVIAMO e al prossimo ciclo
-            # riprendiamo da lì invece di richiederne uno nuovo.
+            # distributore resta valido, quindi lo CONSERVIAMO e al prossimo
+            # ciclo riprendiamo da lì invece di richiederne uno nuovo.
             _LOGGER.error(
                 "Errore recuperando il file per il ticket %s: %s. Il ticket viene conservato "
                 "per riprovare al prossimo ciclo.",
@@ -861,27 +724,31 @@ class PcfCoordinator(DataUpdateCoordinator):
                 if ultima is not None:
                     date_importate[pod] = ultima.isoformat()
 
-            # Confrontiamo i giorni richiesti con quelli effettivamente
-            # presenti nel file: Duereti può restituire un file valido ma
-            # incompleto (i dati più recenti non ancora pubblicati). I giorni
-            # ottenuti escono dalla coda, quelli mancanti ci entrano.
-            if fase == FASE_GIORNALIERO:
-                ricevuti = {
-                    punto.timestamp.date()
-                    for risultato in risultati.values()
-                    for punto in risultato.punti
-                }
-                richiesti = _giorni_nel_periodo(data_da, data_a)
-                self._rimuovi_dalla_coda([g for g in richiesti if g in ricevuti])
-                for giorno in richiesti:
-                    if giorno not in ricevuti:
-                        self._accoda_giorno(giorno)
+            # Solo il ciclo automatico tocca i cursori: ogni POD del gruppo
+            # per cui il file contiene dati avanza al mese successivo; gli
+            # altri restano dove sono e vengono riprovati al ciclo dopo.
+            if fase == FASE_AUTOMATICA:
+                mese = mese_str(data_da)
+                cursori = self._entry.data.get(CONF_MESE_DA_IMPORTARE) or {}
+                for pod_conf in self._pods:
+                    pod = pod_conf["pod"]
+                    if cursori.get(pod) != mese:
+                        continue
+                    if risultati.get(pod) and risultati[pod].punti:
+                        self._avanza_cursore(pod)
+                    else:
+                        _LOGGER.info(
+                            "POD %s: il file per %s non contiene dati, cursore fermo, "
+                            "riprovo al prossimo ciclo",
+                            pod,
+                            mese,
+                        )
         except Exception as err:  # noqa: BLE001
             _LOGGER.exception(
                 "Errore elaborando il file ricevuto per il ticket %s: %s. Il ticket viene "
-                "CONSERVATO: il file lato Duereti è valido, il problema è nell'elaborazione "
-                "locale, quindi al prossimo ciclo verrà riscaricato con lo stesso ticket "
-                "invece di sprecarne uno nuovo (che il WAF potrebbe bloccare).",
+                "CONSERVATO: il file lato distributore è valido, il problema è "
+                "nell'elaborazione locale, quindi al prossimo ciclo verrà riscaricato con lo "
+                "stesso ticket invece di sprecarne uno nuovo (che il WAF potrebbe bloccare).",
                 ticket,
                 err,
             )

@@ -17,7 +17,7 @@ import re
 import time
 import zipfile
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date
 
 import aiohttp
 
@@ -28,10 +28,10 @@ from .const import (
     MODE_CURVE,
     RESULT_POLL_INTERVAL_SECONDS,
     RESULT_POLL_MAX_ATTEMPTS,
-    RITARDO_VERIFICA_POD_GIORNI,
     TOKEN_SAFETY_MARGIN_SECONDS,
     TOKEN_VALIDITY_SECONDS,
 )
+from .date_utils import mese_precedente_completo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -382,19 +382,21 @@ class PcfApiClient:
             raise PcfValidationError(message, http_status=400, data=data)
         raise PcfApiError(message, http_status=resp.status, data=data)
 
-    async def async_valida_pod(self, pod: str, df: str) -> str:
-        """Verifica che POD e dato fiscale siano validi, restituendo il ticket.
+    async def async_valida_pod(self, pod: str, df: str) -> tuple[str, date, date]:
+        """Verifica che POD e dato fiscale siano validi.
 
-        Fa una vera requestExport su un giorno solo (vedi
-        RITARDO_VERIFICA_POD_GIORNI): se la coppia POD/dato
-        fiscale non è valida Duereti risponde 400 con "Non ci sono POD/PDR
-        validi" (verificato), quindi l'errore emerge subito in fase di
-        configurazione invece che al primo ciclo di aggiornamento.
+        Fa una vera requestExport sull'ultimo mese solare concluso: se la
+        coppia POD/dato fiscale non è valida Duereti risponde 400 con "Non
+        ci sono POD/PDR validi" (verificato), quindi l'errore emerge subito
+        in fase di configurazione invece che al primo ciclo di
+        aggiornamento. Un singolo giorno del mese corrente NON è più
+        richiedibile per le CURVE (manuale, 08/09/2026), quindi la verifica
+        usa un mese intero già chiuso.
 
-        Il ticket restituito NON va buttato: corrisponde a un job realmente
-        accodato lato Duereti. Il chiamante lo salva come pendente, così il
-        primo ciclo lo riprende invece di accodarne un altro per lo stesso
-        periodo.
+        Restituisce (ticket, data_da, data_a): il ticket NON va buttato,
+        corrisponde a un job realmente accodato lato distributore, e il
+        chiamante lo salva come pendente (con lo stesso periodo) così il
+        primo ciclo lo riprende invece di accodarne un altro.
 
         Solleva PcfValidationError se POD o dato fiscale non sono validi,
         PcfAuthError per problemi di credenziali, PcfApiError per il
@@ -402,11 +404,12 @@ class PcfApiClient:
         """
         # date.today() e non dt_util: questo modulo non importa homeassistant
         # di proposito (vedi requirements_test.txt). Qui il fuso non conta:
-        # RITARDO_VERIFICA_POD_GIORNI e' scelto apposta perche' il giorno
-        # richiesto sia disponibile con ampio margine, un eventuale scarto di
-        # un giorno per il fuso e' irrilevante.
-        giorno = date.today() - timedelta(days=RITARDO_VERIFICA_POD_GIORNI)
-        return await self.request_export(giorno, giorno, [{"pod": pod, "df": df}])
+        # il mese appena concluso è disponibile con ampio margine, un
+        # eventuale scarto di un giorno a cavallo di mezzanotte di fine mese
+        # è irrilevante.
+        data_da, data_a = mese_precedente_completo(date.today())
+        ticket = await self.request_export(data_da, data_a, [{"pod": pod, "df": df}])
+        return ticket, data_da, data_a
 
     async def request_export(
         self,

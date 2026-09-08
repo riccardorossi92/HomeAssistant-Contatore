@@ -87,13 +87,14 @@ async def async_valida_pod(
 ):
     """Verifica che la coppia POD/dato fiscale sia accettata dal distributore.
 
-    Restituisce (chiave_errore, ticket):
+    Restituisce (chiave_errore, verifica):
 
     - ("pod_non_valido", None) se il distributore risponde che non ci sono
       POD validi;
-    - (None, ticket) se la coppia e' valida. Il ticket corrisponde a un job
-      realmente accodato: va salvato come pendente, cosi' il primo ciclo lo
-      riprende invece di accodarne un altro per lo stesso giorno.
+    - (None, (ticket, data_da, data_a)) se la coppia e' valida. Il ticket
+      corrisponde a un job realmente accodato per quel periodo (l'ultimo
+      mese solare concluso): va salvato come pendente CON quel periodo,
+      cosi' il primo ciclo lo riprende invece di accodarne un altro.
     - (None, None) se la verifica non e' stata possibile (rete non
       disponibile, limite di richieste raggiunto). In quel caso NON
       blocchiamo la configurazione: sarebbe assurdo impedire di configurare
@@ -104,7 +105,7 @@ async def async_valida_pod(
     session = async_get_clientsession(hass)
     client = PcfApiClient(session, client_id, secret_id, base_url)
     try:
-        ticket = await client.async_valida_pod(pod, df)
+        verifica = await client.async_valida_pod(pod, df)
     except PcfValidationError as err:
         # 400: se il messaggio parla di POD/PDR la coppia e' sbagliata;
         # qualunque altro 400 non riguarda il POD, quindi non blocchiamo.
@@ -128,4 +129,4 @@ async def async_valida_pod(
             err,
         )
         return None, None
-    return None, ticket
+    return None, verifica
