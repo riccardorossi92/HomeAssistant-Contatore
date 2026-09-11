@@ -457,8 +457,18 @@ class EdistribuzioneAuthClient:
         code_match = re.search(r"[?&]code=([^&'\"]+)", consent_html)
         state_match = re.search(r"[?&]state=([^&'\"]+)", consent_html)
         if not code_match:
+            _log_parsing_failure_context(consent_html, "authorization code sulla pagina di consenso")
+            try:
+                Path("consent_page_debug.html").write_text(consent_html, encoding="utf-8")
+                _LOGGER.error(
+                    "Pagina di consenso completa salvata in %s",
+                    Path("consent_page_debug.html").resolve(),
+                )
+            except OSError as exc:
+                _LOGGER.debug("Impossibile salvare la pagina di consenso su disco: %s", exc)
             raise EdistribuzioneParsingError(
-                "Could not find authorization code in consent page response"
+                "Could not find authorization code in consent page response "
+                f"(pagina lunga {len(consent_html)} caratteri - vedi log per un'anteprima)"
             )
         if state_match and unquote(state_match.group(1)) != self._oauth_state:
             # Il parametro 'state' e' la protezione CSRF standard di OAuth:

@@ -365,6 +365,21 @@ async def test_edist_otp_non_valido(hass, _arera_sconosciuto, edist_mocks):
     assert res["errors"] == {"base": "invalid_otp"}
 
 
+async def test_edist_otp_parsing_fallito_abortisce(hass, _arera_sconosciuto, edist_mocks):
+    """Se l'OTP e' gia' stato accettato ma un passo successivo del parsing
+    fallisce, il flusso deve abortire invece di far ripresentare lo stesso
+    OTP (monouso, quindi un retry non potrebbe mai riuscire)."""
+    edist_mocks.auth.async_submit_otp.side_effect = EdistribuzioneParsingError("consent page")
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    assert res["step_id"] == "edistribuzione_otp"
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"otp": "123456"})
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "edistribuzione_otp_exchange_failed"
+
+
 async def test_edist_un_solo_pod_crea_entry_subito(hass, _arera_sconosciuto, edist_mocks):
     res = await _fino_a_edist_user(hass)
     res = await hass.config_entries.flow.async_configure(

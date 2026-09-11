@@ -120,7 +120,8 @@
       "reauth_successful": "Credenziali aggiornate con successo",
       "reauth_not_supported": "Questo distributore non supporta ancora il reinserimento delle credenziali da questo flusso",
       "no_pods_found": "Nessun POD trovato per questo account",
-      "edistribuzione_supplies_failed": "Errore imprevisto nel recupero dei POD dall'account. Riprova la configurazione da capo (login + OTP inclusi)."
+      "edistribuzione_supplies_failed": "Errore imprevisto nel recupero dei POD dall'account. Riprova la configurazione da capo (login + OTP inclusi).",
+      "edistribuzione_otp_exchange_failed": "Il codice OTP è stato accettato ma il completamento dell'accesso è fallito. Riprova la configurazione da capo (login + OTP inclusi)."
     }
   },
   "options": {
