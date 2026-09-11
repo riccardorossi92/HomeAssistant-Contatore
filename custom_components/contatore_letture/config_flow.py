@@ -446,13 +446,23 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except EdistribuzioneInvalidOtp:
                 errors["base"] = "invalid_otp"
             except EdistribuzioneParsingError:
+                # A questo punto l'OTP e' gia' stato accettato da Salesforce
+                # (altrimenti avremmo preso EdistribuzioneInvalidOtp sopra):
+                # il fallimento e' nel parsing di uno step successivo del
+                # flusso, non nel codice inserito. Ririmostrare il form OTP
+                # non aiuta - l'OTP e' monouso e il ViewState e' gia'
+                # avanzato, quindi un retry con lo stesso codice fallirebbe
+                # di nuovo allo stesso modo (confermato da segnalazioni con
+                # più tentativi falliti di fila). Meglio abortire con un
+                # messaggio chiaro, come gia' fatto per il fallimento del
+                # recupero POD subito dopo.
                 _LOGGER.exception("Parsing della pagina OTP E-Distribuzione fallito")
-                errors["base"] = "cannot_connect"
+                return self.async_abort(reason="edistribuzione_otp_exchange_failed")
             except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
                 _LOGGER.exception(
                     "Errore imprevisto durante lo scambio del codice OTP E-Distribuzione"
                 )
-                errors["base"] = "cannot_connect"
+                return self.async_abort(reason="edistribuzione_otp_exchange_failed")
             else:
                 self._edistribuzione_access_token = tokens.access_token
                 self._edistribuzione_refresh_token = tokens.refresh_token
@@ -775,15 +785,18 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except EdistribuzioneInvalidOtp:
                 errors["base"] = "invalid_otp"
             except EdistribuzioneParsingError:
+                # Vedi commento in async_step_edistribuzione_otp: l'OTP e'
+                # gia' stato accettato, un retry sullo stesso form non
+                # risolverebbe nulla.
                 _LOGGER.exception(
                     "Parsing della pagina OTP E-Distribuzione fallito (reauth)"
                 )
-                errors["base"] = "cannot_connect"
+                return self.async_abort(reason="edistribuzione_otp_exchange_failed")
             except Exception:  # noqa: BLE001
                 _LOGGER.exception(
                     "Errore imprevisto durante lo scambio del codice OTP E-Distribuzione (reauth)"
                 )
-                errors["base"] = "cannot_connect"
+                return self.async_abort(reason="edistribuzione_otp_exchange_failed")
             else:
                 from .distributors.edistribuzione.const import CONF_REFRESH_TOKEN
 
