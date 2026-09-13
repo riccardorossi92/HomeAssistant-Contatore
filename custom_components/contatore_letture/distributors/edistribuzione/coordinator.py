@@ -28,7 +28,7 @@ from datetime import date, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -408,6 +408,12 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         Se 'pod' è omesso, lo fa per TUTTI i POD configurati sulla entry;
         se specificato, solo per quello.
 
+        Solleva HomeAssistantError se al termine non e' stato importato
+        nulla: l'azione e' manuale e lanciata dall'interfaccia, dove un
+        fallimento silenzioso e' indistinguibile da un successo (vedi issue
+        #4). Con piu' POD e un fallimento solo parziale l'azione riesce -
+        qualcosa e' stato importato - e i POD falliti restano nei log.
+
         Una SOLA richiesta per l'intero periodo (per POD): confermato con
         un test reale il 20/08/2026 che l'endpoint restituisce davvero
         tutti i giorni richiesti in un'unica risposta (181 giorni/6 mesi,
@@ -454,6 +460,11 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
             ", ".join(pod_da_recuperare),
         )
 
+        # Motivo del fallimento per POD, per poterlo riportare a chi ha
+        # lanciato l'azione invece di lasciarlo solo nei log.
+        fallimenti: list[str] = []
+        pod_con_dati = 0
+
         for pod_corrente in pod_da_recuperare:
             try:
                 curva = await self._api.async_get_daily_load_profile(pod_corrente, data_da, data_a)
@@ -465,12 +476,14 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                     data_a,
                     err,
                 )
+                fallimenti.append(f"{pod_corrente}: {err}")
                 continue
 
             if not curva:
                 _LOGGER.warning(
                     "POD %s: nessun dato per l'intero periodo %s - %s", pod_corrente, data_da, data_a
                 )
+                fallimenti.append(f"{pod_corrente}: nessun dato per il periodo richiesto")
                 continue
 
             await async_import_curva_giornaliera(self.hass, pod_corrente, curva)
@@ -489,6 +502,16 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
             self._rimuovi_dalla_coda(pod_corrente, ricevuti)
 
+            if ricevuti:
+                pod_con_dati += 1
+            else:
+                # La risposta c'era ma nessun giorno conteneva misure: per
+                # chi ha lanciato l'azione equivale a non aver importato
+                # niente, non a un successo.
+                fallimenti.append(
+                    f"{pod_corrente}: risposta ricevuta ma senza misure per il periodo"
+                )
+
             dettaglio_mancanti = ""
             if mancanti:
                 elenco = ", ".join(g.isoformat() for g in mancanti[:10])
@@ -504,6 +527,12 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 len(ricevuti),
                 len(giorni_attesi),
                 dettaglio_mancanti,
+            )
+
+        if pod_con_dati == 0:
+            raise HomeAssistantError(
+                f"Nessun dato importato per il periodo {data_da} - {data_a}. "
+                + "; ".join(fallimenti)
             )
 
     @property
