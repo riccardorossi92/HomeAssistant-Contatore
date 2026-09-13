@@ -16,6 +16,7 @@ async_refresh_access_token() only talks to the standard OAuth2 token endpoint.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import html as html_lib
@@ -87,11 +88,7 @@ def _contiene(html: str, marcatori: tuple[str, ...]) -> bool:
     return any(marcatore in testo for marcatore in marcatori)
 
 
-def _salva_pagina_debug(html: str, nome_file: str) -> None:
-    """Scrive la pagina su disco accanto a configuration.yaml (best-effort:
-    se il filesystem non e' scrivibile in questo contesto non blocca nulla)
-    e logga il percorso, cosi' e' richiedibile all'utente in una
-    segnalazione senza dovergli far catturare una HAR."""
+def _scrivi_pagina_debug(html: str, nome_file: str) -> None:
     try:
         percorso = Path(nome_file)
         percorso.write_text(html, encoding="utf-8")
@@ -99,6 +96,29 @@ def _salva_pagina_debug(html: str, nome_file: str) -> None:
         _LOGGER.debug("Impossibile salvare %s su disco: %s", nome_file, exc)
         return
     _LOGGER.error("Pagina completa salvata in %s", percorso.resolve())
+
+
+def _salva_pagina_debug(html: str, nome_file: str) -> None:
+    """Scrive la pagina su disco accanto a configuration.yaml (best-effort:
+    se il filesystem non e' scrivibile in questo contesto non blocca nulla)
+    e logga il percorso, cosi' e' richiedibile all'utente in una
+    segnalazione senza dovergli far catturare una HAR.
+
+    La scrittura e' delegata a un executor: qui siamo dentro l'event loop di
+    Home Assistant, che segnala l'I/O sincrono con "Detected blocking call
+    to write_text" (visto in un log reale il 13/09/2026, prodotto dalla
+    0.6.1 su consent_page_debug.html). Fuori da un event loop (test,
+    scripts/verify_edistribuzione_login.py) scrive direttamente.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        _scrivi_pagina_debug(html, nome_file)
+        return
+    # Deliberatamente non atteso: e' un dump diagnostico best-effort, non
+    # deve rallentare ne' far fallire il login se il disco e' lento o pieno
+    # (_scrivi_pagina_debug logga da se' l'esito).
+    loop.run_in_executor(None, _scrivi_pagina_debug, html, nome_file)
 
 
 def _log_parsing_failure_context(html: str, campo_cercato: str) -> None:

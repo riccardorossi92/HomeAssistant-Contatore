@@ -11,6 +11,7 @@ qui riproposto in forma di test automatizzati.
 """
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import sys
 import types
@@ -334,7 +335,15 @@ class TestInvioOtp:
         await client._async_trigger_otp_send()
         assert client.otp_invio_confermato is False
         assert "non ha confermato l'invio" in caplog.text
-        assert (tmp_path / "otp_send_debug.html").exists()
+        # Il dump e' scritto in un executor (per non bloccare l'event loop di
+        # Home Assistant), quindi puo' non esistere ancora al ritorno della
+        # chiamata.
+        dump = tmp_path / "otp_send_debug.html"
+        for _ in range(50):
+            if dump.exists():
+                break
+            await asyncio.sleep(0.02)
+        assert dump.exists()
 
     async def test_pagina_limite_sessioni_solleva_eccezione_dedicata(
         self, monkeypatch, tmp_path
