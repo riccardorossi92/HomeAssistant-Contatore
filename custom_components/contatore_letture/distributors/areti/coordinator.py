@@ -36,7 +36,7 @@ from datetime import date, timedelta
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -221,6 +221,12 @@ class AretiCoordinator(DataUpdateCoordinator[dict]):
         ciascuno si importa il MESE INTERO (non i soli giorni richiesti -
         l'API non offre altro). Non avanza né tocca il cursore
         dell'import automatico: sono percorsi indipendenti.
+
+        Solleva HomeAssistantError se al termine non e' stato importato
+        nessun mese: l'azione e' manuale e lanciata dall'interfaccia, dove
+        un fallimento silenzioso e' indistinguibile da un successo (vedi
+        issue #4). Con piu' POD e un fallimento solo parziale l'azione
+        riesce - qualcosa e' stato importato - e il dettaglio resta nei log.
         """
         if pod is not None and pod not in self.pods:
             raise ServiceValidationError(
@@ -252,14 +258,24 @@ class AretiCoordinator(DataUpdateCoordinator[dict]):
             ", ".join(pod_da_recuperare),
         )
 
+        # Motivo del fallimento per POD, per poterlo riportare a chi ha
+        # lanciato l'azione invece di lasciarlo solo nei log.
+        fallimenti: list[str] = []
+        mesi_importati = 0
+
         for pod_corrente in pod_da_recuperare:
             try:
                 codice_bp, codice_fiscale = await self._async_config_pod(api, pod_corrente)
             except AretiApiError as err:
                 _LOGGER.warning("POD %s: impossibile risolvere codiceBP/codiceFiscale: %s", pod_corrente, err)
+                fallimenti.append(f"{pod_corrente}: {err}")
                 continue
 
             trovati, mancanti = [], []
+            # Quanti fallimenti erano già stati raccolti prima di questo POD:
+            # serve a distinguere "l'API ha dato errore" (messaggio specifico,
+            # aggiunto nel ciclo sotto) da "il mese semplicemente non c'è".
+            fallimenti_prima = len(fallimenti)
             for mese_anno in mesi:
                 try:
                     dettaglio = await api.async_get_misurazioni(
@@ -270,6 +286,7 @@ class AretiCoordinator(DataUpdateCoordinator[dict]):
                         "POD %s: errore recuperando il mese %s: %s", pod_corrente, mese_anno, err
                     )
                     mancanti.append(mese_anno)
+                    fallimenti.append(f"{pod_corrente}/{mese_anno}: {err}")
                     continue
 
                 if dettaglio is None:
@@ -279,6 +296,7 @@ class AretiCoordinator(DataUpdateCoordinator[dict]):
                 curva = dettaglio.get("elementiCurve") or []
                 await async_import_curva_mensile(self.hass, pod_corrente, curva)
                 trovati.append(mese_anno)
+                mesi_importati += 1
 
             _LOGGER.info(
                 "POD %s: recupero storico completato, %d/%d mesi trovati%s",
@@ -286,4 +304,14 @@ class AretiCoordinator(DataUpdateCoordinator[dict]):
                 len(trovati),
                 len(mesi),
                 f" (mancanti: {', '.join(mancanti)})" if mancanti else "",
+            )
+            if not trovati and len(fallimenti) == fallimenti_prima:
+                fallimenti.append(
+                    f"{pod_corrente}: nessun mese disponibile tra {', '.join(mesi)}"
+                )
+
+        if mesi_importati == 0:
+            raise HomeAssistantError(
+                f"Nessun dato importato per il periodo {data_da} - {data_a}. "
+                + "; ".join(fallimenti)
             )
