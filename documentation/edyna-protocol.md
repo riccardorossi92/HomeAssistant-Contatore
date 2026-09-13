@@ -37,6 +37,16 @@ richiede/risponde `Single.tws` pagina per pagina. Non è di per sé un
 motivo per pensare che i consumi non ci siano — è solo un tipo di
 portale dove l'analisi statica non aiuta, va fatta la cattura.
 
+> [!NOTE]
+> **[Deval](deval-protocol.md)** (Valle d'Aosta) usa lo stesso prodotto:
+> app `EIPPUF` qui, `EPUF` là, entrambe targate `Terranova — Innovations
+> for Utilities` (footer `Copyright 2018 Terranova`), stesso schema di
+> path `.../it-IT/<token>/Page/*.tws`. Il manuale pubblico del PUF Deval
+> conferma che il prodotto espone letture mensili e curve orarie per POD
+> — se in futuro si sblocca una cattura sull'uno, vale la pena
+> ricontrollare l'altro: stesso vendor, probabilmente stesso schema di
+> postback ed export dati.
+
 ## Cosa c'era nell'unica cattura disponibile (04/09/2026)
 
 Account loggato, **senza POD associato**.

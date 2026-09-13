@@ -72,6 +72,16 @@ di fornitura. Se hai un'utenza Edyna con un POD attivo puoi aiutare —
 vedi
 [documentation/edyna-protocol.md](documentation/edyna-protocol.md).
 
+**Deval** (Valle d'Aosta): nessuna cattura ancora disponibile (manca
+anche un account senza POD), ma il manuale utente pubblico del portale
+PUF conferma che espone letture mensili e curve orarie per POD — stesso
+tipo di portale ASP.NET WebForms di Edyna (probabilmente stesso vendor,
+Terranova). Il login a credenziali richiede anche un 2FA via app
+authenticator (TOTP), un vincolo che nessun altro distributore già
+supportato ha. Se hai una fornitura Deval con un'utenza registrata sul
+PUF puoi aiutare — vedi
+[documentation/deval-protocol.md](documentation/deval-protocol.md).
+
 ### Valutati e non fattibili
 
 **Inrete Distribuzione** (Emilia-Romagna e Toscana, gruppo Hera): non
