@@ -59,14 +59,14 @@ fatturazione. Se hai un'utenza mySET con un POD attivo puoi aiutare —
 vedi
 [documentation/set-distribuzione-protocol.md](documentation/set-distribuzione-protocol.md).
 
-### Valutati e non fattibili
-
-**Edyna** (Alto Adige / Südtirol): ricerca sospesa. Il portale
-distributore è una web form stateful tipo *Instant Developer* (endpoint
-unico a postback, nessuna API), e la cattura disponibile è di un account
-senza POD associato, quindi non arriva alle pagine di consumo. Serve un
-HAR nuovo da un account con POD — dettagli in
+**Edyna** (Alto Adige / Südtirol, gruppo Alperia): non è ancora noto se
+il portale esponga consumi/curve di carico — l'unica cattura disponibile
+è di un account senza POD associato, quindi non arriva a nessuna pagina
+di fornitura. Se hai un'utenza Edyna con un POD attivo puoi aiutare —
+vedi
 [documentation/edyna-protocol.md](documentation/edyna-protocol.md).
+
+### Valutati e non fattibili
 
 **Inrete Distribuzione** (Emilia-Romagna e Toscana, gruppo Hera): non
 fattibile per il cliente finale in bassa tensione. Il distributore stesso

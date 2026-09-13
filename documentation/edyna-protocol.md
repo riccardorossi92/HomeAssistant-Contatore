@@ -1,82 +1,72 @@
-# Edyna — ricerca sospesa: cattura insufficiente + tecnologia ostile
+# Edyna — stato della ricerca (supporto non ancora implementato)
 
 **Edyna S.r.l.** (distributore dell'Alto Adige / Südtirol, gruppo
-Alperia) — portale distributore `portaledistributore.edyna.net`.
+Alperia) — portale `portaledistributore.edyna.net`. **Non ancora
+supportato.**
 
-Stato: **non implementabile con i dati disponibili oggi**. Non è un "no"
-definitivo come [Areti](areti-protocol.md): qui manca proprio la cattura
-utile. Questa scheda serve a non ripartire da zero e a sapere cosa
-chiedere per riprovare.
+Non è noto se il portale esponga dati di misura del distributore (curva
+di carico / letture), perché l'unica cattura disponibile viene da un
+account **senza POD associato**: non arriva a nessuna pagina di
+fornitura o di consumo, quindi non conferma né esclude nulla — stesso
+punto di partenza di [Ireti](ireti-protocol.md) e
+[SET Distribuzione](set-distribuzione-protocol.md) prima che arrivasse
+una cattura con POD.
 
-## Verdetto
+## Quadro generale
 
-| | |
-|---|---|
-| Il portale espone consumi / letture / curve di carico? | **Non verificabile** — la cattura non arriva a nessuna pagina di misura |
-| POD associato all'account catturato? | **No** (segnalato dall'utente e confermato dall'HAR) |
-| Tecnologia del portale | ASP.NET WebForms tipo *Instant Developer / "TWS"* — endpoint unico a postback, nessuna API JSON |
-| Azione | Nessuna implementazione. Riaprire solo con un HAR nuovo, da un account **con POD associato**, che navighi fino alla sezione consumi |
+Il portale **non è una SPA** con un bundle JS ispezionabile (a
+differenza di Ireti e SET Distribuzione, dove si sono trovati endpoint
+candidati analizzando staticamente il JavaScript anche senza una
+risposta reale). È un'applicazione **ASP.NET WebForms**, riconoscibile
+dagli indizi nella cattura:
 
-## Cosa c'era nell'HAR (cattura 04/09/2026)
+- estensione pagina `.tws`, endpoint unico
+  `/EIPPUF/EIPPUF/it-IT/dD4/Page/Single.tws`;
+- `ScriptResource.axd` / `WebResource.axd` (infrastruttura standard
+  ASP.NET AJAX);
+- un token di sessione nel path stesso (`dD4`).
 
-HAR di `portaledistributore.edyna.net`, utente loggato ma **senza POD
-associato**.
+È il pattern **"Instant Developer"**: tutta la navigazione (login,
+menu, pagine) passa da un solo endpoint `Single.tws` via postback, con
+lo stato lato server tenuto insieme dal token di sessione nel path e da
+un viewstate nella risposta HTML. Significa che qui **non c'è un
+bundle JS da leggere per indovinare gli endpoint dati** come fatto per
+Ireti/SET: l'unico modo per sapere cosa espone il portale è navigarci
+davvero (con un account che abbia qualcosa da mostrare) e guardare cosa
+richiede/risponde `Single.tws` pagina per pagina. Non è di per sé un
+motivo per pensare che i consumi non ci siano — è solo un tipo di
+portale dove l'analisi statica non aiuta, va fatta la cattura.
+
+## Cosa c'era nell'unica cattura disponibile (04/09/2026)
+
+Account loggato, **senza POD associato**.
 
 | | |
 |---|---|
 | Entry totali | 33, di cui ~13 asset statici (JS/CSS/immagini) |
-| Richieste "dati" | **1 sola**: `POST /EIPPUF/EIPPUF/it-IT/dD4/Page/Single.tws` → HTML ~82 KB (pagina di atterraggio post-login) |
-| Endpoint JSON / REST | **nessuno** |
-| Dati di consumo / lettura / curva | **nessuno** |
-| POD nel payload o nelle risposte | nessuno |
+| Richieste verso `Single.tws` | **1 sola**: `POST` → HTML ~82 KB (pagina di atterraggio post-login) |
+| Endpoint dati (JSON o altro) | nessuno osservato |
+| Consumi / letture / curve di carico | nessuno — la cattura non arriva a nessuna pagina di fornitura |
 
-Senza un POD associato l'account non può navigare ad alcuna pagina di
-fornitura, quindi l'HAR non mostra **se** e **come** Edyna esponga i
-consumi. È il primo problema da risolvere prima di qualunque valutazione.
+## Cosa manca
 
-## Perché la tecnologia è un problema a parte
+1. Un account **con almeno un POD associato**, per poter navigare fino
+   a un'eventuale sezione consumi/letture/curve di carico.
+2. Una cattura HAR fatta **navigando fino a quella sezione** (non solo
+   il login), con **Chrome o Firefox** DevTools (Network → Preserve
+   log attivo *prima* di navigare → "Export HAR with content", per
+   avere i body delle risposte e non solo gli header).
+3. Con quella cattura: leggere le richieste POST verso `Single.tws` in
+   quella fase di navigazione (parametri del postback, e cosa cambia
+   nell'HTML di risposta) per capire se il dato è presente e in che
+   forma.
 
-Indizi nell'HAR:
+## Come contribuire
 
-- estensione pagina `.tws`, endpoint unico `.../Page/Single.tws`;
-- `ScriptResource.axd` / `WebResource.axd` (ASP.NET WebForms);
-- nome applicazione `EIPPUF` nel path;
-- token di sessione opaco nel path stesso (`.../dD4/...`).
-
-È il pattern delle applicazioni **Instant Developer / "TWS"**: una web
-form stateful dove *tutto* passa da un solo endpoint `Single.tws` via
-postback, con stato lato server legato al token di sessione (`dD4`) e a
-un viewstate. Conseguenze per un'integrazione:
-
-- **niente API REST/JSON** da chiamare direttamente;
-- lo scraping richiede di replicare la sequenza di postback dei form e
-  fare parsing di tabelle HTML renderizzate dal server;
-- il token di sessione nel path e il viewstate rendono la sessione
-  fragile e poco riproducibile.
-
-Rientra nel **caso B** di [`CONTRIBUTING.md`](../CONTRIBUTING.md)
-(protocollo tutto nuovo, pacchetto `distributors/edyna/` a sé), ed è più
-scomodo del caso Aura/Salesforce di [Areti](areti-protocol.md): lì
-almeno gli endpoint dati erano JSON.
-
-## Se un domani si riapre
-
-Serve, in quest'ordine:
-
-1. un account Edyna **con almeno un POD associato**;
-2. un HAR nuovo catturato **navigando fino alla sezione consumi /
-   letture / curve di carico** (con un grafico effettivamente caricato),
-   non solo il login;
-3. a quel punto si valuta:
-   - se il dato di misura (curva oraria / letture / fasce) è davvero
-     presente nel portale;
-   - se lo scraping dei postback `Single.tws` è abbastanza stabile da
-     reggere un `DataUpdateCoordinator`.
-
-Se al passo 3 il dato non c'è, il verdetto diventa come per Areti: per un
-distributore locale la misura del cliente finale passa dal **SII**, non
-dal portale del distributore, e le fonti alternative (portale del
-venditore, Portale Consumi ARERA solo SPID/CIE) non sono automatizzabili
-da Home Assistant.
-
-Finché non si hanno i passi 1–2, non c'è niente da implementare.
+Serve chi ha un'utenza Edyna con una fornitura attiva (POD associato).
+Cattura HAR manuale: login + navigazione fino alla pagina consumi/letture
+(se esiste, con un eventuale grafico caricato). Vedi
+[Aiutare senza scrivere codice](../CONTRIBUTING.md#aiutare-senza-scrivere-codice-raccolta-dati)
+in CONTRIBUTING.md: **non allegare la HAR grezza a una issue
+pubblica** (contiene token di sessione e dati personali in chiaro) —
+apri prima una issue per concordare come condividerla.
