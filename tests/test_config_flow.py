@@ -36,6 +36,7 @@ from custom_components.contatore_letture.distributors.edistribuzione.auth import
     EdistribuzioneInvalidCredentials,
     EdistribuzioneInvalidOtp,
     EdistribuzioneParsingError,
+    EdistribuzioneTroppeSessioni,
 )
 from custom_components.contatore_letture.distributors.edistribuzione.const import (
     CONF_ORA_RICHIESTA,
@@ -295,6 +296,8 @@ def edist_mocks(monkeypatch):
     sessioni aiohttp. Default: login e OTP ok, un solo POD sull'account."""
     auth = Mock()
     auth.async_begin_login = AsyncMock(return_value=None)
+    auth.otp_invio_confermato = True
+    auth.async_resend_otp = AsyncMock(return_value=True)
     auth.async_submit_otp = AsyncMock(
         return_value=SimpleNamespace(access_token="acc", refresh_token="ref-nuovo")
     )
@@ -363,6 +366,70 @@ async def test_edist_otp_non_valido(hass, _arera_sconosciuto, edist_mocks):
     assert res["step_id"] == "edistribuzione_otp"
     res = await hass.config_entries.flow.async_configure(res["flow_id"], {"otp": "000000"})
     assert res["errors"] == {"base": "invalid_otp"}
+
+
+async def test_edist_troppe_sessioni_al_login(hass, _arera_sconosciuto, edist_mocks):
+    """Credenziali giuste ma account con troppe sessioni aperte: in questo
+    stato E-Distribuzione non invia nessun OTP, quindi il flow deve fermarsi
+    sul form delle credenziali con un errore che dice cosa fare, non
+    proseguire a chiedere un codice che non arrivera' (issue #2)."""
+    edist_mocks.auth.async_begin_login.side_effect = EdistribuzioneTroppeSessioni(
+        "Hai superato il numero di sessioni simultanee consentite"
+    )
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.FORM
+    assert res["step_id"] == "edistribuzione_user"
+    assert res["errors"] == {"base": "troppe_sessioni"}
+
+
+async def test_edist_otp_form_vuoto_chiede_il_codice(hass, _arera_sconosciuto, edist_mocks):
+    """Il campo OTP e' Optional (serve a poter richiedere un nuovo codice a
+    campo vuoto): senza codice e senza spunta, il form si ripresenta con un
+    errore invece di provare a convalidare una stringa vuota."""
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"otp": ""})
+    assert res["step_id"] == "edistribuzione_otp"
+    assert res["errors"] == {"base": "otp_mancante"}
+    edist_mocks.auth.async_submit_otp.assert_not_called()
+
+
+async def test_edist_richiesta_nuovo_otp(hass, _arera_sconosciuto, edist_mocks):
+    """Spuntando 'richiedi un nuovo codice' il flow ne fa rispedire uno DENTRO
+    la stessa sessione di login e ripresenta il form: un OTP generato sul sito
+    o nell'app appartiene a un'altra sessione e non potrebbe mai essere
+    convalidato qui (issue #2)."""
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"otp": "", "richiedi_nuovo_codice": True}
+    )
+    edist_mocks.auth.async_resend_otp.assert_awaited_once()
+    edist_mocks.auth.async_submit_otp.assert_not_called()
+    assert res["step_id"] == "edistribuzione_otp"
+    assert res["errors"] == {}
+    assert "nuovo codice" in res["description_placeholders"]["avviso"]
+
+
+async def test_edist_avviso_se_invio_otp_non_confermato(
+    hass, _arera_sconosciuto, edist_mocks
+):
+    """Se il portale non ha confermato l'invio del codice, il form OTP lo dice
+    invece di lasciare l'utente in attesa di un SMS/email che non arriva."""
+    edist_mocks.auth.otp_invio_confermato = False
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    assert res["step_id"] == "edistribuzione_otp"
+    assert "non ha confermato" in res["description_placeholders"]["avviso"]
 
 
 async def test_edist_otp_parsing_fallito_abortisce(hass, _arera_sconosciuto, edist_mocks):

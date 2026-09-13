@@ -16,8 +16,10 @@ async_refresh_access_token() only talks to the standard OAuth2 token endpoint.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
+import html as html_lib
 import json
 import logging
 import re
@@ -44,6 +46,81 @@ _LOGGER = logging.getLogger(__name__)
 _MOBILE_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15"
 
 
+# Frammenti con cui il portale segnala che l'account ha troppe sessioni
+# aperte contemporaneamente ("Hai superato il numero di sessioni simultanee
+# consentite", osservato sul sito il 13/09/2026 - segnalato nell'issue #2).
+# Va distinto da credenziali sbagliate e da un cambio di markup: in questo
+# stato il login non prosegue e l'OTP non viene nemmeno inviato, quindi
+# l'utente resterebbe ad aspettare un codice che non arriva.
+_MARCATORI_TROPPE_SESSIONI = (
+    "sessioni simultanee",
+    "sessioni contemporanee",
+    "numero di sessioni",
+    "sessioni consentite",
+)
+
+# Testo con cui la risposta al primo submit del form conferma di avere
+# spedito il codice (confermato su HAR reale il 20/08/2026: "Abbiamo inviato
+# un codice a 5 cifre al tuo indirizzo email"). Piu' varianti perche' il
+# canale (email/SMS) e la formulazione cambiano da account ad account: qui
+# l'assenza di conferma NON viene trattata come errore fatale (romperebbe
+# login altrimenti validi con una formulazione diversa), solo segnalata.
+_MARCATORI_OTP_INVIATO = (
+    "abbiamo inviato",
+    "inviato un codice",
+    "codice a 5 cifre",
+    "codice è stato inviato",
+    "nuovo codice",
+)
+
+
+# Etichette del pulsante che APPROVA sulla schermata di consenso OAuth.
+# Sulla pagina reale (catturata il 13/09/2026, issue #2) i due pulsanti
+# hanno lo STESSO name="save" e si distinguono solo per il valore:
+# "Consenti" approva, " Nega " (con gli spazi) rifiuta - sbagliare pulsante
+# significa negare l'autorizzazione all'integrazione, quindi il valore va
+# confrontato per intero, non cercato come sottostringa.
+_ETICHETTE_CONSENSO = ("consenti", "allow", "approve", "autorizza", "accetta")
+
+
+def _contiene(html: str, marcatori: tuple[str, ...]) -> bool:
+    testo = html.lower()
+    return any(marcatore in testo for marcatore in marcatori)
+
+
+def _scrivi_pagina_debug(html: str, nome_file: str) -> None:
+    try:
+        percorso = Path(nome_file)
+        percorso.write_text(html, encoding="utf-8")
+    except OSError as exc:
+        _LOGGER.debug("Impossibile salvare %s su disco: %s", nome_file, exc)
+        return
+    _LOGGER.error("Pagina completa salvata in %s", percorso.resolve())
+
+
+def _salva_pagina_debug(html: str, nome_file: str) -> None:
+    """Scrive la pagina su disco accanto a configuration.yaml (best-effort:
+    se il filesystem non e' scrivibile in questo contesto non blocca nulla)
+    e logga il percorso, cosi' e' richiedibile all'utente in una
+    segnalazione senza dovergli far catturare una HAR.
+
+    La scrittura e' delegata a un executor: qui siamo dentro l'event loop di
+    Home Assistant, che segnala l'I/O sincrono con "Detected blocking call
+    to write_text" (visto in un log reale il 13/09/2026, prodotto dalla
+    0.6.1 su consent_page_debug.html). Fuori da un event loop (test,
+    scripts/verify_edistribuzione_login.py) scrive direttamente.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        _scrivi_pagina_debug(html, nome_file)
+        return
+    # Deliberatamente non atteso: e' un dump diagnostico best-effort, non
+    # deve rallentare ne' far fallire il login se il disco e' lento o pieno
+    # (_scrivi_pagina_debug logga da se' l'esito).
+    loop.run_in_executor(None, _scrivi_pagina_debug, html, nome_file)
+
+
 def _log_parsing_failure_context(html: str, campo_cercato: str) -> None:
     """Logga titolo + un'anteprima della pagina quando un campo atteso non
     si trova - serve a distinguere "regex sbagliato" (il campo c'e' ma in
@@ -64,12 +141,7 @@ def _log_parsing_failure_context(html: str, campo_cercato: str) -> None:
         len(html),
         html[:300],
     )
-    try:
-        debug_path = Path("otp_page_debug.html")
-        debug_path.write_text(html, encoding="utf-8")
-        _LOGGER.error("Pagina completa salvata in %s", debug_path.resolve())
-    except OSError as exc:
-        _LOGGER.debug("Impossibile salvare la pagina di debug su disco: %s", exc)
+    _salva_pagina_debug(html, "otp_page_debug.html")
 
 _MAX_REDIRECT_HOPS = 15
 
@@ -84,6 +156,17 @@ class EdistribuzioneInvalidCredentials(EdistribuzioneAuthError):
 
 class EdistribuzioneInvalidOtp(EdistribuzioneAuthError):
     """Wrong or expired OTP code."""
+
+
+class EdistribuzioneTroppeSessioni(EdistribuzioneAuthError):
+    """L'account ha gia' troppe sessioni aperte: il portale rifiuta il login
+    prima di inviare qualunque OTP.
+
+    Non e' un problema di credenziali ne' di markup cambiato: finche' le
+    altre sessioni non vengono chiuse o non scadono (app ufficiale, sito,
+    tentativi precedenti di questa stessa integrazione) non c'e' niente da
+    reinserire nel form, va liberata una sessione e riprovato.
+    """
 
 
 class EdistribuzioneParsingError(EdistribuzioneAuthError):
@@ -162,6 +245,10 @@ class _LoginFlowState:
     # the raw prefix so we don't have to hardcode Salesforce's generated IDs.
     otp_field_name: str | None = None
     resend_field_name: str | None = None
+    # La checkbox visibile "Richiedi nuovo OTP", gemella del campo hidden
+    # sopra: serve solo per il reinvio esplicito (async_resend_otp), dove
+    # riproduciamo il submit di un browser con la casella spuntata.
+    resend_checkbox_field_name: str | None = None
     next_field_name: str | None = None
 
 
@@ -182,6 +269,12 @@ class EdistribuzioneAuthClient:
         self._code_verifier: str | None = None
         self._oauth_state: str | None = None
         self._flow = _LoginFlowState()
+        # True/False dopo async_begin_login()/async_resend_otp() a seconda
+        # che il portale abbia confermato l'invio del codice; None finche'
+        # non ci si e' arrivati. Il config flow lo usa per avvisare l'utente
+        # invece di lasciarlo aspettare un OTP che non arrivera' mai
+        # (issue #2).
+        self.otp_invio_confermato: bool | None = None
 
     # -- Step 1: authorize + credentials -------------------------------------
 
@@ -331,6 +424,15 @@ class EdistribuzioneAuthClient:
             ) from err
 
         if not isinstance(return_value, str) or not return_value.startswith("OK:"):
+            # Il limite di sessioni contemporanee arriva qui come messaggio
+            # di errore della stessa action del login: trattarlo come
+            # "credenziali non valide" (comportamento precedente) mandava
+            # l'utente a ricontrollare email e password mentre il problema
+            # era altrove - vedi _MARCATORI_TROPPE_SESSIONI.
+            if isinstance(return_value, str) and _contiene(
+                return_value, _MARCATORI_TROPPE_SESSIONI
+            ):
+                raise EdistribuzioneTroppeSessioni(return_value)
             raise EdistribuzioneInvalidCredentials(str(return_value))
 
         frontdoor_url = return_value[len("OK:") :]
@@ -360,20 +462,36 @@ class EdistribuzioneAuthClient:
         risposta contiene testualmente "Abbiamo inviato un codice a 5
         cifre al tuo indirizzo email" (non solo SMS, come si poteva
         pensare dal solo nome del campo OTP_Input).
-
-        Il ViewState/CSRF nella risposta di QUESTA chiamata vanno poi usati
-        per l'invio effettivo del codice (async_submit_otp), non quelli
-        della pagina di atterraggio iniziale: sembrano ruotare ad ogni
-        submit del form, quindi li aggiorniamo qui via lo stesso parser
-        della pagina di atterraggio (la risposta e' ancora una pagina HTML
-        completa con lo stesso form, solo con il messaggio di conferma e
-        token freschi).
         """
-        headers = {
-            "User-Agent": _MOBILE_USER_AGENT,
-            "Faces-Request": "partial/ajax",
-        }
-        data = {
+        await self._async_post_form_otp(self._dati_form_otp())
+
+    async def async_resend_otp(self) -> bool:
+        """Fa rimandare un OTP nuovo DENTRO la sessione di login gia' avviata.
+
+        Serve perche' un OTP generato altrove (app ufficiale o sito) appartiene
+        a un'altra "interview" del login flow di Salesforce e non puo' essere
+        convalidato qui: se il codice non arriva in Home Assistant, l'unico
+        modo di ottenerne uno valido e' farlo rispedire da questa stessa
+        sessione (issue #2, dove l'utente riusciva a generare OTP validi sul
+        sito ma nessuno di quelli funzionava nell'integrazione).
+
+        Ritorna True se il portale ha confermato l'invio.
+        """
+        if self._flow.view_state is None:
+            raise EdistribuzioneAuthError(
+                "async_begin_login() deve riuscire prima di async_resend_otp()"
+            )
+        await self._async_post_form_otp(self._dati_form_otp(richiedi_nuovo=True))
+        return bool(self.otp_invio_confermato)
+
+    def _dati_form_otp(
+        self, *, otp_code: str | None = None, richiedi_nuovo: bool = False
+    ) -> dict[str, str]:
+        """Payload del form RichFaces del login flow, identico per i tre
+        submit che facciamo (invio iniziale senza codice, reinvio, convalida
+        del codice): cambiano solo il campo OTP e il flag di reinvio."""
+        next_field = self._flow.next_field_name or "thePage:j_id2:i:f:pb:pbb:nextAjax"
+        dati = {
             "AJAXREQUEST": "_viewRoot",
             "thePage:j_id2:i:f": "thePage:j_id2:i:f",
             "thePage:j_id2:i:f:pb:d:navigationType": "",
@@ -381,14 +499,62 @@ class EdistribuzioneAuthClient:
             "com.salesforce.visualforce.ViewStateVersion": self._flow.view_state_version,
             "com.salesforce.visualforce.ViewStateMAC": self._flow.view_state_mac,
             "com.salesforce.visualforce.ViewStateCSRF": self._flow.view_state_csrf,
-            (self._flow.next_field_name or "thePage:j_id2:i:f:pb:pbb:nextAjax"): (
-                self._flow.next_field_name or "thePage:j_id2:i:f:pb:pbb:nextAjax"
-            ),
+            next_field: next_field,
         }
+        if otp_code is not None:
+            dati[
+                self._flow.otp_field_name
+                or "thePage:j_id2:i:f:pb:d:element___input____OTP_Input"
+            ] = otp_code
+        if otp_code is not None or richiedi_nuovo:
+            dati[
+                self._flow.resend_field_name
+                or "thePage:j_id2:i:f:pb:d:element___hidden____Richiedi_nuovo_OTP"
+            ] = "true" if richiedi_nuovo else "false"
+        if richiedi_nuovo and self._flow.resend_checkbox_field_name:
+            # Un browser con la casella spuntata invia anche la checkbox
+            # visibile, non solo il campo hidden che la specchia: la
+            # riproduciamo per stare il piu' vicino possibile al submit reale.
+            dati[self._flow.resend_checkbox_field_name] = "true"
+        return dati
 
+    async def _async_post_form_otp(self, data: dict[str, str]) -> None:
+        """Submit del form OTP che NON porta un codice da convalidare (invio
+        iniziale o reinvio): controlla che il portale abbia davvero spedito
+        l'OTP e aggiorna ViewState/CSRF dalla risposta.
+
+        I token nella risposta di QUESTA chiamata sono quelli da usare per
+        l'invio effettivo del codice (async_submit_otp), non quelli della
+        pagina di atterraggio: ruotano ad ogni submit del form.
+        """
+        headers = {
+            "User-Agent": _MOBILE_USER_AGENT,
+            "Faces-Request": "partial/ajax",
+        }
         url = self._flow.form_action_url or LOGINFLOW_URL
         async with self._session.post(url, data=data, headers=headers) as resp:
             body = await resp.text()
+
+        if _contiene(body, _MARCATORI_TROPPE_SESSIONI):
+            _salva_pagina_debug(body, "otp_send_debug.html")
+            raise EdistribuzioneTroppeSessioni(body[:500])
+
+        self.otp_invio_confermato = _contiene(body, _MARCATORI_OTP_INVIATO)
+        if not self.otp_invio_confermato:
+            # Non fatale di proposito: la pagina potrebbe confermare l'invio
+            # con parole che non conosciamo ancora, e abortire qui romperebbe
+            # login che funzionano. Ma va segnalato, perche' l'altra
+            # possibilita' e' che il codice non sia MAI stato spedito - il
+            # sintomo dell'issue #2, prima invisibile nei log.
+            _LOGGER.error(
+                "E-Distribuzione non ha confermato l'invio del codice OTP "
+                "(nessuno dei messaggi attesi %r nella risposta, lunga %d "
+                "caratteri). Se il codice non arriva ne' via email ne' via "
+                "SMS, allega otp_send_debug.html alla segnalazione.",
+                _MARCATORI_OTP_INVIATO,
+                len(body),
+            )
+            _salva_pagina_debug(body, "otp_send_debug.html")
 
         self._parse_otp_page(body)
 
@@ -405,24 +571,15 @@ class EdistribuzioneAuthClient:
             "User-Agent": _MOBILE_USER_AGENT,
             "Faces-Request": "partial/ajax",
         }
-        data = {
-            "AJAXREQUEST": "_viewRoot",
-            "thePage:j_id2:i:f": "thePage:j_id2:i:f",
-            "thePage:j_id2:i:f:pb:d:navigationType": "",
-            (self._flow.otp_field_name or "thePage:j_id2:i:f:pb:d:element___input____OTP_Input"): otp_code,
-            (self._flow.resend_field_name or "thePage:j_id2:i:f:pb:d:element___hidden____Richiedi_nuovo_OTP"): "false",
-            "com.salesforce.visualforce.ViewState": self._flow.view_state,
-            "com.salesforce.visualforce.ViewStateVersion": self._flow.view_state_version,
-            "com.salesforce.visualforce.ViewStateMAC": self._flow.view_state_mac,
-            "com.salesforce.visualforce.ViewStateCSRF": self._flow.view_state_csrf,
-            (self._flow.next_field_name or "thePage:j_id2:i:f:pb:pbb:nextAjax"): (
-                self._flow.next_field_name or "thePage:j_id2:i:f:pb:pbb:nextAjax"
-            ),
-        }
+        data = self._dati_form_otp(otp_code=otp_code)
 
         url = self._flow.form_action_url or LOGINFLOW_URL
         async with self._session.post(url, data=data, headers=headers) as resp:
             body = await resp.text()
+
+        if _contiene(body, _MARCATORI_TROPPE_SESSIONI):
+            _salva_pagina_debug(body, "otp_submit_response_debug.html")
+            raise EdistribuzioneTroppeSessioni(body[:500])
 
         if "Codice OTP" in body and "errato" in body.lower():
             raise EdistribuzioneInvalidOtp(body[:500])
@@ -431,14 +588,7 @@ class EdistribuzioneAuthClient:
         loc_match = re.search(r'name="Location"\s+content="([^"]+)"', body)
         if not loc_match:
             _log_parsing_failure_context(body, "meta Location dopo l'invio dell'OTP")
-            try:
-                Path("otp_submit_response_debug.html").write_text(body, encoding="utf-8")
-                _LOGGER.error(
-                    "Risposta completa salvata in %s",
-                    Path("otp_submit_response_debug.html").resolve(),
-                )
-            except OSError as exc:
-                _LOGGER.debug("Impossibile salvare la risposta di debug su disco: %s", exc)
+            _salva_pagina_debug(body, "otp_submit_response_debug.html")
             raise EdistribuzioneParsingError(
                 "Redirect (meta Location) non trovato nella risposta dopo "
                 f"l'invio dell'OTP (risposta lunga {len(body)} caratteri - "
@@ -456,16 +606,25 @@ class EdistribuzioneAuthClient:
 
         code_match = re.search(r"[?&]code=([^&'\"]+)", consent_html)
         state_match = re.search(r"[?&]state=([^&'\"]+)", consent_html)
+
+        if not code_match:
+            # Prima volta che questo account autorizza l'app: Salesforce
+            # mostra una schermata di consenso esplicita ("Consentire
+            # l'accesso?") invece di rimandare subito il codice. Un browser
+            # la mostra all'utente, noi dobbiamo premere "Consenti" al posto
+            # suo - segnalato nell'issue #2 e confermato sulla pagina reale
+            # il 13/09/2026. Dalla seconda volta in poi il consenso resta
+            # memorizzato lato Salesforce e questo ramo non viene piu'
+            # eseguito.
+            risposta_consenso = await self._async_approva_consenso(consent_html)
+            if risposta_consenso is not None:
+                consent_html = risposta_consenso
+                code_match = re.search(r"[?&]code=([^&'\"]+)", consent_html)
+                state_match = re.search(r"[?&]state=([^&'\"]+)", consent_html)
+
         if not code_match:
             _log_parsing_failure_context(consent_html, "authorization code sulla pagina di consenso")
-            try:
-                Path("consent_page_debug.html").write_text(consent_html, encoding="utf-8")
-                _LOGGER.error(
-                    "Pagina di consenso completa salvata in %s",
-                    Path("consent_page_debug.html").resolve(),
-                )
-            except OSError as exc:
-                _LOGGER.debug("Impossibile salvare la pagina di consenso su disco: %s", exc)
+            _salva_pagina_debug(consent_html, "consent_page_debug.html")
             raise EdistribuzioneParsingError(
                 "Could not find authorization code in consent page response "
                 f"(pagina lunga {len(consent_html)} caratteri - vedi log per un'anteprima)"
@@ -490,6 +649,98 @@ class EdistribuzioneAuthClient:
         auth_code = unquote(code_match.group(1))
 
         return await self._async_exchange_code(auth_code)
+
+    async def _async_approva_consenso(self, html: str) -> str | None:
+        """Preme "Consenti" sulla schermata di consenso OAuth di Salesforce.
+
+        Ritorna il testo con cui cercare il codice di autorizzazione: il
+        Location della risposta se c'e' un redirect (tipicamente verso
+        eneldist://redirect?code=..., che aiohttp non puo' seguire perche'
+        non e' uno schema HTTP), altrimenti il corpo della risposta. Ritorna
+        None se questa pagina non e' una schermata di consenso riconoscibile,
+        cosi' il chiamante prosegue con il suo errore di parsing abituale.
+        """
+        form = self._estrai_form_consenso(html)
+        if form is None:
+            return None
+
+        action_url, dati = form
+        _LOGGER.info(
+            "Schermata di consenso OAuth rilevata (prima autorizzazione di "
+            "questo account): confermo con %r", dati.get("save")
+        )
+        headers = {
+            "User-Agent": _MOBILE_USER_AGENT,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": "https://private.e-distribuzione.it",
+            "Referer": "https://private.e-distribuzione.it/PortaleClienti/",
+        }
+        # allow_redirects=False: il redirect punta allo schema custom dell'app
+        # (eneldist://), che aiohttp non sa seguire - il codice sta nel
+        # Location, che qui possiamo leggere direttamente.
+        async with self._session.post(
+            action_url, data=dati, headers=headers, allow_redirects=False
+        ) as resp:
+            location = resp.headers.get("Location")
+            body = await resp.text()
+        return location or body
+
+    @staticmethod
+    def _estrai_form_consenso(html: str) -> tuple[str, dict[str, str]] | None:
+        """Trova il form della schermata di consenso e costruisce il payload
+        da rimandare: tutti i campi hidden cosi' come sono, piu' il pulsante
+        di approvazione.
+
+        Ritorna (url_action, dati) oppure None se non c'e' un form con un
+        pulsante di approvazione riconoscibile.
+        """
+        for form_match in re.finditer(
+            r"<form[^>]*>.*?</form>", html, re.IGNORECASE | re.DOTALL
+        ):
+            blocco = form_match.group(0)
+            approva: tuple[str, str] | None = None
+            for input_match in re.finditer(r"<input[^>]*>", blocco, re.IGNORECASE):
+                tag = input_match.group(0)
+                if not re.search(r'type="submit"', tag, re.IGNORECASE):
+                    continue
+                nome = re.search(r'name="([^"]*)"', tag)
+                valore = re.search(r'value="([^"]*)"', tag)
+                if not nome or not valore:
+                    continue
+                etichetta = html_lib.unescape(valore.group(1))
+                if etichetta.strip().lower() in _ETICHETTE_CONSENSO:
+                    approva = (nome.group(1), etichetta)
+                    break
+            if approva is None:
+                continue
+
+            dati = {}
+            for input_match in re.finditer(r"<input[^>]*>", blocco, re.IGNORECASE):
+                tag = input_match.group(0)
+                if not re.search(r'type="hidden"', tag, re.IGNORECASE):
+                    continue
+                nome = re.search(r'name="([^"]*)"', tag)
+                if not nome:
+                    continue
+                valore = re.search(r'value="([^"]*)"', tag)
+                # I valori nell'HTML sono escapati (&amp;, &#39;): vanno
+                # riportati in chiaro, altrimenti il server riceve campi
+                # diversi da quelli che ha generato (save_new_url e source
+                # sono URL pieni di parametri).
+                dati[nome.group(1)] = (
+                    html_lib.unescape(valore.group(1)) if valore else ""
+                )
+            dati[approva[0]] = approva[1]
+
+            action = re.search(r'<form[^>]*action="([^"]*)"', blocco, re.IGNORECASE)
+            action_url = html_lib.unescape(action.group(1)) if action else ""
+            if not action_url:
+                return None
+            if action_url.startswith("/"):
+                action_url = "https://private.e-distribuzione.it" + action_url
+            return action_url, dati
+
+        return None
 
     # -- Token exchange / refresh ---------------------------------------------
 
@@ -668,6 +919,11 @@ class EdistribuzioneAuthClient:
         )
         if resend_field:
             self._flow.resend_field_name = resend_field.group(1)
+        resend_checkbox = re.search(
+            r'name="([^"]*element___input____Richiedi_nuovo_OTP[^"]*)"', html
+        )
+        if resend_checkbox:
+            self._flow.resend_checkbox_field_name = resend_checkbox.group(1)
         next_field = re.search(r'name="([^"]*nextAjax[^"]*)"', html)
         if next_field:
             self._flow.next_field_name = next_field.group(1)

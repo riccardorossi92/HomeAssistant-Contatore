@@ -18,6 +18,7 @@ venv/
 # di un pattern con prefisso di cartella: vengono scritti nella cartella
 # da cui lanci lo script, non sempre scripts/.
 otp_page_debug.html
+otp_send_debug.html
 otp_submit_response_debug.html
 login_page_decoded.html
 daily_load_profile_debug.json
