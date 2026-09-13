@@ -44,7 +44,13 @@ Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
 uno di quelli supportati, o si ferma con un messaggio chiaro altrimenti.
 
-### In lavorazione
+### Cercasi contributori
+
+Per questi distributori manca un solo ingrediente: un account con un
+**POD già associato**. Chi mantiene il progetto non ne ha uno per
+nessuno dei tre, quindi da solo non può andare oltre — se hai una
+fornitura attiva con uno di questi distributori, sei tu il pezzo
+mancante.
 
 **Ireti**: login e anagrafica già funzionanti, mancano gli endpoint dei
 consumi. Se hai una fornitura Ireti puoi aiutare a completarlo — vedi
