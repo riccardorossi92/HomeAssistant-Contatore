@@ -58,6 +58,38 @@ STEP_POD_SCHEMA = vol.Schema(
     }
 )
 
+# Il codice OTP e' Optional (non Required) perche' lo stesso form serve anche
+# a richiedere un nuovo codice senza averne uno da inserire: chi non ha
+# ricevuto nulla spunta la casella e sottomette il form vuoto. La validazione
+# "almeno uno dei due" e' fatta a mano negli step (vedi otp_mancante).
+STEP_EDISTRIBUZIONE_OTP_SCHEMA = vol.Schema(
+    {
+        vol.Optional("otp", default=""): str,
+        vol.Optional("richiedi_nuovo_codice", default=False): bool,
+    }
+)
+
+
+# Testi degli avvisi dello step OTP. Stanno qui e non in translations/it.json
+# perche' sono placeholder dinamici (quale dei tre casi si applica lo sa solo
+# il codice) e questa integrazione ha una sola lingua; se un domani ne
+# arrivasse un'altra, diventano tre chiavi di traduzione.
+AVVISO_OTP_REINVIATO = (
+    "Ho chiesto a E-Distribuzione un nuovo codice: controlla email e SMS. "
+    "Usa l'ultimo arrivato."
+)
+AVVISO_OTP_INVIO_NON_CONFERMATO = (
+    "Attenzione: E-Distribuzione non ha confermato l'invio del codice. Se non "
+    "ti arriva nulla, chiudi le altre sessioni aperte (esci dall'app "
+    "ufficiale e dal sito), poi spunta \"Richiedi un nuovo codice\" qui sotto "
+    "e invia il form senza inserire nessun codice."
+)
+AVVISO_OTP_SOLO_DA_QUI = (
+    "Il codice deve essere quello inviato da questa configurazione: un OTP "
+    "generato sul sito o nell'app appartiene a un'altra sessione di login e "
+    "verrebbe rifiutato."
+)
+
 
 def _etichetta_pod(pod_info: dict) -> str:
     """'IT001E10684497 - Via Venino 29, Moneglia (GE)' invece del solo
@@ -374,6 +406,74 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     # Ramo E-Distribuzione: login email/password -> OTP -> selezione POD
     # ------------------------------------------------------------------
 
+    async def _async_edistribuzione_reinvia_otp(self) -> tuple[str | None, str | None]:
+        """Richiede un nuovo OTP dentro la sessione di login corrente.
+
+        Ritorna (chiave_errore, avviso) da passare al form: e' l'unico modo
+        di ottenere un codice valido per Home Assistant quando il primo non
+        arriva, perche' un OTP generato sul sito o nell'app appartiene a
+        un'altra sessione di login e non puo' essere convalidato qui.
+        """
+        from .distributors.edistribuzione.auth import EdistribuzioneTroppeSessioni
+
+        try:
+            confermato = await self._edistribuzione_auth.async_resend_otp()
+        except EdistribuzioneTroppeSessioni:
+            _LOGGER.warning(
+                "Reinvio OTP E-Distribuzione rifiutato: troppe sessioni aperte "
+                "sull'account"
+            )
+            return "troppe_sessioni", None
+        except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+            _LOGGER.exception("Reinvio del codice OTP E-Distribuzione fallito")
+            return "cannot_connect", None
+        return None, (
+            AVVISO_OTP_REINVIATO if confermato else AVVISO_OTP_INVIO_NON_CONFERMATO
+        )
+
+    def _edistribuzione_form_otp(
+        self, step_id: str, errors: dict[str, str], avviso: str
+    ):
+        """Il form del codice OTP, identico per il flusso iniziale e per il
+        reauth: cambia solo lo step_id."""
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=STEP_EDISTRIBUZIONE_OTP_SCHEMA,
+            errors=errors,
+            description_placeholders={"avviso": avviso},
+        )
+
+    async def _async_edistribuzione_otp_senza_codice(
+        self, step_id: str, user_input: dict[str, Any], avviso: str
+    ):
+        """Gestisce i submit del form OTP che non portano un codice da
+        convalidare: richiesta di un nuovo codice, o campo lasciato vuoto.
+
+        Ritorna il form da mostrare, oppure None se c'e' un codice e si puo'
+        procedere con async_submit_otp.
+        """
+        if user_input.get("richiedi_nuovo_codice"):
+            errore, avviso_reinvio = await self._async_edistribuzione_reinvia_otp()
+            return self._edistribuzione_form_otp(
+                step_id,
+                {"base": errore} if errore else {},
+                avviso_reinvio or avviso,
+            )
+        if not user_input.get("otp"):
+            return self._edistribuzione_form_otp(
+                step_id, {"base": "otp_mancante"}, avviso
+            )
+        return None
+
+    def _edistribuzione_avviso_iniziale(self) -> str:
+        """Avviso da mostrare la prima volta che si arriva sul form OTP:
+        segnala il caso in cui il portale non ha confermato l'invio del
+        codice (sintomo dell'issue #2: l'utente aspetta un OTP che non
+        arrivera' mai, senza che nulla glielo dica)."""
+        if getattr(self._edistribuzione_auth, "otp_invio_confermato", None) is False:
+            return AVVISO_OTP_INVIO_NON_CONFERMATO
+        return AVVISO_OTP_SOLO_DA_QUI
+
     async def async_step_edistribuzione_user(self, user_input: dict[str, Any] | None = None):
         errors: dict[str, str] = {}
 
@@ -382,6 +482,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 EdistribuzioneAuthClient,
                 EdistribuzioneInvalidCredentials,
                 EdistribuzioneParsingError,
+                EdistribuzioneTroppeSessioni,
             )
 
             # Dedicata (non la sessione condivisa async_get_clientsession):
@@ -406,6 +507,15 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             except EdistribuzioneInvalidCredentials:
                 errors["base"] = "invalid_auth"
+            except EdistribuzioneTroppeSessioni:
+                # Credenziali giuste, ma l'account ha troppe sessioni aperte:
+                # nessun OTP viene inviato, quindi non ha senso proseguire
+                # allo step successivo a chiederlo (issue #2).
+                _LOGGER.warning(
+                    "Login E-Distribuzione rifiutato: troppe sessioni aperte "
+                    "sull'account"
+                )
+                errors["base"] = "troppe_sessioni"
             except EdistribuzioneParsingError:
                 _LOGGER.exception("Parsing della pagina di login E-Distribuzione fallito")
                 errors["base"] = "cannot_connect"
@@ -434,17 +544,27 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_edistribuzione_otp(self, user_input: dict[str, Any] | None = None):
         errors: dict[str, str] = {}
+        avviso = self._edistribuzione_avviso_iniziale()
 
         if user_input is not None:
             from .distributors.edistribuzione.auth import (
                 EdistribuzioneInvalidOtp,
                 EdistribuzioneParsingError,
+                EdistribuzioneTroppeSessioni,
             )
+
+            form_senza_codice = await self._async_edistribuzione_otp_senza_codice(
+                "edistribuzione_otp", user_input, avviso
+            )
+            if form_senza_codice is not None:
+                return form_senza_codice
 
             try:
                 tokens = await self._edistribuzione_auth.async_submit_otp(user_input["otp"])
             except EdistribuzioneInvalidOtp:
                 errors["base"] = "invalid_otp"
+            except EdistribuzioneTroppeSessioni:
+                errors["base"] = "troppe_sessioni"
             except EdistribuzioneParsingError:
                 # A questo punto l'OTP e' gia' stato accettato da Salesforce
                 # (altrimenti avremmo preso EdistribuzioneInvalidOtp sopra):
@@ -468,11 +588,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._edistribuzione_refresh_token = tokens.refresh_token
                 return await self.async_step_edistribuzione_pod()
 
-        return self.async_show_form(
-            step_id="edistribuzione_otp",
-            data_schema=vol.Schema({vol.Required("otp"): str}),
-            errors=errors,
-        )
+        return self._edistribuzione_form_otp("edistribuzione_otp", errors, avviso)
 
     async def async_step_edistribuzione_pod(self, user_input: dict[str, Any] | None = None):
         from .distributors.edistribuzione.api import EdistribuzioneApiClient
@@ -733,10 +849,19 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 EdistribuzioneAuthClient,
                 EdistribuzioneInvalidCredentials,
                 EdistribuzioneParsingError,
+                EdistribuzioneTroppeSessioni,
             )
 
-            session = async_get_clientsession(self.hass)
-            self._edistribuzione_auth = EdistribuzioneAuthClient(session)
+            # Sessione dedicata e riusata tra i retry, come nel login
+            # iniziale: vedi il commento in async_step_edistribuzione_user -
+            # con la sessione condivisa di Home Assistant questa catena di
+            # redirect Salesforce puo' andare in loop perche' il cookie di
+            # sessione impostato a meta' strada non viene rimandato.
+            if self._edistribuzione_session is None:
+                self._edistribuzione_session = async_create_clientsession(self.hass)
+            self._edistribuzione_auth = EdistribuzioneAuthClient(
+                self._edistribuzione_session
+            )
 
             try:
                 await self._edistribuzione_auth.async_begin_login(
@@ -744,6 +869,12 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             except EdistribuzioneInvalidCredentials:
                 errors["base"] = "invalid_auth"
+            except EdistribuzioneTroppeSessioni:
+                _LOGGER.warning(
+                    "Login E-Distribuzione rifiutato (reauth): troppe sessioni "
+                    "aperte sull'account"
+                )
+                errors["base"] = "troppe_sessioni"
             except EdistribuzioneParsingError:
                 _LOGGER.exception(
                     "Parsing della pagina di login E-Distribuzione fallito (reauth)"
@@ -773,17 +904,27 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ):
         errors: dict[str, str] = {}
+        avviso = self._edistribuzione_avviso_iniziale()
 
         if user_input is not None:
             from .distributors.edistribuzione.auth import (
                 EdistribuzioneInvalidOtp,
                 EdistribuzioneParsingError,
+                EdistribuzioneTroppeSessioni,
             )
+
+            form_senza_codice = await self._async_edistribuzione_otp_senza_codice(
+                "edistribuzione_reauth_otp", user_input, avviso
+            )
+            if form_senza_codice is not None:
+                return form_senza_codice
 
             try:
                 tokens = await self._edistribuzione_auth.async_submit_otp(user_input["otp"])
             except EdistribuzioneInvalidOtp:
                 errors["base"] = "invalid_otp"
+            except EdistribuzioneTroppeSessioni:
+                errors["base"] = "troppe_sessioni"
             except EdistribuzioneParsingError:
                 # Vedi commento in async_step_edistribuzione_otp: l'OTP e'
                 # gia' stato accettato, un retry sullo stesso form non
@@ -808,10 +949,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
                 return self.async_abort(reason="reauth_successful")
 
-        return self.async_show_form(
-            step_id="edistribuzione_reauth_otp",
-            data_schema=vol.Schema({vol.Required("otp"): str}),
-            errors=errors,
+        return self._edistribuzione_form_otp(
+            "edistribuzione_reauth_otp", errors, avviso
         )
 
     # ------------------------------------------------------------------

@@ -44,6 +44,53 @@ _LOGGER = logging.getLogger(__name__)
 _MOBILE_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15"
 
 
+# Frammenti con cui il portale segnala che l'account ha troppe sessioni
+# aperte contemporaneamente ("Hai superato il numero di sessioni simultanee
+# consentite", osservato sul sito il 13/09/2026 - segnalato nell'issue #2).
+# Va distinto da credenziali sbagliate e da un cambio di markup: in questo
+# stato il login non prosegue e l'OTP non viene nemmeno inviato, quindi
+# l'utente resterebbe ad aspettare un codice che non arriva.
+_MARCATORI_TROPPE_SESSIONI = (
+    "sessioni simultanee",
+    "sessioni contemporanee",
+    "numero di sessioni",
+    "sessioni consentite",
+)
+
+# Testo con cui la risposta al primo submit del form conferma di avere
+# spedito il codice (confermato su HAR reale il 20/08/2026: "Abbiamo inviato
+# un codice a 5 cifre al tuo indirizzo email"). Piu' varianti perche' il
+# canale (email/SMS) e la formulazione cambiano da account ad account: qui
+# l'assenza di conferma NON viene trattata come errore fatale (romperebbe
+# login altrimenti validi con una formulazione diversa), solo segnalata.
+_MARCATORI_OTP_INVIATO = (
+    "abbiamo inviato",
+    "inviato un codice",
+    "codice a 5 cifre",
+    "codice è stato inviato",
+    "nuovo codice",
+)
+
+
+def _contiene(html: str, marcatori: tuple[str, ...]) -> bool:
+    testo = html.lower()
+    return any(marcatore in testo for marcatore in marcatori)
+
+
+def _salva_pagina_debug(html: str, nome_file: str) -> None:
+    """Scrive la pagina su disco accanto a configuration.yaml (best-effort:
+    se il filesystem non e' scrivibile in questo contesto non blocca nulla)
+    e logga il percorso, cosi' e' richiedibile all'utente in una
+    segnalazione senza dovergli far catturare una HAR."""
+    try:
+        percorso = Path(nome_file)
+        percorso.write_text(html, encoding="utf-8")
+    except OSError as exc:
+        _LOGGER.debug("Impossibile salvare %s su disco: %s", nome_file, exc)
+        return
+    _LOGGER.error("Pagina completa salvata in %s", percorso.resolve())
+
+
 def _log_parsing_failure_context(html: str, campo_cercato: str) -> None:
     """Logga titolo + un'anteprima della pagina quando un campo atteso non
     si trova - serve a distinguere "regex sbagliato" (il campo c'e' ma in
@@ -64,12 +111,7 @@ def _log_parsing_failure_context(html: str, campo_cercato: str) -> None:
         len(html),
         html[:300],
     )
-    try:
-        debug_path = Path("otp_page_debug.html")
-        debug_path.write_text(html, encoding="utf-8")
-        _LOGGER.error("Pagina completa salvata in %s", debug_path.resolve())
-    except OSError as exc:
-        _LOGGER.debug("Impossibile salvare la pagina di debug su disco: %s", exc)
+    _salva_pagina_debug(html, "otp_page_debug.html")
 
 _MAX_REDIRECT_HOPS = 15
 
@@ -84,6 +126,17 @@ class EdistribuzioneInvalidCredentials(EdistribuzioneAuthError):
 
 class EdistribuzioneInvalidOtp(EdistribuzioneAuthError):
     """Wrong or expired OTP code."""
+
+
+class EdistribuzioneTroppeSessioni(EdistribuzioneAuthError):
+    """L'account ha gia' troppe sessioni aperte: il portale rifiuta il login
+    prima di inviare qualunque OTP.
+
+    Non e' un problema di credenziali ne' di markup cambiato: finche' le
+    altre sessioni non vengono chiuse o non scadono (app ufficiale, sito,
+    tentativi precedenti di questa stessa integrazione) non c'e' niente da
+    reinserire nel form, va liberata una sessione e riprovato.
+    """
 
 
 class EdistribuzioneParsingError(EdistribuzioneAuthError):
@@ -162,6 +215,10 @@ class _LoginFlowState:
     # the raw prefix so we don't have to hardcode Salesforce's generated IDs.
     otp_field_name: str | None = None
     resend_field_name: str | None = None
+    # La checkbox visibile "Richiedi nuovo OTP", gemella del campo hidden
+    # sopra: serve solo per il reinvio esplicito (async_resend_otp), dove
+    # riproduciamo il submit di un browser con la casella spuntata.
+    resend_checkbox_field_name: str | None = None
     next_field_name: str | None = None
 
 
@@ -182,6 +239,12 @@ class EdistribuzioneAuthClient:
         self._code_verifier: str | None = None
         self._oauth_state: str | None = None
         self._flow = _LoginFlowState()
+        # True/False dopo async_begin_login()/async_resend_otp() a seconda
+        # che il portale abbia confermato l'invio del codice; None finche'
+        # non ci si e' arrivati. Il config flow lo usa per avvisare l'utente
+        # invece di lasciarlo aspettare un OTP che non arrivera' mai
+        # (issue #2).
+        self.otp_invio_confermato: bool | None = None
 
     # -- Step 1: authorize + credentials -------------------------------------
 
@@ -331,6 +394,15 @@ class EdistribuzioneAuthClient:
             ) from err
 
         if not isinstance(return_value, str) or not return_value.startswith("OK:"):
+            # Il limite di sessioni contemporanee arriva qui come messaggio
+            # di errore della stessa action del login: trattarlo come
+            # "credenziali non valide" (comportamento precedente) mandava
+            # l'utente a ricontrollare email e password mentre il problema
+            # era altrove - vedi _MARCATORI_TROPPE_SESSIONI.
+            if isinstance(return_value, str) and _contiene(
+                return_value, _MARCATORI_TROPPE_SESSIONI
+            ):
+                raise EdistribuzioneTroppeSessioni(return_value)
             raise EdistribuzioneInvalidCredentials(str(return_value))
 
         frontdoor_url = return_value[len("OK:") :]
@@ -360,20 +432,36 @@ class EdistribuzioneAuthClient:
         risposta contiene testualmente "Abbiamo inviato un codice a 5
         cifre al tuo indirizzo email" (non solo SMS, come si poteva
         pensare dal solo nome del campo OTP_Input).
-
-        Il ViewState/CSRF nella risposta di QUESTA chiamata vanno poi usati
-        per l'invio effettivo del codice (async_submit_otp), non quelli
-        della pagina di atterraggio iniziale: sembrano ruotare ad ogni
-        submit del form, quindi li aggiorniamo qui via lo stesso parser
-        della pagina di atterraggio (la risposta e' ancora una pagina HTML
-        completa con lo stesso form, solo con il messaggio di conferma e
-        token freschi).
         """
-        headers = {
-            "User-Agent": _MOBILE_USER_AGENT,
-            "Faces-Request": "partial/ajax",
-        }
-        data = {
+        await self._async_post_form_otp(self._dati_form_otp())
+
+    async def async_resend_otp(self) -> bool:
+        """Fa rimandare un OTP nuovo DENTRO la sessione di login gia' avviata.
+
+        Serve perche' un OTP generato altrove (app ufficiale o sito) appartiene
+        a un'altra "interview" del login flow di Salesforce e non puo' essere
+        convalidato qui: se il codice non arriva in Home Assistant, l'unico
+        modo di ottenerne uno valido e' farlo rispedire da questa stessa
+        sessione (issue #2, dove l'utente riusciva a generare OTP validi sul
+        sito ma nessuno di quelli funzionava nell'integrazione).
+
+        Ritorna True se il portale ha confermato l'invio.
+        """
+        if self._flow.view_state is None:
+            raise EdistribuzioneAuthError(
+                "async_begin_login() deve riuscire prima di async_resend_otp()"
+            )
+        await self._async_post_form_otp(self._dati_form_otp(richiedi_nuovo=True))
+        return bool(self.otp_invio_confermato)
+
+    def _dati_form_otp(
+        self, *, otp_code: str | None = None, richiedi_nuovo: bool = False
+    ) -> dict[str, str]:
+        """Payload del form RichFaces del login flow, identico per i tre
+        submit che facciamo (invio iniziale senza codice, reinvio, convalida
+        del codice): cambiano solo il campo OTP e il flag di reinvio."""
+        next_field = self._flow.next_field_name or "thePage:j_id2:i:f:pb:pbb:nextAjax"
+        dati = {
             "AJAXREQUEST": "_viewRoot",
             "thePage:j_id2:i:f": "thePage:j_id2:i:f",
             "thePage:j_id2:i:f:pb:d:navigationType": "",
@@ -381,14 +469,62 @@ class EdistribuzioneAuthClient:
             "com.salesforce.visualforce.ViewStateVersion": self._flow.view_state_version,
             "com.salesforce.visualforce.ViewStateMAC": self._flow.view_state_mac,
             "com.salesforce.visualforce.ViewStateCSRF": self._flow.view_state_csrf,
-            (self._flow.next_field_name or "thePage:j_id2:i:f:pb:pbb:nextAjax"): (
-                self._flow.next_field_name or "thePage:j_id2:i:f:pb:pbb:nextAjax"
-            ),
+            next_field: next_field,
         }
+        if otp_code is not None:
+            dati[
+                self._flow.otp_field_name
+                or "thePage:j_id2:i:f:pb:d:element___input____OTP_Input"
+            ] = otp_code
+        if otp_code is not None or richiedi_nuovo:
+            dati[
+                self._flow.resend_field_name
+                or "thePage:j_id2:i:f:pb:d:element___hidden____Richiedi_nuovo_OTP"
+            ] = "true" if richiedi_nuovo else "false"
+        if richiedi_nuovo and self._flow.resend_checkbox_field_name:
+            # Un browser con la casella spuntata invia anche la checkbox
+            # visibile, non solo il campo hidden che la specchia: la
+            # riproduciamo per stare il piu' vicino possibile al submit reale.
+            dati[self._flow.resend_checkbox_field_name] = "true"
+        return dati
 
+    async def _async_post_form_otp(self, data: dict[str, str]) -> None:
+        """Submit del form OTP che NON porta un codice da convalidare (invio
+        iniziale o reinvio): controlla che il portale abbia davvero spedito
+        l'OTP e aggiorna ViewState/CSRF dalla risposta.
+
+        I token nella risposta di QUESTA chiamata sono quelli da usare per
+        l'invio effettivo del codice (async_submit_otp), non quelli della
+        pagina di atterraggio: ruotano ad ogni submit del form.
+        """
+        headers = {
+            "User-Agent": _MOBILE_USER_AGENT,
+            "Faces-Request": "partial/ajax",
+        }
         url = self._flow.form_action_url or LOGINFLOW_URL
         async with self._session.post(url, data=data, headers=headers) as resp:
             body = await resp.text()
+
+        if _contiene(body, _MARCATORI_TROPPE_SESSIONI):
+            _salva_pagina_debug(body, "otp_send_debug.html")
+            raise EdistribuzioneTroppeSessioni(body[:500])
+
+        self.otp_invio_confermato = _contiene(body, _MARCATORI_OTP_INVIATO)
+        if not self.otp_invio_confermato:
+            # Non fatale di proposito: la pagina potrebbe confermare l'invio
+            # con parole che non conosciamo ancora, e abortire qui romperebbe
+            # login che funzionano. Ma va segnalato, perche' l'altra
+            # possibilita' e' che il codice non sia MAI stato spedito - il
+            # sintomo dell'issue #2, prima invisibile nei log.
+            _LOGGER.error(
+                "E-Distribuzione non ha confermato l'invio del codice OTP "
+                "(nessuno dei messaggi attesi %r nella risposta, lunga %d "
+                "caratteri). Se il codice non arriva ne' via email ne' via "
+                "SMS, allega otp_send_debug.html alla segnalazione.",
+                _MARCATORI_OTP_INVIATO,
+                len(body),
+            )
+            _salva_pagina_debug(body, "otp_send_debug.html")
 
         self._parse_otp_page(body)
 
@@ -405,24 +541,15 @@ class EdistribuzioneAuthClient:
             "User-Agent": _MOBILE_USER_AGENT,
             "Faces-Request": "partial/ajax",
         }
-        data = {
-            "AJAXREQUEST": "_viewRoot",
-            "thePage:j_id2:i:f": "thePage:j_id2:i:f",
-            "thePage:j_id2:i:f:pb:d:navigationType": "",
-            (self._flow.otp_field_name or "thePage:j_id2:i:f:pb:d:element___input____OTP_Input"): otp_code,
-            (self._flow.resend_field_name or "thePage:j_id2:i:f:pb:d:element___hidden____Richiedi_nuovo_OTP"): "false",
-            "com.salesforce.visualforce.ViewState": self._flow.view_state,
-            "com.salesforce.visualforce.ViewStateVersion": self._flow.view_state_version,
-            "com.salesforce.visualforce.ViewStateMAC": self._flow.view_state_mac,
-            "com.salesforce.visualforce.ViewStateCSRF": self._flow.view_state_csrf,
-            (self._flow.next_field_name or "thePage:j_id2:i:f:pb:pbb:nextAjax"): (
-                self._flow.next_field_name or "thePage:j_id2:i:f:pb:pbb:nextAjax"
-            ),
-        }
+        data = self._dati_form_otp(otp_code=otp_code)
 
         url = self._flow.form_action_url or LOGINFLOW_URL
         async with self._session.post(url, data=data, headers=headers) as resp:
             body = await resp.text()
+
+        if _contiene(body, _MARCATORI_TROPPE_SESSIONI):
+            _salva_pagina_debug(body, "otp_submit_response_debug.html")
+            raise EdistribuzioneTroppeSessioni(body[:500])
 
         if "Codice OTP" in body and "errato" in body.lower():
             raise EdistribuzioneInvalidOtp(body[:500])
@@ -431,14 +558,7 @@ class EdistribuzioneAuthClient:
         loc_match = re.search(r'name="Location"\s+content="([^"]+)"', body)
         if not loc_match:
             _log_parsing_failure_context(body, "meta Location dopo l'invio dell'OTP")
-            try:
-                Path("otp_submit_response_debug.html").write_text(body, encoding="utf-8")
-                _LOGGER.error(
-                    "Risposta completa salvata in %s",
-                    Path("otp_submit_response_debug.html").resolve(),
-                )
-            except OSError as exc:
-                _LOGGER.debug("Impossibile salvare la risposta di debug su disco: %s", exc)
+            _salva_pagina_debug(body, "otp_submit_response_debug.html")
             raise EdistribuzioneParsingError(
                 "Redirect (meta Location) non trovato nella risposta dopo "
                 f"l'invio dell'OTP (risposta lunga {len(body)} caratteri - "
@@ -458,14 +578,7 @@ class EdistribuzioneAuthClient:
         state_match = re.search(r"[?&]state=([^&'\"]+)", consent_html)
         if not code_match:
             _log_parsing_failure_context(consent_html, "authorization code sulla pagina di consenso")
-            try:
-                Path("consent_page_debug.html").write_text(consent_html, encoding="utf-8")
-                _LOGGER.error(
-                    "Pagina di consenso completa salvata in %s",
-                    Path("consent_page_debug.html").resolve(),
-                )
-            except OSError as exc:
-                _LOGGER.debug("Impossibile salvare la pagina di consenso su disco: %s", exc)
+            _salva_pagina_debug(consent_html, "consent_page_debug.html")
             raise EdistribuzioneParsingError(
                 "Could not find authorization code in consent page response "
                 f"(pagina lunga {len(consent_html)} caratteri - vedi log per un'anteprima)"
@@ -668,6 +781,11 @@ class EdistribuzioneAuthClient:
         )
         if resend_field:
             self._flow.resend_field_name = resend_field.group(1)
+        resend_checkbox = re.search(
+            r'name="([^"]*element___input____Richiedi_nuovo_OTP[^"]*)"', html
+        )
+        if resend_checkbox:
+            self._flow.resend_checkbox_field_name = resend_checkbox.group(1)
         next_field = re.search(r'name="([^"]*nextAjax[^"]*)"', html)
         if next_field:
             self._flow.next_field_name = next_field.group(1)

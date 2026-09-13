@@ -214,6 +214,157 @@ class TestParseOtpPage:
         with pytest.raises(auth.EdistribuzioneParsingError, match="ViewState"):
             client._parse_otp_page("<html><title>Sessione scaduta</title></html>")
 
+    def test_cattura_anche_la_checkbox_di_reinvio(self):
+        """La checkbox visibile serve per il reinvio esplicito del codice
+        (async_resend_otp), dove riproduciamo il submit di un browser con la
+        casella spuntata - il campo hidden da solo non basta a rappresentarlo."""
+        client = self._client()
+        client._parse_otp_page(self.HTML_PAGINA_OTP)
+        assert client._flow.resend_checkbox_field_name == (
+            "thePage:j_id2:i:f:pb:d:element___input____Richiedi_nuovo_OTP"
+        )
+
+
+# ---------------------------------------------------------------------------
+# _dati_form_otp (payload dei tre submit del form)
+# ---------------------------------------------------------------------------
+
+
+class TestDatiFormOtp:
+    @staticmethod
+    def _client():
+        client = auth.EdistribuzioneAuthClient(session=None)
+        client._parse_otp_page(TestParseOtpPage.HTML_PAGINA_OTP)
+        return client
+
+    def test_invio_iniziale_senza_codice_ne_flag_di_reinvio(self):
+        """Il primo submit serve solo a far spedire il codice: non deve
+        contenere ne' un OTP da convalidare ne' il flag di reinvio."""
+        dati = self._client()._dati_form_otp()
+        assert not [k for k in dati if "OTP_Input" in k]
+        assert not [k for k in dati if "Richiedi_nuovo_OTP" in k]
+        assert dati["com.salesforce.visualforce.ViewState"] == "VS123"
+
+    def test_convalida_codice_manda_hidden_a_false(self):
+        """Regressione v0.1.3: con il flag di reinvio a 'true' il server
+        trattava la convalida come un'ennesima richiesta di nuovo codice."""
+        dati = self._client()._dati_form_otp(otp_code="12345")
+        assert dati["thePage:j_id2:i:f:pb:d:element___input____OTP_Input"] == "12345"
+        assert (
+            dati["thePage:j_id2:i:f:pb:d:element___hidden____Richiedi_nuovo_OTP"]
+            == "false"
+        )
+
+    def test_reinvio_manda_hidden_e_checkbox_a_true_senza_codice(self):
+        dati = self._client()._dati_form_otp(richiedi_nuovo=True)
+        assert (
+            dati["thePage:j_id2:i:f:pb:d:element___hidden____Richiedi_nuovo_OTP"]
+            == "true"
+        )
+        assert (
+            dati["thePage:j_id2:i:f:pb:d:element___input____Richiedi_nuovo_OTP"]
+            == "true"
+        )
+        assert not [k for k in dati if "OTP_Input" in k]
+
+
+# ---------------------------------------------------------------------------
+# Invio / reinvio del codice: conferma e limite di sessioni (issue #2)
+# ---------------------------------------------------------------------------
+
+
+class _RispostaFinta:
+    def __init__(self, body: str) -> None:
+        self._body = body
+
+    async def text(self) -> str:
+        return self._body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info) -> bool:
+        return False
+
+
+class _SessioneFinta:
+    """Minimo indispensabile per _async_post_form_otp: registra i dati
+    inviati e restituisce sempre la stessa pagina."""
+
+    def __init__(self, body: str) -> None:
+        self._body = body
+        self.dati_inviati: dict | None = None
+
+    def post(self, url, data=None, headers=None):
+        self.dati_inviati = data
+        return _RispostaFinta(self._body)
+
+
+PAGINA_OTP_CON_CONFERMA = (
+    "<html><body><p>Abbiamo inviato un codice a 5 cifre al tuo indirizzo "
+    "email</p>" + TestParseOtpPage.HTML_PAGINA_OTP + "</body></html>"
+)
+
+
+def _client_su_form_otp(body: str):
+    session = _SessioneFinta(body)
+    client = auth.EdistribuzioneAuthClient(session)
+    client._parse_otp_page(TestParseOtpPage.HTML_PAGINA_OTP)
+    return client, session
+
+
+class TestInvioOtp:
+    async def test_conferma_invio_riconosciuta(self):
+        client, _ = _client_su_form_otp(PAGINA_OTP_CON_CONFERMA)
+        await client._async_trigger_otp_send()
+        assert client.otp_invio_confermato is True
+
+    async def test_invio_non_confermato_non_e_fatale_ma_viene_segnalato(
+        self, caplog, monkeypatch, tmp_path
+    ):
+        """Se la pagina non contiene nessuno dei messaggi di conferma noti il
+        flusso continua (la formulazione potrebbe essere solo diversa), ma
+        resta traccia nei log e il flag permette al config flow di avvisare:
+        il sintomo dell'issue #2 era proprio un OTP mai spedito e nessun
+        indizio da nessuna parte."""
+        # Il dump di debug viene scritto nella cwd: lo dirottiamo su tmp_path
+        # per non lasciare otp_send_debug.html dentro il repository.
+        monkeypatch.chdir(tmp_path)
+        client, _ = _client_su_form_otp(TestParseOtpPage.HTML_PAGINA_OTP)
+        await client._async_trigger_otp_send()
+        assert client.otp_invio_confermato is False
+        assert "non ha confermato l'invio" in caplog.text
+        assert (tmp_path / "otp_send_debug.html").exists()
+
+    async def test_pagina_limite_sessioni_solleva_eccezione_dedicata(
+        self, monkeypatch, tmp_path
+    ):
+        """Con troppe sessioni aperte nessun codice viene spedito: va
+        distinto da un OTP sbagliato o da un cambio di markup, altrimenti
+        l'utente resta ad aspettare un codice che non arrivera' mai."""
+        monkeypatch.chdir(tmp_path)
+        client, _ = _client_su_form_otp(
+            "<html><body>Hai superato il numero di sessioni simultanee "
+            "consentite</body></html>"
+        )
+        with pytest.raises(auth.EdistribuzioneTroppeSessioni):
+            await client._async_trigger_otp_send()
+
+    async def test_resend_otp_invia_il_flag_di_reinvio(self):
+        client, session = _client_su_form_otp(PAGINA_OTP_CON_CONFERMA)
+        assert await client.async_resend_otp() is True
+        assert (
+            session.dati_inviati[
+                "thePage:j_id2:i:f:pb:d:element___hidden____Richiedi_nuovo_OTP"
+            ]
+            == "true"
+        )
+
+    async def test_resend_otp_prima_del_login_e_un_errore(self):
+        client = auth.EdistribuzioneAuthClient(session=None)
+        with pytest.raises(auth.EdistribuzioneAuthError, match="async_begin_login"):
+            await client.async_resend_otp()
+
 
 # ---------------------------------------------------------------------------
 # Gerarchia eccezioni
@@ -229,3 +380,11 @@ class TestGerarchiaEccezioni:
 
     def test_parsing_error_e_sottoclasse_di_auth_error(self):
         assert issubclass(auth.EdistribuzioneParsingError, auth.EdistribuzioneAuthError)
+
+    def test_troppe_sessioni_e_sottoclasse_di_auth_error_ma_non_di_credenziali(self):
+        """Deve essere gestibile a parte: le credenziali sono corrette, e'
+        l'account ad avere troppe sessioni aperte."""
+        assert issubclass(auth.EdistribuzioneTroppeSessioni, auth.EdistribuzioneAuthError)
+        assert not issubclass(
+            auth.EdistribuzioneTroppeSessioni, auth.EdistribuzioneInvalidCredentials
+        )

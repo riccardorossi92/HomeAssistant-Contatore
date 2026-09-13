@@ -154,6 +154,14 @@ async def main() -> None:
         except auth.EdistribuzioneInvalidCredentials as exc:
             print(f"Credenziali rifiutate: {exc}")
             return
+        except auth.EdistribuzioneTroppeSessioni as exc:
+            print(
+                "E-Distribuzione ha rifiutato l'accesso: l'account ha troppe "
+                f"sessioni aperte contemporaneamente ({exc}).\nEsci dall'app "
+                "ufficiale e dal sito, attendi qualche minuto e riprova: in "
+                "questo stato nessun OTP viene inviato."
+            )
+            return
         except auth.EdistribuzioneParsingError as exc:
             print(f"Errore di parsing (pagina di login cambiata?): {exc}")
             return
@@ -164,11 +172,43 @@ async def main() -> None:
         print("OK: email/password accettate.")
 
         print("\n--- Invio codice OTP ---")
-        otp = input("Codice OTP ricevuto via email o SMS: ").strip()
+        if client.otp_invio_confermato is False:
+            print(
+                "ATTENZIONE: E-Distribuzione non ha confermato l'invio del "
+                "codice (vedi otp_send_debug.html nella cartella corrente). Se "
+                "non arriva nulla, rispondi 'r' alla domanda qui sotto per "
+                "farne rispedire uno."
+            )
+        print(
+            "Il codice deve essere quello inviato da QUESTA sessione: uno "
+            "generato sul sito o nell'app appartiene a un altro login e viene "
+            "sempre rifiutato."
+        )
+        while True:
+            otp = input(
+                "Codice OTP ricevuto via email o SMS ('r' per farne rispedire "
+                "uno nuovo): "
+            ).strip()
+            if otp.lower() != "r":
+                break
+            try:
+                confermato = await client.async_resend_otp()
+            except auth.EdistribuzioneTroppeSessioni as exc:
+                print(f"Reinvio rifiutato, troppe sessioni aperte: {exc}")
+                return
+            print(
+                "Nuovo codice richiesto: controlla email e SMS."
+                if confermato
+                else "Reinvio richiesto ma NON confermato dal portale (vedi "
+                "otp_send_debug.html)."
+            )
         try:
             tokens = await client.async_submit_otp(otp)
         except auth.EdistribuzioneInvalidOtp as exc:
             print(f"OTP rifiutato: {exc}")
+            return
+        except auth.EdistribuzioneTroppeSessioni as exc:
+            print(f"Convalida rifiutata, troppe sessioni aperte: {exc}")
             return
         except auth.EdistribuzioneParsingError as exc:
             print(f"Errore di parsing (pagina OTP cambiata?): {exc}")

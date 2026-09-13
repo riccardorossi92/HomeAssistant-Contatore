@@ -45,7 +45,7 @@
       },
       "edistribuzione_user": {
         "title": "E-Distribuzione - Accedi",
-        "description": "Usa le stesse credenziali dell'app o del sito ufficiale E-Distribuzione (nessuna richiesta di abilitazione da fare in anticipo, a differenza di Duereti/Unareti). Dopo l'accesso ti verrà chiesto un codice OTP, ricevuto via email o SMS.",
+        "description": "Usa le stesse credenziali dell'app o del sito ufficiale E-Distribuzione (nessuna richiesta di abilitazione da fare in anticipo, a differenza di Duereti/Unareti). Dopo l'accesso ti verrà chiesto un codice OTP, ricevuto via email o SMS: sarà inviato da questa configurazione, non usare codici generati sul sito o nell'app. Se hai l'app o il sito aperti, esci prima da lì: E-Distribuzione limita il numero di sessioni contemporanee per account.",
         "data": {
           "email": "Email",
           "password": "Password"
@@ -53,8 +53,11 @@
       },
       "edistribuzione_otp": {
         "title": "E-Distribuzione - Codice OTP",
-        "description": "Inserisci il codice OTP ricevuto via email o SMS",
-        "data": { "otp": "Codice OTP" }
+        "description": "Inserisci il codice OTP ricevuto via email o SMS. {avviso}",
+        "data": {
+          "otp": "Codice OTP",
+          "richiedi_nuovo_codice": "Richiedi un nuovo codice (lascia vuoto il campo sopra)"
+        }
       },
       "edistribuzione_pod": {
         "title": "E-Distribuzione - Seleziona POD",
@@ -79,8 +82,11 @@
       },
       "edistribuzione_reauth_otp": {
         "title": "E-Distribuzione - Codice OTP",
-        "description": "Inserisci il codice OTP ricevuto via email o SMS",
-        "data": { "otp": "Codice OTP" }
+        "description": "Inserisci il codice OTP ricevuto via email o SMS. {avviso}",
+        "data": {
+          "otp": "Codice OTP",
+          "richiedi_nuovo_codice": "Richiedi un nuovo codice (lascia vuoto il campo sopra)"
+        }
       },
       "areti_user": {
         "title": "Areti - Accedi",
@@ -113,7 +119,9 @@
       "pod_duplicato": "Questo POD è già configurato in: {pod_conflitto}",
       "pod_non_valido": "POD o dato fiscale non riconosciuti dal distributore. Controlla il codice POD (inizia con IT e lo trovi in bolletta) e il codice fiscale o la partita IVA dell'intestatario della fornitura.",
       "areti_pod_non_valido": "POD non riconosciuto su questo account Areti. Controlla il codice (inizia con IT e lo trovi in bolletta) e che sia associato all'account con cui hai fatto accesso.",
-      "invalid_otp": "Codice OTP errato o scaduto",
+      "invalid_otp": "Codice OTP errato o scaduto. Deve essere il codice inviato da questa configurazione: uno generato sul sito o nell'app appartiene a un'altra sessione di login e viene sempre rifiutato.",
+      "otp_mancante": "Inserisci il codice OTP, oppure spunta \"Richiedi un nuovo codice\" per farne inviare uno nuovo",
+      "troppe_sessioni": "E-Distribuzione ha rifiutato l'accesso perché l'account ha troppe sessioni aperte contemporaneamente. Esci dall'app ufficiale e dal sito, attendi qualche minuto e riprova: in questo stato nessun codice OTP viene inviato.",
       "nessun_pod_selezionato": "Seleziona almeno un POD"
     },
     "abort": {
