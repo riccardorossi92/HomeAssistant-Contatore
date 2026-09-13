@@ -367,6 +367,132 @@ class TestInvioOtp:
 
 
 # ---------------------------------------------------------------------------
+# Schermata di consenso OAuth (issue #2)
+# ---------------------------------------------------------------------------
+
+
+# Struttura ricalcata sulla pagina reale catturata il 13/09/2026
+# (consent_page_debug.html, 9860 caratteri): titolo "Consentire l'accesso?",
+# un solo form con 8 campi hidden e DUE pulsanti submit con lo stesso
+# name="save", distinguibili solo per il valore - "Consenti" approva,
+# " Nega " (con gli spazi) rifiuta.
+HTML_PAGINA_CONSENSO = """
+<html><head><title>Consentire l'accesso? | Portale Clienti</title></head>
+<body>
+  <form id="editPage" method="post"
+        action="/PortaleClienti/_ui/identity/oauth/ui/AuthorizationPage">
+    <input type="hidden" name="_CONFIRMATIONTOKEN" value="TOKEN123" />
+    <input type="hidden" name="cancelURL" value="/PortaleClienti/home/home.jsp" />
+    <input type="hidden" name="retURL" value="/PortaleClienti/home/home.jsp" />
+    <input type="hidden" name="save_new_url"
+           value="/services/oauth2/approval?a=1&amp;b=2&amp;c=l&#39;app" />
+    <input type="hidden" name="source" value="SORGENTE456" />
+    <input type="hidden" name="scope_hint" value="web api openid" />
+    <input type="hidden" name="authPageHint" value="HINT789" />
+    <input type="hidden" name="display" value="touch" />
+    <input type="submit" name="save" value="Consenti" class="button primary" />
+    <input type="submit" name="save" value=" Nega " id="oadeny" />
+  </form>
+</body></html>
+"""
+
+
+class TestFormConsenso:
+    def test_seleziona_consenti_e_non_nega(self):
+        """I due pulsanti hanno lo stesso name: prendere quello sbagliato
+        significherebbe NEGARE l'autorizzazione all'integrazione."""
+        action, dati = auth.EdistribuzioneAuthClient._estrai_form_consenso(
+            HTML_PAGINA_CONSENSO
+        )
+        assert dati["save"] == "Consenti"
+        assert (
+            action
+            == "https://private.e-distribuzione.it/PortaleClienti/_ui/identity/oauth/ui/AuthorizationPage"
+        )
+
+    def test_rimanda_tutti_i_campi_hidden_deescapati(self):
+        """save_new_url e source sono URL pieni di parametri: se restano
+        escapati (&amp;) il server riceve valori diversi da quelli che ha
+        generato."""
+        _, dati = auth.EdistribuzioneAuthClient._estrai_form_consenso(
+            HTML_PAGINA_CONSENSO
+        )
+        assert set(dati) == {
+            "_CONFIRMATIONTOKEN",
+            "cancelURL",
+            "retURL",
+            "save_new_url",
+            "source",
+            "scope_hint",
+            "authPageHint",
+            "display",
+            "save",
+        }
+        assert dati["save_new_url"] == "/services/oauth2/approval?a=1&b=2&c=l'app"
+
+    def test_pagina_senza_pulsante_di_consenso_ritorna_none(self):
+        """Su una pagina che non e' una schermata di consenso il chiamante
+        deve poter proseguire col suo errore di parsing abituale."""
+        assert (
+            auth.EdistribuzioneAuthClient._estrai_form_consenso(
+                "<html><body><form><input type='submit' name='x' value='Invia'>"
+                "</form></body></html>"
+            )
+            is None
+        )
+
+
+class _RispostaConLocation(_RispostaFinta):
+    def __init__(self, body: str, location: str | None = None) -> None:
+        super().__init__(body)
+        self.headers = {"Location": location} if location else {}
+
+
+class _SessioneACoda:
+    """Restituisce le risposte in coda, una per chiamata (get o post), e
+    registra i payload inviati."""
+
+    def __init__(self, risposte: list) -> None:
+        self._risposte = list(risposte)
+        self.post_inviati: list[dict] = []
+
+    def _prossima(self):
+        return self._risposte.pop(0)
+
+    def post(self, url, data=None, headers=None, allow_redirects=None):
+        self.post_inviati.append({"url": url, "data": data})
+        return self._prossima()
+
+    def get(self, url, headers=None):
+        return self._prossima()
+
+
+class TestApprovazioneConsenso:
+    async def test_preme_consenti_e_recupera_il_codice(self):
+        """Il percorso completo dell'issue #2: dopo l'OTP arriva la
+        schermata di consenso invece del codice; premendo "Consenti" il
+        codice arriva nel Location del redirect verso lo schema custom
+        dell'app (eneldist://), che aiohttp non puo' seguire."""
+        session = _SessioneACoda([
+            _RispostaConLocation(
+                "eneldist://redirect?code=CODICE_OK&state=S",
+                location="eneldist://redirect?code=CODICE_OK&state=S",
+            )
+        ])
+        client = auth.EdistribuzioneAuthClient(session)
+        risultato = await client._async_approva_consenso(HTML_PAGINA_CONSENSO)
+        assert "code=CODICE_OK" in risultato
+        assert session.post_inviati[0]["data"]["save"] == "Consenti"
+        assert (
+            session.post_inviati[0]["url"].endswith("/AuthorizationPage")
+        )
+
+    async def test_senza_form_di_consenso_ritorna_none(self):
+        client = auth.EdistribuzioneAuthClient(_SessioneACoda([]))
+        assert await client._async_approva_consenso("<html>niente</html>") is None
+
+
+# ---------------------------------------------------------------------------
 # Gerarchia eccezioni
 # ---------------------------------------------------------------------------
 

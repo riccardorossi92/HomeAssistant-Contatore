@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import html as html_lib
 import json
 import logging
 import re
@@ -70,6 +71,15 @@ _MARCATORI_OTP_INVIATO = (
     "codice è stato inviato",
     "nuovo codice",
 )
+
+
+# Etichette del pulsante che APPROVA sulla schermata di consenso OAuth.
+# Sulla pagina reale (catturata il 13/09/2026, issue #2) i due pulsanti
+# hanno lo STESSO name="save" e si distinguono solo per il valore:
+# "Consenti" approva, " Nega " (con gli spazi) rifiuta - sbagliare pulsante
+# significa negare l'autorizzazione all'integrazione, quindi il valore va
+# confrontato per intero, non cercato come sottostringa.
+_ETICHETTE_CONSENSO = ("consenti", "allow", "approve", "autorizza", "accetta")
 
 
 def _contiene(html: str, marcatori: tuple[str, ...]) -> bool:
@@ -576,6 +586,22 @@ class EdistribuzioneAuthClient:
 
         code_match = re.search(r"[?&]code=([^&'\"]+)", consent_html)
         state_match = re.search(r"[?&]state=([^&'\"]+)", consent_html)
+
+        if not code_match:
+            # Prima volta che questo account autorizza l'app: Salesforce
+            # mostra una schermata di consenso esplicita ("Consentire
+            # l'accesso?") invece di rimandare subito il codice. Un browser
+            # la mostra all'utente, noi dobbiamo premere "Consenti" al posto
+            # suo - segnalato nell'issue #2 e confermato sulla pagina reale
+            # il 13/09/2026. Dalla seconda volta in poi il consenso resta
+            # memorizzato lato Salesforce e questo ramo non viene piu'
+            # eseguito.
+            risposta_consenso = await self._async_approva_consenso(consent_html)
+            if risposta_consenso is not None:
+                consent_html = risposta_consenso
+                code_match = re.search(r"[?&]code=([^&'\"]+)", consent_html)
+                state_match = re.search(r"[?&]state=([^&'\"]+)", consent_html)
+
         if not code_match:
             _log_parsing_failure_context(consent_html, "authorization code sulla pagina di consenso")
             _salva_pagina_debug(consent_html, "consent_page_debug.html")
@@ -603,6 +629,98 @@ class EdistribuzioneAuthClient:
         auth_code = unquote(code_match.group(1))
 
         return await self._async_exchange_code(auth_code)
+
+    async def _async_approva_consenso(self, html: str) -> str | None:
+        """Preme "Consenti" sulla schermata di consenso OAuth di Salesforce.
+
+        Ritorna il testo con cui cercare il codice di autorizzazione: il
+        Location della risposta se c'e' un redirect (tipicamente verso
+        eneldist://redirect?code=..., che aiohttp non puo' seguire perche'
+        non e' uno schema HTTP), altrimenti il corpo della risposta. Ritorna
+        None se questa pagina non e' una schermata di consenso riconoscibile,
+        cosi' il chiamante prosegue con il suo errore di parsing abituale.
+        """
+        form = self._estrai_form_consenso(html)
+        if form is None:
+            return None
+
+        action_url, dati = form
+        _LOGGER.info(
+            "Schermata di consenso OAuth rilevata (prima autorizzazione di "
+            "questo account): confermo con %r", dati.get("save")
+        )
+        headers = {
+            "User-Agent": _MOBILE_USER_AGENT,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": "https://private.e-distribuzione.it",
+            "Referer": "https://private.e-distribuzione.it/PortaleClienti/",
+        }
+        # allow_redirects=False: il redirect punta allo schema custom dell'app
+        # (eneldist://), che aiohttp non sa seguire - il codice sta nel
+        # Location, che qui possiamo leggere direttamente.
+        async with self._session.post(
+            action_url, data=dati, headers=headers, allow_redirects=False
+        ) as resp:
+            location = resp.headers.get("Location")
+            body = await resp.text()
+        return location or body
+
+    @staticmethod
+    def _estrai_form_consenso(html: str) -> tuple[str, dict[str, str]] | None:
+        """Trova il form della schermata di consenso e costruisce il payload
+        da rimandare: tutti i campi hidden cosi' come sono, piu' il pulsante
+        di approvazione.
+
+        Ritorna (url_action, dati) oppure None se non c'e' un form con un
+        pulsante di approvazione riconoscibile.
+        """
+        for form_match in re.finditer(
+            r"<form[^>]*>.*?</form>", html, re.IGNORECASE | re.DOTALL
+        ):
+            blocco = form_match.group(0)
+            approva: tuple[str, str] | None = None
+            for input_match in re.finditer(r"<input[^>]*>", blocco, re.IGNORECASE):
+                tag = input_match.group(0)
+                if not re.search(r'type="submit"', tag, re.IGNORECASE):
+                    continue
+                nome = re.search(r'name="([^"]*)"', tag)
+                valore = re.search(r'value="([^"]*)"', tag)
+                if not nome or not valore:
+                    continue
+                etichetta = html_lib.unescape(valore.group(1))
+                if etichetta.strip().lower() in _ETICHETTE_CONSENSO:
+                    approva = (nome.group(1), etichetta)
+                    break
+            if approva is None:
+                continue
+
+            dati = {}
+            for input_match in re.finditer(r"<input[^>]*>", blocco, re.IGNORECASE):
+                tag = input_match.group(0)
+                if not re.search(r'type="hidden"', tag, re.IGNORECASE):
+                    continue
+                nome = re.search(r'name="([^"]*)"', tag)
+                if not nome:
+                    continue
+                valore = re.search(r'value="([^"]*)"', tag)
+                # I valori nell'HTML sono escapati (&amp;, &#39;): vanno
+                # riportati in chiaro, altrimenti il server riceve campi
+                # diversi da quelli che ha generato (save_new_url e source
+                # sono URL pieni di parametri).
+                dati[nome.group(1)] = (
+                    html_lib.unescape(valore.group(1)) if valore else ""
+                )
+            dati[approva[0]] = approva[1]
+
+            action = re.search(r'<form[^>]*action="([^"]*)"', blocco, re.IGNORECASE)
+            action_url = html_lib.unescape(action.group(1)) if action else ""
+            if not action_url:
+                return None
+            if action_url.startswith("/"):
+                action_url = "https://private.e-distribuzione.it" + action_url
+            return action_url, dati
+
+        return None
 
     # -- Token exchange / refresh ---------------------------------------------
 
