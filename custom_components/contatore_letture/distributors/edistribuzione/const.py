@@ -68,7 +68,7 @@ PIVA = "05779711000"  # confermata via scheda operatore ARERA (Id operatore 435,
 # A DIFFERENZA di pcf_common, RITARDO_DATI_GIORNI qui NON è stato
 # verificato empiricamente con la stessa sistematicità di Duereti
 # (confermato lì su settimane di test reali). Per E-Distribuzione i dati
-# reali raccolti finora (21/08/2026, POD IT001E12345678) sono: a
+# reali raccolti finora (21/08/2026, su un POD di test) sono: a
 # mezzanotte/01:00 il giorno appena finito non è ancora disponibile
 # (404), quello di 2 giorni prima sì; alle 18:00 il giorno precedente
 # risulta invece già disponibile. Coerente con RITARDO_DATI_GIORNI=1

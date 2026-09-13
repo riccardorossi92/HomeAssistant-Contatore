@@ -1,8 +1,8 @@
 """Import delle curve E-Distribuzione come external statistics in Home Assistant.
 
 Schema JSON confermato su una risposta reale di
-EdistribuzioneApiClient.async_get_daily_load_profile il 20/08/2026 (POD
-IT001E12345678, giorno 2026-08-01):
+EdistribuzioneApiClient.async_get_daily_load_profile il 20/08/2026 (un
+POD di test, giorno 2026-08-01):
 
     [
       {
@@ -32,7 +32,7 @@ quarto d'ora dello stesso giorno locale (23:45-24:00).
 
 CONFERMATO il 21/08/2026: 'val' è energia in kWh per intervallo di 15
 minuti, non potenza media in kW. Verificato confrontando il totale della
-curva per un mese intero (giugno 2026, POD IT001E12345678) con il delta
+curva per un mese intero (giugno 2026, stesso POD di test) con il delta
 di due letture ufficiali consecutive (1 giugno -> 1 luglio, via
 async_get_reading): 134.925 kWh in entrambi i casi, combacianti fino alla
 terza cifra decimale. Non una stima approssimativa: un confronto diretto
