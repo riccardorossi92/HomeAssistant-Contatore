@@ -50,6 +50,15 @@ uno di quelli supportati, o si ferma con un messaggio chiaro altrimenti.
 consumi. Se hai una fornitura Ireti puoi aiutare a completarlo — vedi
 [documentation/ireti-protocol.md](documentation/ireti-protocol.md).
 
+**SET Distribuzione** (Rovereto, gruppo Dolomiti Energia): login
+(Azure AD B2C) e anagrafica verificati, ma la cattura disponibile è di
+un account senza fornitura associata (profilo "Prospect"), quindi non
+sappiamo ancora se gli endpoint di consumo individuati nel bundle
+dell'app restituiscano vere letture del distributore o dati di
+fatturazione. Se hai un'utenza mySET con un POD attivo puoi aiutare —
+vedi
+[documentation/set-distribuzione-protocol.md](documentation/set-distribuzione-protocol.md).
+
 ### Valutati e non fattibili
 
 **Edyna** (Alto Adige / Südtirol): ricerca sospesa. Il portale
