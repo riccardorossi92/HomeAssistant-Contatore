@@ -68,6 +68,13 @@ senza POD associato, quindi non arriva alle pagine di consumo. Serve un
 HAR nuovo da un account con POD — dettagli in
 [documentation/edyna-protocol.md](documentation/edyna-protocol.md).
 
+**Inrete Distribuzione** (Emilia-Romagna e Toscana, gruppo Hera): non
+fattibile per il cliente finale in bassa tensione. Il distributore stesso
+rimanda i clienti in solo prelievo al Portale Consumi ARERA (solo
+SPID/CIE) o al proprio venditore — non esiste un portale self-service
+Inrete per il consumo residenziale. Dettagli in
+[documentation/inrete-protocol.md](documentation/inrete-protocol.md).
+
 ## Come funziona il rilevamento del distributore
 
 1. Selezioni regione → provincia → comune (elenco ISTAT, aggiornato
