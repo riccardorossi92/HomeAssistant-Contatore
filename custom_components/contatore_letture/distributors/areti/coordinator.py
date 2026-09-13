@@ -295,6 +295,17 @@ class AretiCoordinator(DataUpdateCoordinator[dict]):
 
                 curva = dettaglio.get("elementiCurve") or []
                 await async_import_curva_mensile(self.hass, pod_corrente, curva)
+                if not curva:
+                    # La risposta c'era (dettaglio non None, tipicamente con
+                    # 'esitoPosizioneBP' valorizzato) ma senza 'elementiCurve':
+                    # per chi ha lanciato l'azione equivale a non aver
+                    # importato niente per questo mese, non a un successo -
+                    # stesso caso già gestito per E-Distribuzione.
+                    mancanti.append(mese_anno)
+                    fallimenti.append(
+                        f"{pod_corrente}/{mese_anno}: risposta ricevuta ma senza misure"
+                    )
+                    continue
                 trovati.append(mese_anno)
                 mesi_importati += 1
 

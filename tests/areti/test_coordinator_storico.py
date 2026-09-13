@@ -86,6 +86,22 @@ async def test_nessun_mese_disponibile_fa_fallire_l_azione(
         await coordinator.async_recupera_storico(DATA_DA, DATA_A)
 
 
+async def test_dettaglio_senza_elementi_curve_fa_fallire_l_azione(
+    hass, coordinator, _import_statistiche
+):
+    """dettaglio non-None (es. con 'esitoPosizioneBP' valorizzato) ma senza
+    'elementiCurve': per chi ha lanciato l'azione equivale a non aver
+    importato niente, non a un successo - stesso caso di E-Distribuzione
+    ('risposta ricevuta ma senza misure'), mancava qui."""
+    api = await coordinator._async_login()
+    api.async_get_misurazioni = AsyncMock(
+        return_value={"esitoPosizioneBP": {"valore": "100"}, "elementiCurve": []}
+    )
+
+    with pytest.raises(HomeAssistantError, match="senza misure"):
+        await coordinator.async_recupera_storico(DATA_DA, DATA_A)
+
+
 async def test_successo_non_solleva(hass, coordinator, _import_statistiche):
     api = await coordinator._async_login()
     api.async_get_misurazioni = AsyncMock(
