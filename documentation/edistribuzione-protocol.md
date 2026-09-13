@@ -149,7 +149,12 @@ un campo doppio per `Richiedi_nuovo_OTP`.
 > prima nell'HTML): il server interpreta la sottomissione come
 > un'ennesima richiesta di reinvio invece che una convalida del codice.
 
-### 5. `POST {LOGINFLOW_URL}?sfdcIFrameOrigin=null` (trigger invio OTP)
+### 5. `POST {LOGINFLOW_URL}` (trigger invio OTP)
+
+> [!NOTE]
+> L'URL effettivo viene estratto dal `<form action="...">` della pagina
+> (di norma senza query string): `{LOGINFLOW_URL}` è solo il fallback
+> usato se quell'estrazione fallisse, mai osservato in una cattura reale.
 
 > [!NOTE]
 > **Il codice OTP non parte da solo al caricamento della pagina.** Serve
@@ -159,7 +164,7 @@ un campo doppio per `Richiedi_nuovo_OTP`.
 > `ViewState`/CSRF **freschi**, da usare per il submit successivo (sembra
 > ruotare ad ogni submit del form).
 
-### 6. `POST {LOGINFLOW_URL}?sfdcIFrameOrigin=null` (submit OTP)
+### 6. `POST {LOGINFLOW_URL}` (submit OTP)
 
 Stessi campi del passo 5 più `OTP_Input` col codice e
 `Richiedi_nuovo_OTP` (hidden) a `false`. Risposta di successo: un meta

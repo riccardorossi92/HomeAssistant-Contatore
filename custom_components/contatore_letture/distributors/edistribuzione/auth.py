@@ -386,7 +386,7 @@ class EdistribuzioneAuthClient:
             ),
         }
 
-        url = self._flow.form_action_url or f"{LOGINFLOW_URL}?sfdcIFrameOrigin=null"
+        url = self._flow.form_action_url or LOGINFLOW_URL
         async with self._session.post(url, data=data, headers=headers) as resp:
             body = await resp.text()
 
@@ -420,7 +420,7 @@ class EdistribuzioneAuthClient:
             ),
         }
 
-        url = self._flow.form_action_url or f"{LOGINFLOW_URL}?sfdcIFrameOrigin=null"
+        url = self._flow.form_action_url or LOGINFLOW_URL
         async with self._session.post(url, data=data, headers=headers) as resp:
             body = await resp.text()
 
