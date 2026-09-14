@@ -30,6 +30,3 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # L'integrazione non e' (ancora) nel repo home-assistant/brands:
-          # e' dichiaratamente non ufficiale e distribuita come repo custom.
-          ignore: brands
