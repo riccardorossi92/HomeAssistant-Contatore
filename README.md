@@ -82,6 +82,12 @@ WebForms di Edyna (probabilmente stesso vendor, Terranova). Se hai una
 fornitura Deval con un'utenza registrata sul PUF puoi aiutare — vedi
 [documentation/deval-protocol.md](documentation/deval-protocol.md).
 
+**V-Reti** (Verona/Vicenza/Grezzana, gruppo AGSM AIM, ex Megareti): stesso
+prodotto Terranova PUF di Edyna e Deval, riconosciuto dalla sola forma
+dell'URL di login — non c'è ancora nessuna cattura, nemmeno di un account
+senza POD. Se hai una fornitura elettrica V-Reti puoi aiutare — vedi
+[documentation/v-reti-protocol.md](documentation/v-reti-protocol.md).
+
 ### Valutati e non fattibili
 
 **Inrete Distribuzione** (Emilia-Romagna e Toscana, gruppo Hera): non
