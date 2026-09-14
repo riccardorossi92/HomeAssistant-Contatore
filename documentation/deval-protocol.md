@@ -42,8 +42,8 @@ standard), token di sessione nel path (`DJY`).
 > diverso (`DJY` vs `dD4`). Se in futuro si sblocca l'uno, vale la pena
 > ricontrollare l'altro: stesso vendor, probabilmente stesso schema di
 > postback e — plausibilmente — stessa forma di export dati. Terza
-> istanza riconosciuta (14/09/2026, dalla sola forma dell'URL, non ancora
-> verificata con una cattura): **[V-Reti](v-reti-protocol.md)** (Verona/
+> istanza confermata (14/09/2026, con una cattura reale — login senza
+> 2FA, a differenza di qui): **[V-Reti](v-reti-protocol.md)** (Verona/
 > Vicenza), app `PUF` — vedi quel documento.
 
 Significa, come per Edyna, che **non c'è un bundle JS da leggere per

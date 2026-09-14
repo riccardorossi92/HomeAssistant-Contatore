@@ -45,8 +45,8 @@ portale dove l'analisi statica non aiuta, va fatta la cattura.
 > conferma che il prodotto espone letture mensili e curve orarie per POD
 > — se in futuro si sblocca una cattura sull'uno, vale la pena
 > ricontrollare l'altro: stesso vendor, probabilmente stesso schema di
-> postback ed export dati. Terza istanza riconosciuta (14/09/2026, dalla
-> sola forma dell'URL, non ancora verificata con una cattura):
+> postback ed export dati. Terza istanza confermata (14/09/2026, con una
+> cattura reale — login senza 2FA, a differenza di Deval):
 > **[V-Reti](v-reti-protocol.md)** (Verona/Vicenza), app `PUF`.
 
 ## Cosa c'era nell'unica cattura disponibile (04/09/2026)
