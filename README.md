@@ -90,6 +90,16 @@ conferma delle sezioni Letture/Curve. Se hai una fornitura elettrica
 V-Reti già validata (con POD associato) puoi aiutare — vedi
 [documentation/v-reti-protocol.md](documentation/v-reti-protocol.md).
 
+**AcegasApsAmga** (Trieste / Padova / Gorizia, gruppo Hera): login
+(Azure AD B2C) e anagrafica verificati, endpoint energia individuati nel
+bundle dell'app ma mai provati — la cattura disponibile è di un account
+"prospect" senza alcun contratto associato. Attenzione: il gruppo Hera
+include anche **Inrete Distribuzione**, già valutata come non fattibile
+(vedi sotto), quindi non è scontato che le funzioni viste nel bundle
+siano davvero attive per questo brand. Se hai una fornitura
+AcegasApsAmga con un POD/PDR attivo puoi aiutare — vedi
+[documentation/acegasapsamga-protocol.md](documentation/acegasapsamga-protocol.md).
+
 ### Valutati e non fattibili
 
 **Inrete Distribuzione** (Emilia-Romagna e Toscana, gruppo Hera): non
