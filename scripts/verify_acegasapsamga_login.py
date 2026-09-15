@@ -16,7 +16,7 @@ import json
 import re
 import secrets
 import sys
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
