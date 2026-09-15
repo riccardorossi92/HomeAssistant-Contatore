@@ -52,62 +52,92 @@ uno di quelli supportati, o si ferma con un messaggio chiaro altrimenti.
 > fornitura attiva con uno di questi distributori, sei tu il pezzo
 > mancante.**
 
-**Ireti**: login e anagrafica già funzionanti, mancano gli endpoint dei
-consumi. Se hai una fornitura Ireti puoi aiutare a completarlo — vedi
+<details>
+<summary><b>Ireti</b> — login e anagrafica ok, mancano gli endpoint dei consumi</summary>
+
+Login e anagrafica già funzionanti, mancano gli endpoint dei consumi. Se
+hai una fornitura Ireti puoi aiutare a completarlo — vedi
 [documentation/ireti-protocol.md](documentation/ireti-protocol.md).
 
-**SET Distribuzione** (Rovereto, gruppo Dolomiti Energia): login
-(Azure AD B2C) e anagrafica verificati, ma la cattura disponibile è di
-un account senza fornitura associata (profilo "Prospect"), quindi non
+</details>
+
+<details>
+<summary><b>SET Distribuzione</b> (Rovereto, gruppo Dolomiti Energia) — da confermare se i consumi sono letture vere</summary>
+
+Login (Azure AD B2C) e anagrafica verificati, ma la cattura disponibile è
+di un account senza fornitura associata (profilo "Prospect"), quindi non
 sappiamo ancora se gli endpoint di consumo individuati nel bundle
 dell'app restituiscano vere letture del distributore o dati di
 fatturazione. Se hai un'utenza mySET con un POD attivo puoi aiutare —
 vedi
 [documentation/set-distribuzione-protocol.md](documentation/set-distribuzione-protocol.md).
 
-**Edyna** (Alto Adige / Südtirol, gruppo Alperia): non è ancora noto se
-il portale esponga consumi/curve di carico — l'unica cattura disponibile
-è di un account senza POD associato, quindi non arriva a nessuna pagina
-di fornitura. Se hai un'utenza Edyna con un POD attivo puoi aiutare —
-vedi
+</details>
+
+<details>
+<summary><b>Edyna</b> (Alto Adige / Südtirol, gruppo Alperia) — non è ancora noto se espone i consumi</summary>
+
+Non è ancora noto se il portale esponga consumi/curve di carico —
+l'unica cattura disponibile è di un account senza POD associato, quindi
+non arriva a nessuna pagina di fornitura. Se hai un'utenza Edyna con un
+POD attivo puoi aiutare — vedi
 [documentation/edyna-protocol.md](documentation/edyna-protocol.md).
 
-**Deval** (Valle d'Aosta): login completo verificato con una cattura reale
-(credenziali + 2FA via app authenticator, sempre obbligatorio — un
-vincolo che nessun altro distributore già supportato ha), ma da un
-account senza POD associato: manca ancora la conferma delle sezioni
-Letture/Curve, che il manuale pubblico del portale PUF descrive come
-letture mensili e curve orarie per POD. Stesso tipo di portale ASP.NET
-WebForms di Edyna (probabilmente stesso vendor, Terranova). Se hai una
-fornitura Deval con un'utenza registrata sul PUF puoi aiutare — vedi
+</details>
+
+<details>
+<summary><b>Deval</b> (Valle d'Aosta) — login con 2FA verificato, da confermare Letture/Curve</summary>
+
+Login completo verificato con una cattura reale (credenziali + 2FA via
+app authenticator, sempre obbligatorio — un vincolo che nessun altro
+distributore già supportato ha), ma da un account senza POD associato:
+manca ancora la conferma delle sezioni Letture/Curve, che il manuale
+pubblico del portale PUF descrive come letture mensili e curve orarie
+per POD. Stesso tipo di portale ASP.NET WebForms di Edyna (probabilmente
+stesso vendor, Terranova). Se hai una fornitura Deval con un'utenza
+registrata sul PUF puoi aiutare — vedi
 [documentation/deval-protocol.md](documentation/deval-protocol.md).
 
-**V-Reti** (Verona/Vicenza/Grezzana, gruppo AGSM AIM, ex Megareti): stesso
-prodotto Terranova PUF di Edyna e Deval, login verificato con una cattura
-reale (senza 2FA, a differenza di Deval) — ma da un account ancora in
-attesa di validazione da parte del distributore, quindi manca ancora la
-conferma delle sezioni Letture/Curve. Se hai una fornitura elettrica
-V-Reti già validata (con POD associato) puoi aiutare — vedi
+</details>
+
+<details>
+<summary><b>V-Reti</b> (Verona/Vicenza/Grezzana, gruppo AGSM AIM, ex Megareti) — login ok, account in attesa di validazione</summary>
+
+Stesso prodotto Terranova PUF di Edyna e Deval, login verificato con una
+cattura reale (senza 2FA, a differenza di Deval) — ma da un account
+ancora in attesa di validazione da parte del distributore, quindi manca
+ancora la conferma delle sezioni Letture/Curve. Se hai una fornitura
+elettrica V-Reti già validata (con POD associato) puoi aiutare — vedi
 [documentation/v-reti-protocol.md](documentation/v-reti-protocol.md).
 
-**AcegasApsAmga** (Trieste / Padova / Gorizia, gruppo Hera): login
-(Azure AD B2C) e anagrafica verificati, endpoint energia individuati nel
-bundle dell'app ma mai provati — la cattura disponibile è di un account
-"prospect" senza alcun contratto associato. Attenzione: il gruppo Hera
-include anche **Inrete Distribuzione**, già valutata come non fattibile
-(vedi sotto), quindi non è scontato che le funzioni viste nel bundle
-siano davvero attive per questo brand. Se hai una fornitura
+</details>
+
+<details>
+<summary><b>AcegasApsAmga</b> (Trieste / Padova / Gorizia, gruppo Hera) — endpoint individuati ma mai provati</summary>
+
+Login (Azure AD B2C) e anagrafica verificati, endpoint energia
+individuati nel bundle dell'app ma mai provati — la cattura disponibile
+è di un account "prospect" senza alcun contratto associato. Attenzione:
+il gruppo Hera include anche **Inrete Distribuzione**, già valutata come
+non fattibile (vedi sotto), quindi non è scontato che le funzioni viste
+nel bundle siano davvero attive per questo brand. Se hai una fornitura
 AcegasApsAmga con un POD/PDR attivo puoi aiutare — vedi
 [documentation/acegasapsamga-protocol.md](documentation/acegasapsamga-protocol.md).
 
+</details>
+
 ### Valutati e non fattibili
 
-**Inrete Distribuzione** (Emilia-Romagna e Toscana, gruppo Hera): non
-fattibile per il cliente finale in bassa tensione. Il distributore stesso
-rimanda i clienti in solo prelievo al Portale Consumi ARERA (solo
+<details>
+<summary><b>Inrete Distribuzione</b> (Emilia-Romagna e Toscana, gruppo Hera) — non fattibile per il cliente finale</summary>
+
+Non fattibile per il cliente finale in bassa tensione. Il distributore
+stesso rimanda i clienti in solo prelievo al Portale Consumi ARERA (solo
 SPID/CIE) o al proprio venditore — non esiste un portale self-service
 Inrete per il consumo residenziale. Dettagli in
 [documentation/inrete-protocol.md](documentation/inrete-protocol.md).
+
+</details>
 
 ## Come funziona il rilevamento del distributore
 
