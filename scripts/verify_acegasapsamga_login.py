@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verifica il login AcegasApsAmga (Azure AD B2C) e prova gli endpoint energia.
 
-Vedi documentation/acegasapsamga-protocol.md per il contesto. Chiede
+Vedi documentation/protocols/acegasapsamga-protocol.md per il contesto. Chiede
 utenza e password (la password non viene stampata né salvata) e fa solo
 richieste dirette al portale servizionline.acegasapsamga.it, con lo
 stesso traffico che farebbe un browser durante il login.
@@ -181,7 +181,7 @@ def main() -> None:
         print()
         print(
             "Nessun profilo/contratto associato a questo account: come per "
-            "la cattura usata in documentation/acegasapsamga-protocol.md, "
+            "la cattura usata in documentation/protocols/acegasapsamga-protocol.md, "
             "non si puo' proseguire con la verifica di /api/energy/*."
         )
         return

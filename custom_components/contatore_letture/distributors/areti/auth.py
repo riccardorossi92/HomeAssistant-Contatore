@@ -4,7 +4,7 @@ Non è il login standard "Salesforce Community" (`POST .../s/login`): Areti
 mette davanti al sito Lightning una vecchia pagina di login
 Visualforce/JSF (`AretiLoginURL`). Tre passaggi, tutti verificati su
 cattura reale il 04/09/2026 con credenziali vere - dettagli completi e
-"perché" in documentation/areti-protocol.md, sezione "Login":
+"perché" in documentation/protocols/areti-protocol.md, sezione "Login":
 
   1. GET AretiLoginURL -> HTML con 3 campi nascosti (ViewState/
      ViewStateVersion/ViewStateMAC) da rileggere ad ogni tentativo.
@@ -65,7 +65,7 @@ _REF_URL = f"{BASE_URL}/portaleareti/CommunitiesLanding"
 # esplicitamente l'intermedio mancante (pubblico, scaricato una tantum
 # dall'URL "CA Issuers" del certificato stesso, cacerts.digicert.com) al
 # contesto SSL della sessione dedicata Areti. Dettagli completi in
-# documentation/areti-protocol.md, "Gotcha TLS".
+# documentation/protocols/areti-protocol.md, "Gotcha TLS".
 _DIGICERT_G2_TLS_RSA_SHA256_2020_CA1 = """-----BEGIN CERTIFICATE-----
 MIIEyDCCA7CgAwIBAgIQDPW9BitWAvR6uFAsI8zwZjANBgkqhkiG9w0BAQsFADBh
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
@@ -126,7 +126,7 @@ class AretiParsingError(AretiAuthError):
 
     Causa più probabile: Areti ha cambiato qualcosa nel markup del
     portale (pagina di login Visualforce, o la home Lightning). Vedi
-    documentation/areti-protocol.md per una cattura HAR di riferimento
+    documentation/protocols/areti-protocol.md per una cattura HAR di riferimento
     con cui confrontare una nuova.
     """
 
@@ -150,7 +150,7 @@ def _estrai_campo_hidden(html: str, nome_campo: str) -> str:
         raise AretiParsingError(
             f"Campo '{nome_campo}' non trovato nella pagina di login - la "
             "struttura è probabilmente cambiata rispetto a quanto "
-            "documentato in documentation/areti-protocol.md."
+            "documentato in documentation/protocols/areti-protocol.md."
         )
     return match.group(1)
 

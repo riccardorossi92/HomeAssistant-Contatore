@@ -48,9 +48,9 @@ logica specifica di un singolo distributore al suo interno — quella
 vive tutta dentro il pacchetto del distributore.
 
 Per i dettagli specifici di ciascun protocollo, vedi
-[`pcf-protocol.md`](pcf-protocol.md) (Duereti/Unareti),
-[`edistribuzione-protocol.md`](edistribuzione-protocol.md) e
-[`areti-protocol.md`](areti-protocol.md).
+[`pcf-protocol.md`](protocols/pcf-protocol.md) (Duereti/Unareti),
+[`edistribuzione-protocol.md`](protocols/edistribuzione-protocol.md) e
+[`areti-protocol.md`](protocols/areti-protocol.md).
 
 ## Prima di usarlo su un'installazione reale
 

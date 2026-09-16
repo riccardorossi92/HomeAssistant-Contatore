@@ -3,7 +3,7 @@
 Tutti via `POST /portaleareti/s/sfsites/aura`, descriptor
 `aura://ApexActionController/ACTION$execute`, con `classname`/`method`
 diversi - catena completa e struttura delle risposte documentate in
-documentation/areti-protocol.md.
+documentation/protocols/areti-protocol.md.
 
 Richiede una sessione già autenticata (auth.py) e il suo AretiAuraContext
 (fwuid/loaded_app_id/token): questo modulo non fa login, si limita a

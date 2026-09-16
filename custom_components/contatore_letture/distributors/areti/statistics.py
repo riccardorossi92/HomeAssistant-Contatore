@@ -5,7 +5,7 @@ AretiApiClient.async_get_misurazioni) confermato su dati reali del
 04/09/2026 (agosto 2026, POD di test): lista di
 {"Value": "0.034", "Ora": "00:00:00", "Data": "2026-08-01"} a 15 minuti,
 96 elementi/giorno, in kWh per intervallo (confermato via
-unitOfMeasureMapping: EA/UA -> kWh - vedi documentation/areti-protocol.md).
+unitOfMeasureMapping: EA/UA -> kWh - vedi documentation/protocols/areti-protocol.md).
 
 A differenza di E-Distribuzione (initialSample = timestamp UTC assoluto,
 nessuna ambiguità), qui 'Data'+'Ora' sono ORA LOCALE senza indicazione

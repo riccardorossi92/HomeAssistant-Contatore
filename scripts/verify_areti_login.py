@@ -1,6 +1,6 @@
 """Testa da terminale il login Areti e il recupero della curva di carico,
 senza Home Assistant nel mezzo - implementa la catena documentata in
-documentation/areti-protocol.md, per verificarla contro il portale reale
+documentation/protocols/areti-protocol.md, per verificarla contro il portale reale
 prima (e mentre) si scrive il modulo
 custom_components/contatore_letture/distributors/areti/.
 
@@ -130,7 +130,7 @@ HEADERS_BASE = {
 
 class AretiAuthError(RuntimeError):
     """Login fallito, o pagina cambiata rispetto a quanto documentato in
-    documentation/areti-protocol.md."""
+    documentation/protocols/areti-protocol.md."""
 
 
 def _estrai_campo_hidden(html: str, nome_campo: str) -> str:
@@ -143,7 +143,7 @@ def _estrai_campo_hidden(html: str, nome_campo: str) -> str:
         raise AretiAuthError(
             f"Campo '{nome_campo}' non trovato nella pagina di login - la "
             "struttura della pagina e' probabilmente cambiata rispetto a "
-            "quanto documentato in documentation/areti-protocol.md."
+            "quanto documentato in documentation/protocols/areti-protocol.md."
         )
     return m.group(1)
 

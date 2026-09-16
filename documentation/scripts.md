@@ -35,7 +35,7 @@ Funzionalità:
   di carico, permette di confrontarne il totale con il delta di due
   letture ufficiali consecutive per lo stesso periodo (`async_get_reading`)
   — è così che è stata confermata l'assunzione "val = kWh per intervallo"
-  in `edistribuzione/statistics.py` (vedi `edistribuzione-protocol.md`).
+  in `edistribuzione/statistics.py` (vedi `protocols/edistribuzione-protocol.md`).
 
 Non è un test automatico (richiede credenziali reali digitate a mano): per
 quello vedi `tests/edistribuzione/`.
@@ -49,14 +49,14 @@ salvando un report **anonimizzato** (`ireti_report.json`) da allegare a
 una issue. Non invia nulla: scrive solo un file locale.
 
 Dettagli e stato della ricerca in
-[`ireti-protocol.md`](ireti-protocol.md).
+[`ireti-protocol.md`](protocols/ireti-protocol.md).
 
 ## `scripts/verify_areti_login.py`
 
 Testa da terminale il login **Areti** (email/password → ticket-exchange
 `frontdoor.jsp` → sessione Lightning) e il recupero della curva di
 carico a 15 minuti per un mese scelto, implementando da zero il
-protocollo documentato in [`areti-protocol.md`](areti-protocol.md) - non
+protocollo documentato in [`areti-protocol.md`](protocols/areti-protocol.md) - non
 importa `distributors/areti/` (a differenza di
 `verify_edistribuzione_login.py`, che importa `auth.py`/`api.py` reali),
 per restare utilizzabile anche per verificare che il protocollo non sia

@@ -4,7 +4,8 @@ Guida pratica per due scenari concreti: **aggiungere un nuovo
 distributore** e **modificare uno già esistente**. Per capire come
 funziona un protocollo specifico prima di toccarlo, vedi
 [`documentation/`](documentation/) (architettura generale,
-`pcf-protocol.md`, `edistribuzione-protocol.md`).
+`documentation/protocols/pcf-protocol.md`,
+`documentation/protocols/edistribuzione-protocol.md`).
 
 ## Aiutare senza scrivere codice: raccolta dati
 
@@ -16,7 +17,7 @@ ancora supportato, puoi essere d'aiuto anche senza toccare Python.
 Caso già pronto: **Ireti**, dove autenticazione e anagrafica sono già
 state analizzate e mancano solo gli endpoint dei consumi. C'è uno script
 che raccoglie il necessario in un report anonimizzato — vedi
-[`documentation/ireti-protocol.md`](documentation/ireti-protocol.md).
+[`documentation/protocols/ireti-protocol.md`](documentation/protocols/ireti-protocol.md).
 
 Per un distributore ancora del tutto inesplorato, la strada è una
 **cattura HAR** del portale (login + pagina dei consumi con un grafico
@@ -153,7 +154,8 @@ con fixture basate su payload **reali**, non inventati, dove possibile).
 - **Cambi che riguardano il protocollo PCF in generale** (entrambi
   Duereti e Unareti): vanno in `pcf_common/`. Se il comportamento è
   stato verificato sul campo solo su uno dei due, dillo esplicitamente
-  nel commento (vedi la nota WAF/DST in `documentation/pcf-protocol.md`
+  nel commento (vedi la nota WAF/DST in
+  `documentation/protocols/pcf-protocol.md`
   come esempio di come è già stato fatto).
 - **Cambi a E-Distribuzione**: quasi tutto vive in
   `distributors/edistribuzione/`. Se tocchi `auth.py` (login/OTP) o il
@@ -161,13 +163,13 @@ con fixture basate su payload **reali**, non inventati, dove possibile).
   `scripts/verify_edistribuzione_login.py` prima di aprire una PR — è
   molto più veloce che passare dalla UI di Home Assistant, e l'unico modo
   per sapere se un cambiamento lato Enel ha rotto qualcosa (è già successo
-  più volte, vedi `documentation/edistribuzione-protocol.md`).
+  più volte, vedi `documentation/protocols/edistribuzione-protocol.md`).
 - **Cambi ad Areti**: quasi tutto vive in `distributors/areti/`. Se tocchi
   `auth.py` (login) o il parsing delle risposte Aura, verifica con
   `scripts/verify_areti_login.py` prima di aprire una PR — più veloce
   della UI di Home Assistant, e l'unico modo per sapere se un cambiamento
   lato Areti/Salesforce ha rotto qualcosa (vedi
-  `documentation/areti-protocol.md`). Il "Gotcha TLS" (intermedio DigiCert
+  `documentation/protocols/areti-protocol.md`). Il "Gotcha TLS" (intermedio DigiCert
   mancante, `auth.build_ssl_context`) va verificato di nuovo se cambia il
   certificato del sito.
 - **`strings.json`/`translations/it.json`**: vanno sempre tenuti

@@ -8,7 +8,7 @@ login (auth.py) -> catena di chiamate Aura (api.py) -> curva di carico a
 15 minuti importata come external statistics (statistics.py), guidato dal
 coordinator (coordinator.py, cursore mensile persistito per POD - non un
 sistema a coda/ritardo come gli altri, vedi il suo docstring). Dettagli
-completi e "perché" in documentation/areti-protocol.md.
+completi e "perché" in documentation/protocols/areti-protocol.md.
 """
 from __future__ import annotations
 

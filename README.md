@@ -57,7 +57,7 @@ uno di quelli supportati, o si ferma con un messaggio chiaro altrimenti.
 
 Login e anagrafica già funzionanti, mancano gli endpoint dei consumi. Se
 hai una fornitura Ireti puoi aiutare a completarlo — vedi
-[documentation/ireti-protocol.md](documentation/ireti-protocol.md).
+[documentation/protocols/ireti-protocol.md](documentation/protocols/ireti-protocol.md).
 
 </details>
 
@@ -70,7 +70,7 @@ sappiamo ancora se gli endpoint di consumo individuati nel bundle
 dell'app restituiscano vere letture del distributore o dati di
 fatturazione. Se hai un'utenza mySET con un POD attivo puoi aiutare —
 vedi
-[documentation/set-distribuzione-protocol.md](documentation/set-distribuzione-protocol.md).
+[documentation/protocols/set-distribuzione-protocol.md](documentation/protocols/set-distribuzione-protocol.md).
 
 </details>
 
@@ -81,7 +81,7 @@ Non è ancora noto se il portale esponga consumi/curve di carico —
 l'unica cattura disponibile è di un account senza POD associato, quindi
 non arriva a nessuna pagina di fornitura. Se hai un'utenza Edyna con un
 POD attivo puoi aiutare — vedi
-[documentation/edyna-protocol.md](documentation/edyna-protocol.md).
+[documentation/protocols/edyna-protocol.md](documentation/protocols/edyna-protocol.md).
 
 </details>
 
@@ -96,7 +96,7 @@ pubblico del portale PUF descrive come letture mensili e curve orarie
 per POD. Stesso tipo di portale ASP.NET WebForms di Edyna (probabilmente
 stesso vendor, Terranova). Se hai una fornitura Deval con un'utenza
 registrata sul PUF puoi aiutare — vedi
-[documentation/deval-protocol.md](documentation/deval-protocol.md).
+[documentation/protocols/deval-protocol.md](documentation/protocols/deval-protocol.md).
 
 </details>
 
@@ -108,7 +108,7 @@ cattura reale (senza 2FA, a differenza di Deval) — ma da un account
 ancora in attesa di validazione da parte del distributore, quindi manca
 ancora la conferma delle sezioni Letture/Curve. Se hai una fornitura
 elettrica V-Reti già validata (con POD associato) puoi aiutare — vedi
-[documentation/v-reti-protocol.md](documentation/v-reti-protocol.md).
+[documentation/protocols/v-reti-protocol.md](documentation/protocols/v-reti-protocol.md).
 
 </details>
 
@@ -122,7 +122,7 @@ il gruppo Hera include anche **Inrete Distribuzione**, già valutata come
 non fattibile (vedi sotto), quindi non è scontato che le funzioni viste
 nel bundle siano davvero attive per questo brand. Se hai una fornitura
 AcegasApsAmga con un POD/PDR attivo puoi aiutare — vedi
-[documentation/acegasapsamga-protocol.md](documentation/acegasapsamga-protocol.md).
+[documentation/protocols/acegasapsamga-protocol.md](documentation/protocols/acegasapsamga-protocol.md).
 
 </details>
 
@@ -135,7 +135,7 @@ Non fattibile per il cliente finale in bassa tensione. Il distributore
 stesso rimanda i clienti in solo prelievo al Portale Consumi ARERA (solo
 SPID/CIE) o al proprio venditore — non esiste un portale self-service
 Inrete per il consumo residenziale. Dettagli in
-[documentation/inrete-protocol.md](documentation/inrete-protocol.md).
+[documentation/protocols/inrete-protocol.md](documentation/protocols/inrete-protocol.md).
 
 </details>
 

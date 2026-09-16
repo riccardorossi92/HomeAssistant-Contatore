@@ -1,7 +1,7 @@
 """Costanti del protocollo Areti (gruppo ACEA).
 
 Reverse-engineered da catture reali (HAR) del 04/09/2026, documentate per
-esteso in documentation/areti-protocol.md - questo file riporta solo le
+esteso in documentation/protocols/areti-protocol.md - questo file riporta solo le
 costanti, i "perché" stanno lì.
 
 DOMAIN NON sta qui: è unificato a livello di contatore_letture (vedi

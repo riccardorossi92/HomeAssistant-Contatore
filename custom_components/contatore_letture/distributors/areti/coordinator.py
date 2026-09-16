@@ -1,6 +1,6 @@
 """DataUpdateCoordinator per Areti.
 
-Design completo (e il "perché") in documentation/areti-protocol.md,
+Design completo (e il "perché") in documentation/protocols/areti-protocol.md,
 sezione "Design del coordinator". In sintesi: Areti pubblica i dati a
 MESE SOLARE CHIUSO (non giorno per giorno come i PCF/E-Distribuzione), e
 non è noto un ritardo fisso da cui dedurre quale mese chiedere ogni

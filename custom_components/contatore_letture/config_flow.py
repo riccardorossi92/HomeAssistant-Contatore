@@ -665,7 +665,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     # Ramo Areti: login email/password (nessun OTP osservato) -> aggiunta
     # POD a mano, uno alla volta (a differenza di E-Distribuzione, non e'
     # verificato un endpoint che elenchi "tutti i POD dell'account" - vedi
-    # documentation/areti-protocol.md).
+    # documentation/protocols/areti-protocol.md).
     # ------------------------------------------------------------------
 
     async def async_step_areti_user(self, user_input: dict[str, Any] | None = None):
