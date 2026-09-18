@@ -17,7 +17,7 @@ delle risposte), sul modello di `pcf-protocol.md`/
 | | |
 |---|---|
 | Portale distributore espone consumi/curve di carico? | **Sì** — curva a 15 minuti + aggregato giornaliero, verificato con dati reali (agosto 2026) |
-| Meccanismo di login | **Verificato** — email/password su form Visualforce/JSF + ticket-exchange Salesforce, **nessun OTP** osservato |
+| Meccanismo di login | **Verificato** — email/password su form Visualforce/JSF + ticket-exchange Salesforce, **nessun OTP** osservato (su alcuni account compare un passaggio extra senza form, "ARIA_MaintenanceFlow" — gestito, vedi sezione Login) |
 | Implementazione | **Fatta**: `distributors/areti/` (auth.py/api.py/coordinator.py/sensor.py/statistics.py), agganciata a config_flow/reauth/options/recupera_storico. Test in `tests/areti/`. **Non ancora testata su un'installazione Home Assistant reale** (v0.5.0, appena rilasciata) — solo login/curva verificati da terminale con `scripts/verify_areti_login.py`. |
 
 ## Quadro generale
@@ -104,6 +104,33 @@ Da qui, `GET /portaleareti/s/` con questi cookie carica l'area riservata
 loggata. La pagina porta un blob JSON inline con `fwuid` e con l'id
 `"loaded":{"APPLICATION@markup://siteforce:communityApp":"<id>"}`
 (serve nel corpo di ogni chiamata Aura, vedi sotto).
+
+> [!WARNING]
+> **Su alcuni account, `GET /portaleareti/s/` non porta subito alla
+> pagina vera** — osservato per la prima volta il 18/09/2026 su un
+> account reale con POD (non nella cattura del 04/09/2026 che ha
+> fondato il modulo). Due ponti in sequenza, nessuno dei due un redirect
+> HTTP puro:
+>
+> 1. Una paginetta di poche centinaia di caratteri con un redirect in
+>    **JavaScript** (`window.location.replace(...)`, stesso trucco della
+>    pagina-ponte `frontdoor.jsp` di E-Distribuzione) verso
+>    `loginflow/loginFlowOnly.apexp?retURL=%2Fportaleareti%2Fs%2F`.
+> 2. Da lì, una pagina *"Impossibile visualizzare la pagina" / "è
+>    necessario completare la procedura di accesso"*, con un link
+>    **"Completa procedura di accesso"** verso
+>    `loginflow/loginFlow.apexp?retURL=%2Fportaleareti%2Fs%2F&sparkID=ARIA_MaintenanceFlow`.
+>    Verificato che è un semplice `GET`: risponde con un vero **redirect
+>    HTTP 302** dritto a `/portaleareti/s/`, nessun form da compilare.
+>
+> Il nome del flow (`ARIA_MaintenanceFlow`) suggerisce un passaggio
+> "di manutenzione" legato all'account (non un OTP: nessun campo da
+> compilare, un semplice link da seguire). Gestito in
+> `auth.py:AretiAuthClient._async_segui_ponti_login` (fino a 5 hop). Non
+> è garantito che tutti gli account lo incontrino, né che resti sempre
+> così semplice (senza form) in futuro — se un giorno la pagina
+> raggiunta è un vero form, questo metodo si ferma lì e la lettura di
+> `fwuid` fallisce su quella pagina.
 
 **Come si ottiene `aura.token` — non è ovvio.** Non è nel corpo della
 pagina: lo stesso blob JSON porta una chiave `"eikoocnekot":"<nome

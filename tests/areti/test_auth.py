@@ -145,3 +145,136 @@ class TestAretiAuraContext:
         assert contesto.fwuid == "fw"
         assert contesto.loaded_app_id == "app"
         assert contesto.token == "tok"
+
+
+# ---------------------------------------------------------------------------
+# _async_segui_ponti_login (redirect JS + "completa procedura di accesso",
+# osservati per la prima volta il 18/09/2026 - non nella cattura originale
+# del 04/09/2026 che ha fondato il modulo)
+# ---------------------------------------------------------------------------
+
+
+class _RispostaFake:
+    def __init__(self, testo: str, url: str) -> None:
+        self._testo = testo
+        self.url = url
+
+    def raise_for_status(self) -> None:
+        pass
+
+    async def text(self) -> str:
+        return self._testo
+
+    async def __aenter__(self) -> _RispostaFake:
+        return self
+
+    async def __aexit__(self, *args) -> bool:
+        return False
+
+
+class _SessioneFake:
+    """Ritorna in sequenza le pagine configurate, una per GET."""
+
+    def __init__(self, pagine: list[str]) -> None:
+        self._pagine = list(pagine)
+        self.richieste: list[str] = []
+
+    def get(self, url: str, headers: dict | None = None) -> _RispostaFake:
+        self.richieste.append(url)
+        return _RispostaFake(self._pagine.pop(0), url=url)
+
+
+_URL_INIZIALE = "https://areariservataclienti.areti.it/portaleareti/s/"
+_PAGINA_VERA = '{"context":{"fwuid":"ABC123"}}'
+_PAGINA_REDIRECT_JS = (
+    "<script>window.location.replace("
+    "'https://areariservataclienti.areti.it/portaleareti/loginflow/loginFlowOnly.apexp"
+    "?retURL=%2Fportaleareti%2Fs%2F');</script>"
+)
+_PAGINA_REDIRECT_JS_HREF = (
+    "<script>window.location.href = "
+    "'https://areariservataclienti.areti.it/portaleareti/loginflow/loginFlowOnly.apexp"
+    "?retURL=%2Fportaleareti%2Fs%2F';</script>"
+)
+# Il '&amp;' e' l'HTML entity reale osservata nella cattura del 18/09/2026,
+# non un '&' semplice - va decodificato prima della richiesta.
+_PAGINA_COMPLETA_PROCEDURA = (
+    '<title>Impossibile visualizzare la pagina</title>'
+    '<a href="https://areariservataclienti.areti.it/portaleareti/loginflow/loginFlow.apexp'
+    '?retURL=%2Fportaleareti%2Fs%2F&amp;sparkID=ARIA_MaintenanceFlow" '
+    'class="button primary wide mt16">Completa procedura di accesso</a>'
+)
+
+
+class TestAsyncSeguiPontiLogin:
+    @pytest.mark.asyncio
+    async def test_nessun_ponte_ritorna_html_invariato(self):
+        """Caso comune (cattura originale del 04/09/2026): la home carica
+        subito, nessuna richiesta aggiuntiva."""
+        client = auth.AretiAuthClient(_SessioneFake([]))
+        risultato = await client._async_segui_ponti_login({}, _PAGINA_VERA, _URL_INIZIALE)
+        assert risultato == _PAGINA_VERA
+
+    @pytest.mark.asyncio
+    async def test_segue_redirect_js_replace(self):
+        sessione = _SessioneFake([_PAGINA_VERA])
+        client = auth.AretiAuthClient(sessione)
+        risultato = await client._async_segui_ponti_login(
+            {}, _PAGINA_REDIRECT_JS, _URL_INIZIALE
+        )
+        assert risultato == _PAGINA_VERA
+        assert sessione.richieste == [
+            "https://areariservataclienti.areti.it/portaleareti/loginflow/loginFlowOnly.apexp"
+            "?retURL=%2Fportaleareti%2Fs%2F"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_segue_redirect_js_href(self):
+        sessione = _SessioneFake([_PAGINA_VERA])
+        client = auth.AretiAuthClient(sessione)
+        risultato = await client._async_segui_ponti_login(
+            {}, _PAGINA_REDIRECT_JS_HREF, _URL_INIZIALE
+        )
+        assert risultato == _PAGINA_VERA
+
+    @pytest.mark.asyncio
+    async def test_segue_link_completa_procedura_e_decodifica_amp(self):
+        sessione = _SessioneFake([_PAGINA_VERA])
+        client = auth.AretiAuthClient(sessione)
+        risultato = await client._async_segui_ponti_login(
+            {}, _PAGINA_COMPLETA_PROCEDURA, _URL_INIZIALE
+        )
+        assert risultato == _PAGINA_VERA
+        # '&amp;' deve diventare '&' prima della richiesta, non restare
+        # letterale nell'URL.
+        assert sessione.richieste == [
+            "https://areariservataclienti.areti.it/portaleareti/loginflow/loginFlow.apexp"
+            "?retURL=%2Fportaleareti%2Fs%2F&sparkID=ARIA_MaintenanceFlow"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_segue_entrambi_i_ponti_in_sequenza(self):
+        """La catena osservata per davvero il 18/09/2026: redirect JS poi
+        link 'completa procedura', in due hop distinti."""
+        sessione = _SessioneFake([_PAGINA_COMPLETA_PROCEDURA, _PAGINA_VERA])
+        client = auth.AretiAuthClient(sessione)
+        risultato = await client._async_segui_ponti_login(
+            {}, _PAGINA_REDIRECT_JS, _URL_INIZIALE
+        )
+        assert risultato == _PAGINA_VERA
+        assert len(sessione.richieste) == 2
+
+    @pytest.mark.asyncio
+    async def test_max_hop_si_ferma_senza_sollevare(self):
+        """Una catena di redirect che non finisce mai (bug lato server, o
+        pattern non riconosciuto) si ferma dopo max_hop invece di andare
+        in loop infinito - ritorna l'ultima pagina vista, il chiamante
+        (_estrai_fwuid) sollevera' un errore chiaro su quella."""
+        pagina_redirect_a_se_stessa = _PAGINA_REDIRECT_JS
+        sessione = _SessioneFake([pagina_redirect_a_se_stessa] * 10)
+        client = auth.AretiAuthClient(sessione)
+        risultato = await client._async_segui_ponti_login(
+            {}, _PAGINA_REDIRECT_JS, _URL_INIZIALE, max_hop=3
+        )
+        assert risultato == pagina_redirect_a_se_stessa
+        assert len(sessione.richieste) == 3

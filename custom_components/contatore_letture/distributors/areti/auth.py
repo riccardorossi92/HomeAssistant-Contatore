@@ -23,6 +23,14 @@ riletti ad ogni login: non sono hardcodabili (fwuid cambia ad ogni
 release Salesforce, il nome del cookie-token non è garantito restare
 '__Host-ERIC_PROD-<numero>').
 
+Su alcuni account (osservato il 18/09/2026, non nella cattura originale
+del 04/09/2026) la GET della home non porta subito alla pagina vera, ma
+a due ponti in sequenza - un redirect JAVASCRIPT verso
+loginflow/loginFlowOnly.apexp, poi una pagina "completa la procedura di
+accesso" con un link verso loginflow/loginFlow.apexp?...&sparkID=
+ARIA_MaintenanceFlow che risponde con un vero redirect HTTP 302 alla
+home - gestiti da _async_segui_ponti_login, vedi il suo docstring.
+
 Non essendoci un refresh_token (a differenza di E-Distribuzione), il
 coordinator rifà login da zero ad ogni ciclo (una volta al giorno):
 evita di dover gestire la scadenza della sessione a metà catena, al
@@ -34,6 +42,7 @@ import logging
 import re
 import ssl
 from dataclasses import dataclass
+from html import unescape as _unescape_html
 from urllib.parse import quote
 
 import aiohttp
@@ -233,6 +242,9 @@ class AretiAuthClient:
         async with self._session.get(HOME_URL, headers=headers) as resp:
             resp.raise_for_status()
             html = await resp.text()
+            url_attuale = str(resp.url)
+
+        html = await self._async_segui_ponti_login(headers, html, url_attuale)
 
         fwuid = _estrai_fwuid(html)
         loaded_app_id = _estrai_loaded_app_id(html)
@@ -246,6 +258,54 @@ class AretiAuthClient:
             )
 
         return AretiAuraContext(fwuid=fwuid, loaded_app_id=loaded_app_id, token=cookie_token.value)
+
+    async def _async_segui_ponti_login(
+        self, headers: dict, html: str, url_attuale: str, max_hop: int = 5
+    ) -> str:
+        """Segue due ponti opzionali osservati tra il login e la vera home
+        Lightning, nessuno dei due un redirect HTTP puro (altrimenti
+        aiohttp li seguirebbe da solo senza bisogno di questo metodo):
+
+        1. Redirect in JAVASCRIPT (window.location.replace/href) verso
+           loginflow/loginFlowOnly.apexp.
+        2. Da lì, una pagina "è necessario completare la procedura di
+           accesso" con un link verso
+           loginflow/loginFlow.apexp?...&sparkID=ARIA_MaintenanceFlow -
+           un GET che risponde con un vero redirect HTTP 302 dritto alla
+           home (verificato su cattura reale il 18/09/2026: nessun form
+           da compilare), quindi aiohttp segue da solo quest'ultimo hop.
+
+        Osservati per la prima volta il 18/09/2026 su un account reale
+        con POD, non nelle catture del 04/09/2026 che hanno fondato il
+        modulo - probabile passaggio "di manutenzione" (nome del flow:
+        ARIA_MaintenanceFlow) legato all'account, non garantito
+        ricomparire per tutti gli account né restare così semplice
+        (senza form) in futuro: se un giorno la pagina raggiunta e' un
+        vero form da compilare, questo metodo si fermera' qui e
+        _estrai_fwuid solleverà AretiParsingError su quella pagina - da
+        gestire quando/se si presenta.
+
+        Ritorna l'HTML della pagina finale, o quello ricevuto in
+        ingresso se non trova nessuno dei due pattern (caso comune:
+        login diretto senza passaggi extra, come nelle catture originali).
+        """
+        for _ in range(max_hop):
+            match = re.search(r"window\.location\.replace\('([^']+)'\)", html)
+            if not match:
+                match = re.search(r"window\.location\.href\s*=\s*'([^']+)'", html)
+            if not match:
+                match = re.search(r'href="([^"]*loginflow/loginFlow\.apexp[^"]*)"', html)
+            if not match:
+                return html
+            prossimo_url = _unescape_html(match.group(1))
+            _LOGGER.debug("Login Areti: seguo il ponte verso %s", prossimo_url)
+            async with self._session.get(
+                prossimo_url, headers={**headers, "Referer": url_attuale}
+            ) as resp:
+                resp.raise_for_status()
+                html = await resp.text()
+                url_attuale = str(resp.url)
+        return html
 
 
 def _estrai_fwuid(html: str) -> str:
