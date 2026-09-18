@@ -51,32 +51,19 @@ osservazione su due POD):
 from __future__ import annotations
 
 import logging
-import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
-from homeassistant.components.recorder import get_instance
-from homeassistant.components.recorder.models import StatisticMeanType
-from homeassistant.components.recorder.statistics import (
-    async_add_external_statistics,
-    get_last_statistics,
-    statistics_during_period,
-)
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from ...const import DOMAIN
+from ...statistics_common import (
+    async_scrivi_serie_oraria,
+    async_ultima_data_disponibile,
+    sanitize_statistic_id,
+)
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _sanitize_statistic_id(pod: str) -> str:
-    """Stesso formato di pcf_common.statistics: Duereti/Unareti/
-    E-Distribuzione convivono così in modo uniforme nella Energy
-    Dashboard, che non distingue quale distributore ha popolato lo
-    statistic_id di un dato POD."""
-    slug = re.sub(r"[^a-z0-9_]", "_", pod.lower())
-    return f"{DOMAIN}:{slug}_energia"
 
 
 def _aggrega_per_ora(giorni: list[dict]) -> list[tuple[datetime, float]]:
@@ -139,30 +126,6 @@ def _aggrega_per_ora(giorni: list[dict]) -> list[tuple[datetime, float]]:
     return sorted(bucket.items())
 
 
-async def _leggi_serie_esistente(hass: HomeAssistant, statistic_id: str) -> dict:
-    """Identica a pcf_common.statistics: rilegge tutta la serie oraria già
-    presente per uno statistic_id, {inizio_ora_utc: kwh_dell_ora}."""
-    inizio_epoca = dt_util.utc_from_timestamp(0)
-    esistenti = await get_instance(hass).async_add_executor_job(
-        statistics_during_period,
-        hass,
-        inizio_epoca,
-        None,
-        {statistic_id},
-        "hour",
-        None,
-        {"state"},
-    )
-
-    serie: dict = {}
-    for riga in esistenti.get(statistic_id, []):
-        stato = riga.get("state")
-        if stato is None:
-            continue
-        serie[dt_util.utc_from_timestamp(riga["start"])] = float(stato)
-    return serie
-
-
 async def async_import_curva_giornaliera(
     hass: HomeAssistant, pod: str, dati_grezzi: list[dict]
 ) -> date | None:
@@ -183,7 +146,7 @@ async def async_import_curva_giornaliera(
         _LOGGER.debug("Nessun dato curva da importare per POD %s", pod)
         return None
 
-    statistic_id = _sanitize_statistic_id(pod)
+    statistic_id = sanitize_statistic_id(pod)
     nuove_ore = dict(_aggrega_per_ora(dati_grezzi))
 
     if not nuove_ore:
@@ -205,56 +168,12 @@ async def async_import_curva_giornaliera(
         max(nuove_ore).isoformat(),
     )
 
-    serie = await _leggi_serie_esistente(hass, statistic_id)
-    ore_gia_presenti = len(serie)
-    serie.update(nuove_ore)
-
-    running_sum = 0.0
-    stats = []
-    for inizio_ora in sorted(serie):
-        running_sum += serie[inizio_ora]
-        stats.append({"start": inizio_ora, "state": serie[inizio_ora], "sum": running_sum})
-
-    metadata = {
-        "has_mean": False,
-        "mean_type": StatisticMeanType.NONE,
-        "has_sum": True,
-        "name": f"E-Distribuzione {pod}",
-        "source": DOMAIN,
-        "statistic_id": statistic_id,
-        "unit_of_measurement": "kWh",
-        "unit_class": "energy",
-    }
-
-    async_add_external_statistics(hass, metadata, stats)
-    ultima_data = dt_util.as_local(stats[-1]["start"]).date()
-    _LOGGER.info(
-        "POD %s (%s): %d ore nuove/aggiornate, serie riscritta con %d ore totali "
-        "(erano %d), ultimo punto %s",
-        pod,
-        statistic_id,
-        len(nuove_ore),
-        len(stats),
-        ore_gia_presenti,
-        ultima_data.isoformat(),
+    return await async_scrivi_serie_oraria(
+        hass, pod, statistic_id, f"E-Distribuzione {pod}", nuove_ore
     )
-    return ultima_data
 
 
-async def async_get_ultima_data_disponibile(hass: HomeAssistant, pod: str):
-    """Identica a pcf_common.statistics: ultima data (locale) effettivamente
-    presente nelle external statistics per il POD, o None se non c'è
-    ancora nessun dato importato."""
-    statistic_id = _sanitize_statistic_id(pod)
-    last_stats = await get_instance(hass).async_add_executor_job(
-        get_last_statistics, hass, 1, statistic_id, True, {"sum"}
-    )
-    entry = last_stats.get(statistic_id)
-    if not entry:
-        return None
-
-    start = entry[0].get("start")
-    if start is None:
-        return None
-
-    return dt_util.as_local(dt_util.utc_from_timestamp(start)).date()
+async def async_get_ultima_data_disponibile(hass: HomeAssistant, pod: str) -> date | None:
+    """Ultima data (locale) effettivamente presente nelle external
+    statistics per il POD, o None se non c'è ancora nessun dato importato."""
+    return await async_ultima_data_disponibile(hass, sanitize_statistic_id(pod))

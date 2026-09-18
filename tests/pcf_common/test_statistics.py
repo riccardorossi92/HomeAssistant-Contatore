@@ -1,7 +1,7 @@
 """Test della logica di import statistiche PCF: aggregazione oraria e
 gestione del cambio ora tramite il flag FL_ORA_LEGALE.
 
-Coperte solo le funzioni pure (_sanitize_statistic_id, _timestamp_aware,
+Coperte solo le funzioni pure (sanitize_statistic_id, _timestamp_aware,
 _aggrega_per_ora). Il percorso completo async_import_curva richiede il
 recorder ed è fuori da questi test.
 """
@@ -20,14 +20,14 @@ def _p(iso_local: str, kwh: float, flag: str | None) -> CurvaPunto:
     return CurvaPunto(timestamp=datetime.fromisoformat(iso_local), valore_kwh=kwh, ora_legale=flag)
 
 
-# --- _sanitize_statistic_id -------------------------------------------------
+# --- sanitize_statistic_id --------------------------------------------------
 
 def test_statistic_id_dal_pod():
-    assert st._sanitize_statistic_id("IT001E00000001") == "contatore_letture:it001e00000001_energia"
+    assert st.sanitize_statistic_id("IT001E00000001") == "contatore_letture:it001e00000001_energia"
 
 
 def test_statistic_id_sostituisce_i_caratteri_strani():
-    assert st._sanitize_statistic_id("IT-001/E 1") == "contatore_letture:it_001_e_1_energia"
+    assert st.sanitize_statistic_id("IT-001/E 1") == "contatore_letture:it_001_e_1_energia"
 
 
 # --- _timestamp_aware -----------------------------------------------------

@@ -1,6 +1,6 @@
 """Test della logica di aggregazione oraria (distributors/ireti/statistics.py).
 
-Coperte solo le funzioni pure (_sanitize_statistic_id, _ora_da_indice,
+Coperte solo le funzioni pure (sanitize_statistic_id, _ora_da_indice,
 _aggrega_per_ora): il percorso completo async_import_curva_giorni
 richiede il recorder ed è fuori da questi test (stesso approccio di
 tests/pcf_common/test_statistics.py).
@@ -47,14 +47,14 @@ def _giorno_completo(valore: float, n: int = 96) -> list:
     return [valore] * n
 
 
-# --- _sanitize_statistic_id -------------------------------------------------
+# --- sanitize_statistic_id --------------------------------------------------
 
 def test_statistic_id_dal_pod():
-    assert st._sanitize_statistic_id("IT020E00000001") == "contatore_letture:it020e00000001_energia"
+    assert st.sanitize_statistic_id("IT020E00000001") == "contatore_letture:it020e00000001_energia"
 
 
 def test_statistic_id_sostituisce_i_caratteri_strani():
-    assert st._sanitize_statistic_id("IT-020/E 1") == "contatore_letture:it_020_e_1_energia"
+    assert st.sanitize_statistic_id("IT-020/E 1") == "contatore_letture:it_020_e_1_energia"
 
 
 # --- _ora_da_indice ----------------------------------------------------------
