@@ -11,8 +11,11 @@ COSA FA
      anche il tuo browser ogni volta che apri il sito) ed estrae l'elenco
      degli endpoint che l'app sa chiamare: e' cosi' che scopriamo gli
      endpoint dei consumi senza doverli indovinare.
-  4. Prova gli endpoint che sembrano di misura sul tuo POD e registra la
-     STRUTTURA delle risposte.
+  4. Prova con POST i quattro endpoint di misura confermati
+     (exabeat/history, exabeat/registry, readings/exabeat/measures,
+     readings/exabeat/measures-loadprofiles) con il body corretto.
+  5. Prova anche gli altri path del bundle che sembrano di misura, come
+     esplorazione, e registra la STRUTTURA delle risposte.
 
 COSA NON FA
   Non invia niente a nessuno. Scrive solo un file locale che decidi tu se
@@ -41,7 +44,7 @@ import getpass
 import json
 import re
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 try:
@@ -74,10 +77,12 @@ HEADERS_BROWSER = {
 CHIAVI_DA_OSCURARE = {
     "name", "surname", "nome", "cognome", "ragsoc", "ragionesociale",
     "codfiscale", "codicefiscale", "cf", "piva", "partitaiva", "vatnumber",
+    "customertaxcodevat",
     "email", "mail", "telnumber", "cellnumber", "telefono", "cellulare",
     "indirizzo", "address", "via", "civico", "cap", "citta", "comune",
     "access_token", "refresh_token", "id_token", "token", "password",
     "keycloakuserid", "keycloakuser", "username", "idconsumer", "sessionstate",
+    "serialnumber",
 }
 
 
@@ -121,7 +126,7 @@ def anonimizza(dato: Any, campioni_lista: int = 3) -> Any:
 
 
 def login(username: str, password: str) -> str:
-    print("\n[1/4] Login...")
+    print("\n[1/5] Login...")
     resp = requests.post(
         TOKEN_URL,
         data={
@@ -168,7 +173,7 @@ def estrai_endpoint_dal_bundle(sess: requests.Session) -> list[str]:
     browser): contiene in chiaro le stringhe degli endpoint che l'app sa
     chiamare, quindi ci dice quali API esistono senza doverle indovinare.
     """
-    print("\n[3/4] Estrazione endpoint dal bundle JavaScript dell'app...")
+    print("\n[3/5] Estrazione endpoint dal bundle JavaScript dell'app...")
     r = sess.get(f"{BASE}/prelievi", timeout=25)
     bundle = re.findall(r'src="(/?main-es\d+\.[a-f0-9]+\.js)"', r.text)
     if not bundle:
@@ -186,11 +191,51 @@ def estrai_endpoint_dal_bundle(sess: requests.Session) -> list[str]:
     print(f"  Scaricato ({len(rb.text)} caratteri), cerco i path delle API...")
 
     # Path che iniziano per / e somigliano a endpoint REST, esclusi asset.
-    grezzi = set(re.findall(r'"(/(?:users|misure|pod|prelievi|consumi|api)[a-zA-Z0-9/_\-{}.]*)"', rb.text))
+    # "readings" e' incluso apposta: e' li' che vivono gli endpoint di
+    # misura (/readings/exabeat/measures-loadprofiles, confermato il
+    # 17/09/2026 - prima di aggiungere "readings" qui il path veniva
+    # scartato e lo script non lo trovava mai da solo.
+    grezzi = set(re.findall(
+        r'"(/(?:users|readings|misure|pod|prelievi|consumi|api)[a-zA-Z0-9/_\-{}.]*)"',
+        rb.text,
+    ))
     esclusi = (".js", ".css", ".png", ".svg", ".woff", ".ico", ".html")
     trovati = sorted(p for p in grezzi if not p.endswith(esclusi))
     print(f"  Trovati {len(trovati)} path candidati")
     return trovati
+
+
+def _finestra_ultimo_mese_completo() -> tuple[str, str]:
+    """Primo e ultimo istante dell'ultimo mese completo, in UTC ISO 8601.
+
+    Stesso formato usato dal frontend (visto in issue #6): startDate a
+    mezzanotte del primo giorno del mese, endDate a fine dell'ultimo -
+    entrambi come istanti UTC.
+    """
+    oggi = date.today()
+    fine_mese_scorso = oggi.replace(day=1) - timedelta(days=1)
+    inizio_mese_scorso = fine_mese_scorso.replace(day=1)
+    inizio = datetime(
+        inizio_mese_scorso.year, inizio_mese_scorso.month, inizio_mese_scorso.day,
+        tzinfo=timezone.utc,
+    )
+    fine = datetime(
+        fine_mese_scorso.year, fine_mese_scorso.month, fine_mese_scorso.day,
+        23, 59, 59, tzinfo=timezone.utc,
+    )
+    iso = lambda dt: dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    return iso(inizio), iso(fine)
+
+
+# Endpoint di misura noti dal bundle, provati esplicitamente con POST e il
+# body corretto (non con la scansione generica GET+query, sbagliata per
+# questi: e' quello che ha impedito allo script di trovarli da solo finora).
+ENDPOINT_MISURA = [
+    "/users/exabeat/history",
+    "/users/exabeat/registry",
+    "/readings/exabeat/measures",
+    "/readings/exabeat/measures-loadprofiles",
+]
 
 
 def main() -> None:
@@ -215,7 +260,7 @@ def main() -> None:
         "endpoint_dal_bundle": [],
     }
 
-    print("\n[2/4] Anagrafica e POD...")
+    print("\n[2/5] Anagrafica e POD...")
     st, company = chiama(sess, "company-by-host", f"{BASE}/users/public/company-by-host")
     report["chiamate"]["company-by-host"] = {"status": st, "risposta": anonimizza(company)}
     id_company = company.get("idCompany") if isinstance(company, dict) else None
@@ -254,33 +299,79 @@ def main() -> None:
 
     report["endpoint_dal_bundle"] = estrai_endpoint_dal_bundle(sess)
 
-    print("\n[4/4] Prova degli endpoint che sembrano di misura...")
+    print("\n[4/5] Prova degli endpoint di misura noti (exabeat/readings)...")
+    customer_tax_code_vat = consumer.get("pIVA") or consumer.get("codFiscale")
+    pod_type = None
+    start_iso, end_iso = _finestra_ultimo_mese_completo()
+    if pod_utente and customer_tax_code_vat:
+        pod_code = pod_utente[0]
+
+        st, history = chiama(
+            sess, "/users/exabeat/history", f"{BASE}/users/exabeat/history",
+            metodo="POST",
+            json={
+                "customerTaxCodeVat": customer_tax_code_vat,
+                "pod": pod_code,
+                "startDate": start_iso,
+                "endDate": end_iso,
+            },
+        )
+        report["chiamate"]["/users/exabeat/history"] = {"status": st, "risposta": anonimizza(history)}
+        if isinstance(history, dict):
+            pod_type = history.get("podType")
+
+        for path in ("/users/exabeat/registry", "/readings/exabeat/measures",
+                      "/readings/exabeat/measures-loadprofiles"):
+            body: dict[str, Any] = {
+                "customerTaxCodeVat": customer_tax_code_vat,
+                "pod": pod_code,
+                "startDate": start_iso,
+                "endDate": end_iso,
+            }
+            if path.startswith("/readings/"):
+                body["operation"] = "PRELIEVO"
+                if pod_type:
+                    body["podType"] = pod_type
+            st, risp = chiama(sess, path, f"{BASE}{path}", metodo="POST", json=body)
+            report["chiamate"][path] = {"status": st, "risposta": anonimizza(risp)}
+    elif not pod_utente:
+        for path in ENDPOINT_MISURA:
+            report["chiamate"][path] = {"nota": "saltato: nessun POD sull'account"}
+    else:
+        for path in ENDPOINT_MISURA:
+            report["chiamate"][path] = {"nota": "saltato: codice fiscale/P.IVA non trovato in anagrafica"}
+
+    print("\n[5/5] Altri path candidati dal bundle (esplorativo, POST con body vuoto)...")
     candidati = [
         p for p in report["endpoint_dal_bundle"]
-        if any(k in p.lower() for k in
-               ("misur", "consum", "prelie", "curva", "load", "letture", "energ", "chart"))
+        if p not in ENDPOINT_MISURA
+        and any(k in p.lower() for k in
+                ("misur", "consum", "prelie", "curva", "load", "letture", "energ", "chart"))
     ]
     if candidati:
         print(f"  {len(candidati)} candidati:")
         for p in candidati:
             print(f"    {p}")
     else:
-        print("  Nessun candidato evidente tra i path estratti.")
+        print("  Nessun candidato ulteriore tra i path estratti.")
 
     if pod_utente and candidati:
-        ieri = date.today() - timedelta(days=1)
-        settimana_fa = date.today() - timedelta(days=7)
         for path in candidati[:8]:
             if "{" in path:  # path con segnaposto: non sappiamo cosa metterci
                 report["chiamate"][path] = {"nota": "path parametrico, non provato"}
                 continue
             url = f"{BASE}{path}"
+            # Non sappiamo il payload atteso: proviamo POST con un body
+            # generico simile a quello confermato per gli endpoint exabeat.
+            # Un errore qui (400/422) finisce comunque nel report ed e' gia'
+            # un'informazione utile (conferma che l'endpoint esiste).
             st, risp = chiama(
-                sess, path, url,
-                params={
+                sess, path, url, metodo="POST",
+                json={
+                    "customerTaxCodeVat": customer_tax_code_vat,
                     "pod": pod_utente[0],
-                    "dataDa": settimana_fa.isoformat(),
-                    "dataA": ieri.isoformat(),
+                    "startDate": start_iso,
+                    "endDate": end_iso,
                 },
             )
             report["chiamate"][path] = {"status": st, "risposta": anonimizza(risp)}

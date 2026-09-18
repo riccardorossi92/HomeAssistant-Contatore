@@ -1,16 +1,16 @@
 # Ireti — stato della ricerca (supporto non ancora implementato)
 
-Ireti (`smartpod.ireti.it`) **non è ancora supportato**, ma è **fattibile**.
-L'autenticazione e l'anagrafica sono verificate con dati reali; gli
-**endpoint dei consumi ora sono noti** (estratti dal bundle dell'app, vedi
-[Endpoint di misura](#endpoint-di-misura--individuati-non-ancora-provati-con-dati-reali)).
-Manca solo la conferma della struttura delle risposte da un account con
-un POD associato.
+Ireti (`smartpod.ireti.it`) **non è ancora supportato**, ma è **fattibile
+ed è stato confermato con dati reali**: [issue #6](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/6)
+(russomichele, 17/09/2026) ha un POD attivo e ha condiviso sia il report
+dello script sia la cattura diretta di `measures-loadprofiles` dal
+browser, con curva di carico reale. Manca solo l'implementazione
+(coordinator + config flow), vedi [Endpoint di misura](#endpoint-di-misura).
 
 > A differenza di **Areti** (portale di sole pratiche, nessun dato di
 > misura — vedi [areti-protocol.md](areti-protocol.md)), qui il backend
-> di misura esiste ed è ricco: letture per fascia **e** curva di carico
-> a 15 minuti.
+> di misura esiste, risponde, ed è più granulare degli altri distributori
+> supportati: curva a 15 minuti invece che giornaliera/mensile.
 
 Se hai una fornitura Ireti attiva, puoi aiutare — vedi
 [Come contribuire](#come-contribuire) in fondo.
@@ -82,46 +82,108 @@ di cui sopra.
 | `GET /users/pods/getallbyconsumerandcompany/{idConsumer}/{idCompany}` | elenco dei POD dell'utente |
 | `GET /users/pods/getallbyconsumer/{idConsumer}` | elenco POD (variante senza company), include `details` (podType, podMaxPower…) |
 
-## Endpoint di misura — individuati, non ancora provati con dati reali
+## Endpoint di misura
 
-Estratti dal bundle `main-es2015.*.js` dell'app (HAR della pagina
-`/prelievi`, 04/09/2026). Sono le chiamate che il frontend Angular sa
-fare; payload e semantica dei campi ricavati dal codice del bundle, **non
-ancora verificati contro risposte reali** (l'account di cattura ha
-`pods: []`).
-
-| Endpoint | Metodo | Payload | Cosa dovrebbe restituire |
+| Endpoint | Metodo | Payload | Cosa restituisce |
 |---|---|---|---|
-| `/users/exabeat/history` | POST | `{customerTaxCodeVat, pod, startDate, endDate}` | `customerPodActive` (bool), `podType` (`orario` / `fasce` / `mono orario`) |
-| `/users/exabeat/registry` | POST | idem | anagrafica tecnica del POD |
-| `/readings/exabeat/measures` | POST | `{customerTaxCodeVat, pod, startDate, endDate}` | letture periodiche: `energyActiveF1/F2/F3`, `energyReactiveF1..3`, `energyPowerF1..3` (per fascia) |
-| `/readings/exabeat/measures-loadprofiles` | POST | idem | `loadProfiles[]`: ogni voce ha `loadProfileDate` (`DD/MM/YYYY`) e `sampleValues` — **curva di carico a 15 min**, 92 campioni/giorno normalmente, portati a 96 (il frontend inserisce 4 `undefined` a indice 8 per il cambio ora legale) |
-| `/readings/exabeat/can-request-verify` | POST | `{...}` | se è possibile richiedere una verifica misuratore |
+| `/readings/exabeat/measures-loadprofiles` | POST | vedi sotto | **CONFERMATO con dati reali** — `loadProfiles[]`, curva a 15 min |
+| `/users/exabeat/history` | POST | `{customerTaxCodeVat, pod, startDate, endDate}` | `customerPodActive` (bool), `podType` (`orario` / `fasce` / `mono orario`) — non ancora confermato con dati reali |
+| `/users/exabeat/registry` | POST | idem | anagrafica tecnica del POD — non ancora confermato |
+| `/readings/exabeat/measures` | POST | `{customerTaxCodeVat, pod, startDate, endDate}` | letture periodiche per fascia (`energyActiveF1/F2/F3`, ecc.) — non ancora confermato |
+| `/readings/exabeat/can-request-verify` | POST | `{...}` | se è possibile richiedere una verifica misuratore — non ancora confermato |
 | `/readings/selfreading/save`, `/readings/selfreading/checkotp` | POST | — | autolettura (con OTP) — non serve per l'integrazione |
 
-Note dal codice del bundle:
+Gli endpoint non confermati restano ricavati dal codice del bundle
+(vedi cronologia del file); non sono indovinati, ma non hanno ancora
+una risposta reale a fronte.
 
-- `customerTaxCodeVat` = `pIVA` se presente, altrimenti `codFiscale` del
-  consumer (da `getbykeycloakusername`).
-- `pod` = il **codice** POD (campo `code`), non `idPod`.
-- `startDate` / `endDate` sono oggetti `Date` serializzati (il frontend
-  usa `new Date(anno, mese, 0, 23, 59, 59)`); per `history` il default è
-  una finestra di 12 mesi, per le misure la finestra scelta nel datepicker.
-- `measures-loadprofiles` è servito da un metodo chiamato
-  `getPodMeasuresProxy` → i dati passano da un proxy lato server Ireti.
-- La curva a 15 min è **più granulare** del dato giornaliero di
-  E-Distribuzione: è il valore aggiunto principale di questa integrazione.
+### `measures-loadprofiles` — confermato con dati reali (17/09/2026)
 
-## Cosa manca
+Da [issue #6](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/6),
+cattura diretta dal browser (non dallo script nella sua versione di
+allora — vedi [nota sul fix dello script](#nota-il-fix-dello-script-18092026)):
 
-**Solo le risposte reali degli endpoint qui sopra.** Le catture
-disponibili finora vengono da un account **senza POD attivi**
-(`getbykeycloakusername` → `"pods": []`, `getallbyconsumerandcompany` →
-`entityModel: null`): la pagina dei prelievi non ha mai chiamato le API di
-misura, quindi non sappiamo la forma esatta delle risposte né le unità di
-`sampleValues` (kW medi sul quarto d'ora? kWh?).
+```
+POST /readings/exabeat/measures-loadprofiles
+Authorization: Bearer <access_token>
 
-### Associazione del POD
+{
+  "operation": "PRELIEVO",
+  "podType": "orario",
+  "startDate": "2026-07-31T22:00:00.000Z",
+  "endDate": "2026-08-31T21:59:59.000Z",
+  "customerTaxCodeVat": "<codice fiscale o P.IVA>",
+  "pod": "IT020E..."
+}
+```
+
+Risposta (un mese, un `loadProfiles[]` per giorno):
+
+```json
+{
+  "responseMessage": null,
+  "reponseCode": null,
+  "requestId": "285",
+  "errorCode": null,
+  "pod": "IT020E...",
+  "readings": null,
+  "intakeReadings": null,
+  "loadProfiles": [
+    {
+      "loadProfileDate": "20/08/2026 00:00:00 +0200",
+      "serialNumber": "...",
+      "timeType": "",
+      "energyType": "A1",
+      "measType": "0",
+      "sampleValues": [0.023, 0.022, 0.018, "... 96 valori totali"]
+    }
+  ]
+}
+```
+
+Osservazioni:
+
+- **96 `sampleValues` per giorno** (15 minuti l'uno) nel report reale —
+  non 92 come ipotizzato dal solo codice del bundle: la cattura non
+  cadeva su un giorno di cambio ora legale, quindi lo splice a 96 non
+  serviva. Da verificare il comportamento nei giorni di cambio ora.
+- Valori nell'ordine di `0.01`–`0.03`: sommando i 96 campioni di un
+  giorno si ottiene ~1.9, plausibile come **kWh per intervallo di 15
+  minuti** (giorno a consumo basso/standby) più che come potenza
+  istantanea in kW — ma non ancora confermato incrociando con un totale
+  giornaliero noto.
+- `endDate`/`startDate` nella richiesta sono UTC con l'offset già
+  applicato (`21:59:59Z` = `23:59:59` ora locale CEST); `loadProfileDate`
+  nella risposta invece è locale con offset esplicito (`+0200`).
+- `energyType: "A1"` ed `measType: "0"` non ancora mappati a un
+  significato certo (probabile: energia attiva, fascia F1 o
+  "monoraria"); `podType: "orario"` nella richiesta è quello letto da
+  `history`/`registry` per quel POD.
+- `operation: "PRELIEVO"` suggerisce che esista anche `"IMMISSIONE"` per
+  POD di produzione (fotovoltaico) — da verificare, non testato.
+
+### Nota: il fix dello script (18/09/2026)
+
+Fino a [issue #6](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/6),
+`scripts/raccogli_dati_ireti.py` non trovava/provava
+`measures-loadprofiles` da solo, per due bug nello script (non nell'API) —
+la cattura che ha risolto il caso è stata fatta a mano dal browser, non
+dallo script:
+
+1. Il regex che estrae i path dal bundle cercava solo prefissi
+   `users|misure|pod|prelievi|consumi|api` — `/readings/exabeat/...` non
+   c'entrava e veniva scartato.
+2. Anche trovandolo, lo script lo avrebbe provato con `GET` e query string
+   (`pod`, `dataDa`, `dataA`), ma l'endpoint vuole `POST` con body JSON
+   (`operation`, `podType`, `startDate`, `endDate`, `customerTaxCodeVat`,
+   `pod`).
+
+Entrambi risolti: il regex ora include `readings`, e i quattro endpoint
+`exabeat`/`readings` noti vengono provati esplicitamente con `POST` e il
+body corretto (incatenando il `podType` letto da `history`), non più con
+la scansione generica GET+query.
+
+## Associazione del POD
 
 È un'azione self-service, non un limite tecnico:
 `POST /users/pods/save` con `{code, name, consumerId, companyId}` —
@@ -134,10 +196,16 @@ già il POD associato — quello di cattura è un caso anomalo.
 
 ## Come contribuire
 
-Serve qualcuno con una **fornitura Ireti attiva e almeno un POD
-associato** nel portale.
+Il dato principale (`measures-loadprofiles`, curva a 15 min) è già
+confermato — vedi sopra. Resta utile una conferma per: `podType: "fasce"`
+o `"mono orario"` (finora visto solo `"orario"`), l'endpoint
+`/readings/exabeat/measures` (letture per fascia, non ancora confermato),
+il comportamento nei giorni di cambio ora legale, e un eventuale POD di
+produzione (`operation: "IMMISSIONE"`).
 
-C'è uno script che fa tutto da solo:
+Se hai una **fornitura Ireti attiva e almeno un POD associato**, c'è uno
+script che fa tutto da solo (corretto il 18/09/2026 — vedi
+[nota sul fix](#nota-il-fix-dello-script-18092026)):
 
 ```bash
 pip install requests
@@ -153,8 +221,12 @@ viene salvata), poi:
    anche il tuo browser ogni volta che apri il sito — e ne estrae
    l'elenco degli endpoint che l'app sa chiamare: è così che scopriamo
    gli endpoint dei consumi senza doverli indovinare;
-4. prova quelli che sembrano di misura sul tuo POD e ne registra la
-   struttura delle risposte.
+4. prova con POST i quattro endpoint di misura confermati/noti
+   (`exabeat/history`, `exabeat/registry`, `readings/exabeat/measures`,
+   `readings/exabeat/measures-loadprofiles`) con il body corretto sul tuo
+   POD;
+5. prova anche gli altri path del bundle che sembrano di misura, come
+   esplorazione, e ne registra la struttura delle risposte.
 
 Alla fine trovi un file `ireti_report.json` da allegare a una issue.
 
