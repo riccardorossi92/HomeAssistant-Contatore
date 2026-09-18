@@ -67,12 +67,20 @@ api = _load_api_module()
 # ---------------------------------------------------------------------------
 
 
+class _RispostaNonJson:
+    """Sentinella: usata come 'corpo' di _Risposta per simulare una
+    risposta che non e' JSON valido (es. una pagina HTML) - .json()
+    solleva invece di ritornare qualcosa."""
+
+
 class _Risposta:
     def __init__(self, status: int, corpo):
         self.status = status
         self._corpo = corpo
 
     async def json(self, content_type=None):
+        if isinstance(self._corpo, _RispostaNonJson):
+            raise json.JSONDecodeError("Expecting value", "<html>...</html>", 0)
         return self._corpo
 
     def raise_for_status(self):
@@ -208,6 +216,17 @@ class TestAsyncGetConfigurations:
     async def test_http_error_solleva_eccezione(self):
         client, sessione = _client([(500, {})])
         with pytest.raises(api.AretiApiError):
+            await client.async_get_configurations("IT001E12345678")
+
+    @pytest.mark.asyncio
+    async def test_risposta_non_json_solleva_areti_api_error(self):
+        """Non verificato con una cattura reale cosa risponde
+        /sfsites/aura a sessione scaduta (redirect alla pagina di login?
+        una pagina d'errore HTML?) - qualunque forma non-JSON prenda deve
+        diventare un AretiApiError chiaro, non un json.JSONDecodeError
+        grezzo che il coordinator non si aspetta di dover intercettare."""
+        client, sessione = _client([(200, _RispostaNonJson())])
+        with pytest.raises(api.AretiApiError, match="non-JSON"):
             await client.async_get_configurations("IT001E12345678")
 
 

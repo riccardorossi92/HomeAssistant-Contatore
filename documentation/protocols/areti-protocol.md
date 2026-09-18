@@ -382,10 +382,20 @@ File da toccare in `__init__.py` (oltre al nuovo pacchetto
 
 ## Cosa resta aperto (non blocca l'implementazione)
 
-1. **Comportamento a sessione scaduta** — cosa risponde `/sfsites/aura`
-   quando `sid`/`aura.token` non sono più validi (redirect? errore
-   strutturato?), per capire come intercettarlo e rifare login. Da
-   dedurre in fase di scrittura di `auth.py`/verificare in seguito.
+1. **Comportamento a sessione scaduta** — la forma esatta della risposta
+   di `/sfsites/aura` quando `sid`/`aura.token` non sono più validi
+   (redirect? errore strutturato?) resta **non verificata con una
+   cattura reale**. Reso comunque non bloccante da due cambiamenti
+   indipendenti (non richiedono di conoscere quella forma):
+   - il coordinator fa login da zero ad ogni ciclo (mai una sessione
+     riusata tra un login e l'altro, vedi `coordinator.py`), quindi una
+     sessione che scade lo fa a metà di UN ciclo al massimo, non su
+     quelli successivi;
+   - `api.py:_chiama_apex` intercetta anche una risposta non-JSON
+     (qualunque forma prenda un eventuale redirect/pagina d'errore) e la
+     trasforma in un `AretiApiError` chiaro invece di un traceback
+     grezzo, che fa fallire quel ciclo e basta - il ciclo successivo
+     riparte comunque con login e sessione nuovi.
 2. **`fwuid` nel tempo** — è l'id di build del framework Aura, cambia a
    ogni release Salesforce (qualche volta l'anno): va riletto dall'HTML
    della pagina `/s/` a ogni sessione, non hardcodato.

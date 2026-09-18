@@ -101,6 +101,22 @@ class AretiApiClient:
                 corpo = await resp.json(content_type=None)
         except aiohttp.ClientError as err:
             raise AretiApiError(f"Errore di trasporto chiamando {classname}.{method}: {err}") from err
+        except ValueError as err:
+            # json.JSONDecodeError e' un ValueError: la risposta non era
+            # JSON valido. Non verificato con una cattura reale cosa
+            # risponde /sfsites/aura a sessione scaduta (redirect alla
+            # pagina di login? una pagina d'errore HTML?) - qualunque
+            # forma prenda finisce qui, invece di un traceback grezzo.
+            # Non serve gestirlo in modo più specifico: il coordinator fa
+            # login da zero ad ogni ciclo (mai una sessione riusata tra
+            # un login e l'altro, vedi coordinator.py), quindi una
+            # sessione scaduta a meta' ciclo fa fallire quel ciclo (con
+            # questo errore, chiaro) e il ciclo successivo riparte comunque
+            # con una sessione nuova.
+            raise AretiApiError(
+                f"Risposta non-JSON da {classname}.{method} (sessione scaduta a metà "
+                "ciclo? pagina di errore imprevista?)"
+            ) from err
 
         try:
             azione = corpo["actions"][0]
