@@ -35,6 +35,7 @@ nella history del terminale).
 from __future__ import annotations
 
 import getpass
+import html
 import json
 import re
 import sys
@@ -175,28 +176,44 @@ def _estrai_campo_hidden(html: str, nome_campo: str, r: requests.Response | None
 
 
 def _segui_redirect_js(sess: requests.Session, r: requests.Response, max_hop: int = 5) -> requests.Response:
-    """Segue un redirect fatto in JAVASCRIPT (window.location.replace/href),
-    non HTTP - 'requests' non lo segue da solo perche' non c'e' nessun
-    header Location. Stesso trucco della pagina-ponte frontdoor.jsp di
-    E-Distribuzione (vedi distributors/edistribuzione/auth.py,
-    _extract_js_redirect_url). Osservato per la prima volta il 18/09/2026:
-    dopo il login, /portaleareti/s/ puo' restituire una paginetta-ponte di
-    poche centinaia di caratteri che rimanda a
-    loginflow/loginFlowOnly.apexp invece della vera app Lightning - non
-    osservato nelle catture precedenti (04/09/2026), probabile passaggio
-    aggiuntivo legato all'account o al dispositivo/IP.
+    """Segue automaticamente due ponti osservati tra il login e la vera
+    home Lightning (/portaleareti/s/), nessuno dei due un redirect HTTP
+    puro che 'requests' seguirebbe da solo:
 
-    Segue la catena finche' non trova piu' questo pattern (o max_hop),
-    stampando ogni hop cosi' si vede a schermo dove porta senza dover
-    aprire i file di debug."""
+    1. Redirect in JAVASCRIPT (window.location.replace/href) - stesso
+       trucco della pagina-ponte frontdoor.jsp di E-Distribuzione (vedi
+       distributors/edistribuzione/auth.py, _extract_js_redirect_url).
+       Porta a loginflow/loginFlowOnly.apexp.
+    2. Da li', una pagina "Impossibile visualizzare la pagina / e'
+       necessario completare la procedura di accesso" con un link
+       "Completa procedura di accesso" verso
+       loginflow/loginFlow.apexp?...&sparkID=ARIA_MaintenanceFlow. Questo
+       E' un GET con un vero redirect HTTP 302 (verificato su cattura
+       reale il 18/09/2026: risponde 302 dritto a /portaleareti/s/, senza
+       nessun form da compilare) - basta seguirlo, 'requests' gestisce da
+       solo l'eventuale redirect successivo.
+
+    Entrambi osservati per la prima volta il 18/09/2026 su un account
+    reale con POD, non nelle catture del 04/09/2026 che hanno fondato il
+    modulo - probabile passaggio "di manutenzione" (nome del flow:
+    ARIA_MaintenanceFlow) legato all'account, non garantito ricomparire
+    sempre ne' restare cosi' semplice (senza form) per altri account.
+
+    Segue la catena finche' non trova piu' nessuno dei due pattern (o
+    max_hop), stampando ogni hop cosi' si vede a schermo dove porta senza
+    dover aprire i file di debug."""
     for _ in range(max_hop):
         m = re.search(r"window\.location\.replace\('([^']+)'\)", r.text)
         if not m:
             m = re.search(r"window\.location\.href\s*=\s*'([^']+)'", r.text)
+        tipo = "redirect JS"
+        if not m:
+            m = re.search(r'href="([^"]*loginflow/loginFlow\.apexp[^"]*)"', r.text)
+            tipo = "completa procedura di accesso"
         if not m:
             return r
-        prossimo_url = m.group(1)
-        print(f"  [redirect JS] -> {prossimo_url}")
+        prossimo_url = html.unescape(m.group(1))
+        print(f"  [{tipo}] -> {prossimo_url}")
         r = sess.get(prossimo_url, headers={**HEADERS_BASE, "Referer": r.url}, timeout=30)
         r.raise_for_status()
     return r
