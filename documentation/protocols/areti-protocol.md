@@ -17,7 +17,7 @@ delle risposte), sul modello di `pcf-protocol.md`/
 | | |
 |---|---|
 | Portale distributore espone consumi/curve di carico? | **Sì** — curva a 15 minuti + aggregato giornaliero, verificato con dati reali (agosto 2026) |
-| Meccanismo di login | **Verificato** — email/password su form Visualforce/JSF + ticket-exchange Salesforce, **nessun OTP** osservato (su alcuni account compare un passaggio extra senza form, "ARIA_MaintenanceFlow" — gestito, vedi sezione Login) |
+| Meccanismo di login | **Verificato** — email/password su form Visualforce/JSF + ticket-exchange Salesforce. **Nessun OTP**, né sui login riusciti né su quelli falliti, su più account diversi (su alcuni account compare un passaggio extra senza form, "ARIA_MaintenanceFlow" — gestito, vedi sezione Login) |
 | Implementazione | **Fatta e verificata su Home Assistant reale** (v0.7.4): `distributors/areti/` (auth.py/api.py/coordinator.py/sensor.py/statistics.py), agganciata a config_flow/reauth/options/recupera_storico. Test in `tests/areti/`. Configurazione iniziale e `recupera_storico` confermati funzionanti end-to-end (login → curva → statistiche esterne) - tre fix di login emersi nel farlo (vedi [note di rilascio v0.7.4](https://github.com/riccardorossi92/HomeAssistant-Contatore/releases/tag/v0.7.4)). |
 
 ## Quadro generale
@@ -153,14 +153,24 @@ successive combaciano esattamente).
 > su una sessione più lunga.
 
 > [!NOTE]
-> Non verificato: comportamento con credenziali errate (struttura
-> dell'errore), se il portale richiede mai OTP in altre condizioni
-> (nuovo dispositivo/IP — questa cattura è da un dispositivo già noto
-> all'account), e la durata di `sid` prima che serva rifare login.
+> **Credenziali errate — verificato il 18/09/2026** (due tentativi
+> falliti): risposta `200` (partial Ajax4jsf, non l'header `Location`
+> del login riuscito) con il messaggio dentro `<div
+> class="messageText">Email o password non valida.</div>` — estratto da
+> `_estrai_messaggio_errore_login` e incluso nel messaggio di
+> `AretiInvalidCredentials`. **Nessun OTP** in nessuno dei tentativi
+> falliti osservati (e nemmeno in quelli riusciti, su più account
+> diversi): il login Areti non ha OTP, punto — non solo "non ancora
+> osservato".
+>
+> Resta non verificata solo la durata di `sid` prima che serva rifare
+> login (non un problema pratico: il coordinator fa login da zero ad
+> ogni ciclo, non tiene mai una sessione a lungo).
 
-Tutto questo flusso è implementato (per verifica, non ancora nel modulo
-vero) in
-[`scripts/verify_areti_login.py`](../scripts/verify_areti_login.py).
+Tutto questo flusso è implementato sia in
+[`scripts/verify_areti_login.py`](../scripts/verify_areti_login.py) (per
+verifica rapida da terminale) sia nel modulo vero
+(`distributors/areti/auth.py`).
 
 ## La catena di chiamate per la curva di un mese
 
@@ -379,11 +389,7 @@ File da toccare in `__init__.py` (oltre al nuovo pacchetto
 2. **`fwuid` nel tempo** — è l'id di build del framework Aura, cambia a
    ogni release Salesforce (qualche volta l'anno): va riletto dall'HTML
    della pagina `/s/` a ogni sessione, non hardcodato.
-3. **Credenziali errate / OTP occasionale** — non osservati in questa
-   cattura (un solo login riuscito, da dispositivo già noto). Se in
-   produzione compare un passaggio diverso, va gestito quando si
-   presenta.
-4. Verificare se `getMisurazioni` supporta anche `UA` in modo utile per
+3. Verificare se `getMisurazioni` supporta anche `UA` in modo utile per
    chi ha un impianto di produzione (fuori dallo scope minimo attuale,
    ma utile saperlo per non doverci tornare).
 

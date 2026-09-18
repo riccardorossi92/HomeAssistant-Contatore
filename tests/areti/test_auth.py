@@ -117,6 +117,28 @@ class TestEstraiNomeCookieToken:
 
 
 # ---------------------------------------------------------------------------
+# _estrai_messaggio_errore_login (credenziali sbagliate, confermato su
+# cattura reale il 18/09/2026)
+# ---------------------------------------------------------------------------
+
+
+class TestEstraiMessaggioErroreLogin:
+    def test_trova_il_messaggio_reale(self):
+        """Struttura reale della risposta a un login con credenziali
+        sbagliate (risposta Ajax4jsf 200, nessun header Location)."""
+        html = (
+            '<span id="loginPage:loginForm:messageId">'
+            '<div class="messageText">Email o password non valida.</div><br /></span>'
+        )
+        assert auth._estrai_messaggio_errore_login(html) == "Email o password non valida."
+
+    def test_non_trovato_ritorna_none(self):
+        """None (non un'eccezione): il chiamante ricade su un messaggio
+        generico se la risposta ha una forma diversa da quella osservata."""
+        assert auth._estrai_messaggio_errore_login("<html>niente qui</html>") is None
+
+
+# ---------------------------------------------------------------------------
 # build_ssl_context (gotcha TLS: intermedio DigiCert mancante)
 # ---------------------------------------------------------------------------
 
@@ -358,3 +380,53 @@ class TestAsyncCreateSession:
         _evento, callback = hass.bus.listener_registrato
         await callback(None)
         assert session.closed
+
+
+# ---------------------------------------------------------------------------
+# AretiAuthClient.async_login - credenziali sbagliate end-to-end
+# (struttura reale confermata il 18/09/2026, due tentativi falliti)
+# ---------------------------------------------------------------------------
+
+
+_PAGINA_LOGIN_CON_VIEWSTATE = (
+    '<input type="hidden" name="com.salesforce.visualforce.ViewState" value="VS" />'
+    '<input type="hidden" name="com.salesforce.visualforce.ViewStateVersion" value="VSV" />'
+    '<input type="hidden" name="com.salesforce.visualforce.ViewStateMAC" value="VSM" />'
+)
+_RISPOSTA_CREDENZIALI_SBAGLIATE = (
+    '<span id="loginPage:loginForm:messageId">'
+    '<div class="messageText">Email o password non valida.</div><br /></span>'
+)
+
+
+class _RispostaLoginFake(_RispostaFake):
+    def __init__(self, testo: str, url: str, headers: dict | None = None) -> None:
+        super().__init__(testo, url)
+        self.headers = headers or {}
+
+    def raise_for_status(self) -> None:
+        pass
+
+
+class _SessioneLoginFake:
+    """Get -> pagina di login; Post -> risposta di login (senza Location,
+    credenziali sbagliate). Nessun cookie_jar da gestire: il fallimento
+    avviene prima che ne servano."""
+
+    def __init__(self) -> None:
+        self.richieste_post: list[dict] = []
+
+    def get(self, url: str, headers: dict | None = None) -> _RispostaLoginFake:
+        return _RispostaLoginFake(_PAGINA_LOGIN_CON_VIEWSTATE, url=url)
+
+    def post(self, url: str, data=None, headers=None, allow_redirects=None) -> _RispostaLoginFake:
+        self.richieste_post.append({"url": url, "data": data})
+        return _RispostaLoginFake(_RISPOSTA_CREDENZIALI_SBAGLIATE, url=url, headers={})
+
+
+class TestAsyncLoginCredenzialiSbagliate:
+    @pytest.mark.asyncio
+    async def test_solleva_invalid_credentials_col_messaggio_reale(self):
+        client = auth.AretiAuthClient(_SessioneLoginFake())
+        with pytest.raises(auth.AretiInvalidCredentials, match="Email o password non valida."):
+            await client.async_login("test@example.com", "password-sbagliata")

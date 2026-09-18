@@ -157,11 +157,13 @@ class AretiAuthError(Exception):
 class AretiInvalidCredentials(AretiAuthError):
     """Email o password rifiutate.
 
-    Euristica, non confermata su un caso reale (non abbiamo mai catturato
-    un login fallito): trattiamo come credenziali non valide qualunque
-    risposta del login POST priva dell'header 'Location' atteso. Se
-    emerge un caso reale diverso (es. corpo con un messaggio d'errore
-    esplicito, o un passaggio OTP mai visto prima), va distinto qui.
+    Confermato su cattura reale il 18/09/2026 (due tentativi falliti):
+    risposta 200 (partial Ajax4jsf, non l'header 'Location' del login
+    riuscito) con il messaggio d'errore dentro <div
+    class="messageText">Email o password non valida.</div> - estratto da
+    _estrai_messaggio_errore_login. Nessun OTP in nessuno dei tentativi
+    falliti osservati (e nemmeno in quelli riusciti): il login Areti non
+    ha OTP, punto.
     """
 
 
@@ -248,11 +250,18 @@ class AretiAuthClient:
             allow_redirects=False,
         ) as resp:
             location = resp.headers.get("Location")
+            corpo = await resp.text()
 
         if not location:
+            # Credenziali errate confermate su cattura reale il 18/09/2026:
+            # risposta 200 (risposta parziale Ajax4jsf, non l'header
+            # 'Location' del passo successivo), con il messaggio d'errore
+            # dentro <div class="messageText">Email o password non
+            # valida.</div>. Nessun OTP in nessuno dei tentativi falliti
+            # osservati.
             raise AretiInvalidCredentials(
-                "Login rifiutato: nessun header 'Location' nella risposta "
-                "(vedi AretiInvalidCredentials per i limiti di questa euristica)."
+                _estrai_messaggio_errore_login(corpo)
+                or "Login rifiutato: nessun header 'Location' nella risposta."
             )
 
         async with self._session.get(
@@ -367,3 +376,17 @@ def _estrai_nome_cookie_token(html: str) -> str:
     if not match:
         raise AretiParsingError("Nome del cookie-token non trovato nella home.")
     return match.group(1)
+
+
+def _estrai_messaggio_errore_login(html: str) -> str | None:
+    """Messaggio d'errore del login Visualforce/JSF, se presente.
+
+    Confermato su cattura reale il 18/09/2026 (credenziali sbagliate):
+    <span id="loginPage:loginForm:messageId"><div
+    class="messageText">Email o password non valida.</div></span>.
+    Ritorna None se non trovato (risposta di forma diversa da quella
+    osservata - il chiamante ricade su un messaggio generico)."""
+    match = re.search(r'class="messageText">([^<]+)<', html)
+    if not match:
+        return None
+    return match.group(1).strip()

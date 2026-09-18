@@ -263,12 +263,15 @@ def login(sess: requests.Session, email: str, password: str) -> None:
     )
     location = r.headers.get("Location")
     if not location:
+        # Confermato su cattura reale il 18/09/2026 (credenziali sbagliate):
+        # risposta 200 con il messaggio dentro
+        # <div class="messageText">Email o password non valida.</div>,
+        # niente OTP/MFA in nessuno dei tentativi falliti osservati.
+        m = re.search(r'class="messageText">([^<]+)<', r.text)
+        messaggio = m.group(1).strip() if m else None
         raise AretiAuthError(
-            "Login rifiutato: nessun header 'Location' nella risposta (status "
-            f"{r.status_code}). Probabile causa: credenziali errate, oppure e' "
-            "comparso un passaggio OTP/MFA mai osservato nella cattura di "
-            "riferimento (non gestito da questo script - se succede, serve "
-            "una nuova cattura HAR di quel passaggio)."
+            messaggio
+            or f"Login rifiutato: nessun header 'Location' nella risposta (status {r.status_code})."
         )
     print("  OK: email/password accettate (nessun OTP nel flusso osservato).")
 
