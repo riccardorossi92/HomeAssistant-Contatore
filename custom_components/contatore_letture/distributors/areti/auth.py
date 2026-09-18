@@ -43,6 +43,7 @@ import re
 import ssl
 from dataclasses import dataclass
 from html import unescape as _unescape_html
+from typing import Any
 from urllib.parse import quote
 
 import aiohttp
@@ -109,10 +110,44 @@ JCqVJUzKoZHm1Lesh3Sz8W2jmdv51b2EQJ8HmA==
 def build_ssl_context() -> ssl.SSLContext:
     """Contesto SSL con l'intermedio DigiCert mancante aggiunto a quelli
     di sistema (load_verify_locations AGGIUNGE, non sostituisce quanto
-    già caricato da create_default_context) - vedi il commento sopra."""
+    già caricato da create_default_context) - vedi il commento sopra.
+
+    ssl.create_default_context() fa I/O bloccante (legge i certificati di
+    sistema da disco): chiamarlo direttamente dentro l'event loop di Home
+    Assistant viene segnalato come "blocking call" (osservato in
+    produzione il 18/09/2026) - va sempre eseguito in un executor, vedi
+    async_create_session sotto. Questa funzione resta sincrona apposta,
+    così scripts/verify_areti_login.py (che non ha un event loop asyncio
+    da rispettare) può continuare a chiamarla direttamente.
+    """
     ctx = ssl.create_default_context()
     ctx.load_verify_locations(cadata=_DIGICERT_G2_TLS_RSA_SHA256_2020_CA1)
     return ctx
+
+
+async def async_create_session(hass: Any) -> aiohttp.ClientSession:
+    """Sessione aiohttp dedicata con l'intermedio DigiCert aggiunto.
+
+    NON tramite homeassistant.helpers.aiohttp_client.async_create_clientsession:
+    quell'helper costruisce sempre il proprio connector internamente (da
+    verify_ssl/family/ssl_cipher) e non accetta un connector personalizzato
+    - passarne uno tramite kwargs finisce due volte su
+    aiohttp.ClientSession(), "got multiple values for keyword argument
+    'connector'" (errore reale osservato in produzione il 18/09/2026, non
+    un'ipotesi). Va costruita a mano.
+
+    Come contropartita, la chiusura automatica che quell'helper offre
+    (auto_cleanup) va replicata qui a mano: chiude la sessione da sola
+    all'arresto di Home Assistant.
+    """
+    ssl_context = await hass.async_add_executor_job(build_ssl_context)
+    session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context))
+
+    async def _chiudi_alla_chiusura_di_hass(_event: Any) -> None:
+        await session.close()
+
+    hass.bus.async_listen_once("homeassistant_stop", _chiudi_alla_chiusura_di_hass)
+    return session
 
 
 class AretiAuthError(Exception):

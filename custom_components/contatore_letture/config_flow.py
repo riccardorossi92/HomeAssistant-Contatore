@@ -680,24 +680,20 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            from aiohttp import TCPConnector
-
             from .distributors.areti.auth import (
                 AretiAuthClient,
                 AretiInvalidCredentials,
                 AretiParsingError,
-                build_ssl_context,
+                async_create_session,
             )
 
-            # Sessione dedicata (non quella condivisa): serve il contesto
-            # SSL con l'intermedio DigiCert aggiunto (vedi
-            # auth.build_ssl_context, "Gotcha TLS" in
-            # areti-protocol.md) e una jar di cookie propria. Creata una
+            # Sessione dedicata (non quella condivisa, e non tramite
+            # async_create_clientsession: vedi async_create_session per il
+            # perché) con l'intermedio DigiCert aggiunto (vedi "Gotcha TLS"
+            # in areti-protocol.md) e una jar di cookie propria. Creata una
             # sola volta e riusata tra i retry di questo stesso flow.
             if self._areti_session is None:
-                self._areti_session = async_create_clientsession(
-                    self.hass, connector=TCPConnector(ssl=build_ssl_context())
-                )
+                self._areti_session = await async_create_session(self.hass)
             auth = AretiAuthClient(self._areti_session)
 
             try:
@@ -789,19 +785,15 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            from aiohttp import TCPConnector
-
             from .distributors.areti.auth import (
                 AretiAuthClient,
                 AretiInvalidCredentials,
                 AretiParsingError,
-                build_ssl_context,
+                async_create_session,
             )
             from .distributors.areti.const import CONF_EMAIL, CONF_PASSWORD
 
-            session = async_create_clientsession(
-                self.hass, connector=TCPConnector(ssl=build_ssl_context())
-            )
+            session = await async_create_session(self.hass)
             auth = AretiAuthClient(session)
 
             try:
@@ -1451,13 +1443,11 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
     # ------------------------------------------------------------------
 
     async def async_step_areti_aggiungi_pod(self, user_input: dict[str, Any] | None = None):
-        from aiohttp import TCPConnector
-
         from .distributors.areti.api import AretiApiClient, AretiApiError
         from .distributors.areti.auth import (
             AretiAuthClient,
             AretiAuthError,
-            build_ssl_context,
+            async_create_session,
         )
         from .distributors.areti.const import CONF_EMAIL, CONF_PASSWORD
 
@@ -1473,9 +1463,7 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
             if conflitto:
                 errors["pod"] = "pod_duplicato"
             else:
-                session = async_create_clientsession(
-                    self.hass, connector=TCPConnector(ssl=build_ssl_context())
-                )
+                session = await async_create_session(self.hass)
                 auth = AretiAuthClient(session)
                 try:
                     contesto = await auth.async_login(

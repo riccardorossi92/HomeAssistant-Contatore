@@ -26,20 +26,16 @@ DATA_A = date(2026, 7, 31)
 
 @pytest.fixture
 async def coordinator(hass, monkeypatch):
-    # Fixture async: il costruttore del coordinator crea un TCPConnector,
-    # che richiede un event loop in esecuzione.
-    #
-    # La creazione della sessione va sostituita: AretiCoordinator.__init__
-    # chiama async_create_clientsession(hass, connector=...), e su Home
-    # Assistant 2026.9 quell'helper crea il proprio connector e inoltra i
-    # kwargs a ClientSession, quindi solleva "got multiple values for
-    # keyword argument 'connector'". E' un problema a se' (segnalato a
-    # parte), indipendente dall'esito di recupera_storico che si testa qui.
-    from custom_components.contatore_letture.distributors.areti import (
-        coordinator as mod,
-    )
-
-    monkeypatch.setattr(mod, "async_create_clientsession", lambda *a, **k: Mock())
+    # AretiCoordinator.__init__ non crea più la sessione (lazy, vedi
+    # _async_ensure_session: async_create_session ha bisogno di un
+    # executor per l'SSLContext, non eseguibile da un __init__ sincrono -
+    # era proprio il bug di "got multiple values for keyword argument
+    # 'connector'" quando si usava async_create_clientsession con un
+    # connector personalizzato, ora corretto), quindi qui non serve più
+    # nessun monkeypatch per costruirlo: _async_login viene comunque
+    # sostituito sotto, dato che il login vero aprirebbe una sessione TLS
+    # reale verso Areti - qui interessa solo cosa fa il coordinator con
+    # l'esito delle chiamate all'API.
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -51,8 +47,6 @@ async def coordinator(hass, monkeypatch):
     )
     entry.add_to_hass(hass)
     coord = create_coordinator(hass, entry)
-    # Il login vero aprirebbe una sessione TLS verso Areti: qui interessa
-    # solo cosa fa il coordinator con l'esito delle chiamate all'API.
     coord._async_login = AsyncMock(return_value=Mock())
     coord._async_config_pod = AsyncMock(return_value=("BP1", "CF1"))
     return coord

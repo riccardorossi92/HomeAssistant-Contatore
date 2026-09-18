@@ -17,6 +17,7 @@ import sys
 import types
 from pathlib import Path
 
+import aiohttp
 import pytest
 
 ARETI_DIR = (
@@ -278,3 +279,82 @@ class TestAsyncSeguiPontiLogin:
         )
         assert risultato == pagina_redirect_a_se_stessa
         assert len(sessione.richieste) == 3
+
+
+# ---------------------------------------------------------------------------
+# async_create_session
+#
+# Regressione: osservato in produzione il 18/09/2026 che
+# homeassistant.helpers.aiohttp_client.async_create_clientsession(hass,
+# connector=...) solleva "TypeError: got multiple values for keyword
+# argument 'connector'" - quell'helper costruisce sempre il proprio
+# connector internamente e non accetta un connector personalizzato.
+# async_create_session costruisce la sessione a mano per questo.
+# ---------------------------------------------------------------------------
+
+
+class _BusFake:
+    def __init__(self) -> None:
+        self.listener_registrato: tuple[str, object] | None = None
+
+    def async_listen_once(self, evento: str, callback) -> None:
+        self.listener_registrato = (evento, callback)
+
+
+class _HassFake:
+    """Solo cio' che async_create_session usa davvero: async_add_executor_job
+    (per l'SSLContext, che fa I/O bloccante - vedi build_ssl_context) e
+    bus.async_listen_once (per chiudere la sessione all'arresto di HA)."""
+
+    def __init__(self) -> None:
+        self.bus = _BusFake()
+        self.chiamate_executor: list[object] = []
+
+    async def async_add_executor_job(self, func):
+        self.chiamate_executor.append(func)
+        return func()
+
+
+class TestAsyncCreateSession:
+    @pytest.mark.asyncio
+    async def test_costruisce_una_sessione_aiohttp_vera(self):
+        hass = _HassFake()
+        session = await auth.async_create_session(hass)
+        try:
+            assert isinstance(session, aiohttp.ClientSession)
+            assert not session.closed
+        finally:
+            await session.close()
+
+    @pytest.mark.asyncio
+    async def test_ssl_context_e_costruito_in_un_executor(self):
+        """build_ssl_context() fa I/O bloccante (legge i certificati di
+        sistema) - deve passare da async_add_executor_job, mai essere
+        chiamato direttamente nell'event loop (osservato in produzione il
+        18/09/2026 come 'blocking call' quando non lo era)."""
+        hass = _HassFake()
+        session = await auth.async_create_session(hass)
+        try:
+            assert auth.build_ssl_context in hass.chiamate_executor
+        finally:
+            await session.close()
+
+    @pytest.mark.asyncio
+    async def test_registra_un_listener_per_chiudersi_allo_spegnimento(self):
+        hass = _HassFake()
+        session = await auth.async_create_session(hass)
+        try:
+            assert hass.bus.listener_registrato is not None
+            evento, _callback = hass.bus.listener_registrato
+            assert evento == "homeassistant_stop"
+        finally:
+            await session.close()
+
+    @pytest.mark.asyncio
+    async def test_il_listener_chiude_davvero_la_sessione(self):
+        hass = _HassFake()
+        session = await auth.async_create_session(hass)
+        assert not session.closed
+        _evento, callback = hass.bus.listener_registrato
+        await callback(None)
+        assert session.closed

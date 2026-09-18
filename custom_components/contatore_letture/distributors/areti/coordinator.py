@@ -37,13 +37,12 @@ import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from ...const import DOMAIN
 from .api import AretiApiClient, AretiApiError
-from .auth import AretiAuraContext, AretiAuthClient, AretiAuthError, build_ssl_context
+from .auth import AretiAuraContext, AretiAuthClient, AretiAuthError, async_create_session
 from .const import (
     COMPONENTE_ENERGIA_DEFAULT,
     CONF_EMAIL,
@@ -98,14 +97,12 @@ class AretiCoordinator(DataUpdateCoordinator[dict]):
         )
         self.entry = entry
         self.pods: list[str] = list(entry.data[CONF_PODS])
-        # Sessione DEDICATA (non quella condivisa di Home Assistant):
-        # serve un contesto SSL con l'intermedio DigiCert aggiunto (vedi
-        # auth.build_ssl_context) e una jar di cookie che non si mescoli
-        # con quella di altre integrazioni.
-        self._session = async_create_clientsession(
-            hass, connector=aiohttp.TCPConnector(ssl=build_ssl_context())
-        )
-        self._auth = AretiAuthClient(self._session)
+        # Sessione DEDICATA (non quella condivisa di Home Assistant),
+        # creata al bisogno (non qui: __init__ e' sincrono, ma
+        # async_create_session deve fare I/O bloccante in un executor -
+        # vedi il suo docstring) da _async_ensure_session.
+        self._session: aiohttp.ClientSession | None = None
+        self._auth: AretiAuthClient | None = None
         # {pod: (codiceBP, codiceFiscale)}, risolti la prima volta che
         # servono e tenuti in memoria per la vita del coordinator (sono
         # identificativi stabili di un POD, non cambiano da un ciclo
@@ -113,7 +110,17 @@ class AretiCoordinator(DataUpdateCoordinator[dict]):
         # ririsolti senza problemi al primo ciclo successivo.
         self._config_pod: dict[str, tuple[str, str]] = {}
 
+    async def _async_ensure_session(self) -> None:
+        """Crea la sessione dedicata (con l'intermedio DigiCert aggiunto,
+        vedi auth.async_create_session) al primo utilizzo, non in
+        __init__: costruirla richiede I/O bloccante in un executor, non
+        eseguibile da un __init__ sincrono."""
+        if self._session is None:
+            self._session = await async_create_session(self.hass)
+            self._auth = AretiAuthClient(self._session)
+
     async def _async_login(self) -> AretiApiClient:
+        await self._async_ensure_session()
         try:
             contesto: AretiAuraContext = await self._auth.async_login(
                 self.entry.data[CONF_EMAIL], self.entry.data[CONF_PASSWORD]
