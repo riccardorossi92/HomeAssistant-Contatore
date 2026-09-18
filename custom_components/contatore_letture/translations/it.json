@@ -111,6 +111,27 @@
           "email": "Email",
           "password": "Password"
         }
+      },
+      "ireti_user": {
+        "title": "Ireti - Accedi",
+        "description": "Usa le stesse credenziali del portale SmartPOD (smartpod.ireti.it). Nessun codice OTP richiesto.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "ireti_pod": {
+        "title": "Ireti - Seleziona POD",
+        "description": "Puoi selezionare più di un POD se vuoi monitorarne diversi con questa stessa configurazione.",
+        "data": { "pods": "POD" }
+      },
+      "ireti_reauth_user": {
+        "title": "Ireti - Accedi di nuovo",
+        "description": "Le credenziali salvate non sono più valide per i POD: {pod_correnti}. Accedi di nuovo con username e password.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -129,7 +150,9 @@
       "reauth_not_supported": "Questo distributore non supporta ancora il reinserimento delle credenziali da questo flusso",
       "no_pods_found": "Nessun POD trovato per questo account",
       "edistribuzione_supplies_failed": "Errore imprevisto nel recupero dei POD dall'account. Riprova la configurazione da capo (login + OTP inclusi).",
-      "edistribuzione_otp_exchange_failed": "Il codice OTP è stato accettato ma il completamento dell'accesso è fallito. Riprova la configurazione da capo (login + OTP inclusi)."
+      "edistribuzione_otp_exchange_failed": "Il codice OTP è stato accettato ma il completamento dell'accesso è fallito. Riprova la configurazione da capo (login + OTP inclusi).",
+      "ireti_pods_failed": "Errore imprevisto nel recupero dei POD dall'account SmartPOD. Riprova la configurazione da capo.",
+      "no_ireti_pods_associated": "Il tuo account SmartPOD non ha ancora nessun POD associato. Accedi al portale (smartpod.ireti.it), usa \"Aggiungi POD\" con il codice della tua fornitura, poi riprova questa configurazione."
     }
   },
   "options": {

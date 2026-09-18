@@ -14,10 +14,14 @@ codice: è **avere accesso a una fornitura reale** su cui vedere come
 rispondono le sue API. Se hai una fornitura con un distributore non
 ancora supportato, puoi essere d'aiuto anche senza toccare Python.
 
-Caso già pronto: **Ireti**, dove autenticazione e anagrafica sono già
-state analizzate e mancano solo gli endpoint dei consumi. C'è uno script
-che raccoglie il necessario in un report anonimizzato — vedi
-[`documentation/protocols/ireti-protocol.md`](documentation/protocols/ireti-protocol.md).
+Funziona: è così che **Ireti** è passato da "in ricerca" a supportato
+(issue #6) — un contributore con un POD attivo ha condiviso una cattura
+dell'endpoint di misura, mancante da un account come il mio, senza POD
+associati. Per i distributori ancora in questa fase (login/anagrafica
+verificati, consumi da confermare — SET Distribuzione, Edyna, Deval,
+V-Reti, AcegasApsAmga alla data di questa nota) vedi le rispettive schede
+in [`documentation/protocols/`](documentation/protocols/), o il README
+(sezione "Cercasi contributori").
 
 Per un distributore ancora del tutto inesplorato, la strada è una
 **cattura HAR** del portale (login + pagina dei consumi con un grafico
