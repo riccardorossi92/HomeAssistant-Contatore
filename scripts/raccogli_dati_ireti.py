@@ -16,6 +16,11 @@ COSA FA
      readings/exabeat/measures-loadprofiles) con il body corretto.
   5. Prova anche gli altri path del bundle che sembrano di misura, come
      esplorazione, e registra la STRUTTURA delle risposte.
+  6. Chiede gli ultimi 10 giorni fino a oggi e controlla giorno per
+     giorno se i dati ci sono gia' o no: serve a scoprire con quanto
+     ritardo reale Ireti pubblica la curva di un giorno (oggi non lo
+     sappiamo - il coordinator ipotizza una finestra di 14 giorni "per
+     sicurezza", non un valore misurato).
 
 COSA NON FA
   Non invia niente a nessuno. Scrive solo un file locale che decidi tu se
@@ -44,7 +49,7 @@ import getpass
 import json
 import re
 import sys
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 try:
@@ -126,7 +131,7 @@ def anonimizza(dato: Any, campioni_lista: int = 3) -> Any:
 
 
 def login(username: str, password: str) -> str:
-    print("\n[1/5] Login...")
+    print("\n[1/6] Login...")
     resp = requests.post(
         TOKEN_URL,
         data={
@@ -173,7 +178,7 @@ def estrai_endpoint_dal_bundle(sess: requests.Session) -> list[str]:
     browser): contiene in chiaro le stringhe degli endpoint che l'app sa
     chiamare, quindi ci dice quali API esistono senza doverle indovinare.
     """
-    print("\n[3/5] Estrazione endpoint dal bundle JavaScript dell'app...")
+    print("\n[3/6] Estrazione endpoint dal bundle JavaScript dell'app...")
     r = sess.get(f"{BASE}/prelievi", timeout=25)
     bundle = re.findall(r'src="(/?main-es\d+\.[a-f0-9]+\.js)"', r.text)
     if not bundle:
@@ -217,17 +222,31 @@ def _finestra_ultimo_mese_completo() -> tuple[str, str]:
     inizio_mese_scorso = fine_mese_scorso.replace(day=1)
     inizio = datetime(
         inizio_mese_scorso.year, inizio_mese_scorso.month, inizio_mese_scorso.day,
-        tzinfo=datetime.UTC,
+        tzinfo=UTC,
     )
     fine = datetime(
         fine_mese_scorso.year, fine_mese_scorso.month, fine_mese_scorso.day,
-        23, 59, 59, tzinfo=datetime.UTC,
+        23, 59, 59, tzinfo=UTC,
     )
 
     def iso(dt: datetime) -> str:
         return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     return iso(inizio), iso(fine)
+
+
+def _finestra_ultimi_giorni(giorni: int) -> tuple[str, str]:
+    """Ultimi 'giorni' giorni fino a oggi incluso, in UTC ISO 8601 (stesso
+    formato di _finestra_ultimo_mese_completo)."""
+    oggi = date.today()
+    inizio = oggi - timedelta(days=giorni - 1)
+    inizio_dt = datetime(inizio.year, inizio.month, inizio.day, tzinfo=UTC)
+    fine_dt = datetime(oggi.year, oggi.month, oggi.day, 23, 59, 59, tzinfo=UTC)
+
+    def iso(dt: datetime) -> str:
+        return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    return iso(inizio_dt), iso(fine_dt)
 
 
 # Endpoint di misura noti dal bundle, provati esplicitamente con POST e il
@@ -239,6 +258,12 @@ ENDPOINT_MISURA = [
     "/readings/exabeat/measures",
     "/readings/exabeat/measures-loadprofiles",
 ]
+
+# Quanti giorni indietro controllare nella verifica del ritardo di
+# pubblicazione (punto 6 - vedi COSA FA). 10 basta a coprire con margine
+# qualunque ritardo ragionevole (E-Distribuzione, per confronto, pubblica
+# entro 1-2 giorni) senza appesantire troppo la richiesta.
+GIORNI_VERIFICA_RITARDO = 10
 
 
 def main() -> None:
@@ -263,7 +288,7 @@ def main() -> None:
         "endpoint_dal_bundle": [],
     }
 
-    print("\n[2/5] Anagrafica e POD...")
+    print("\n[2/6] Anagrafica e POD...")
     st, company = chiama(sess, "company-by-host", f"{BASE}/users/public/company-by-host")
     report["chiamate"]["company-by-host"] = {"status": st, "risposta": anonimizza(company)}
     id_company = company.get("idCompany") if isinstance(company, dict) else None
@@ -302,7 +327,7 @@ def main() -> None:
 
     report["endpoint_dal_bundle"] = estrai_endpoint_dal_bundle(sess)
 
-    print("\n[4/5] Prova degli endpoint di misura noti (exabeat/readings)...")
+    print("\n[4/6] Prova degli endpoint di misura noti (exabeat/readings)...")
     customer_tax_code_vat = consumer.get("pIVA") or consumer.get("codFiscale")
     pod_type = None
     start_iso, end_iso = _finestra_ultimo_mese_completo()
@@ -344,7 +369,7 @@ def main() -> None:
         for path in ENDPOINT_MISURA:
             report["chiamate"][path] = {"nota": "saltato: codice fiscale/P.IVA non trovato in anagrafica"}
 
-    print("\n[5/5] Altri path candidati dal bundle (esplorativo, POST con body vuoto)...")
+    print("\n[5/6] Altri path candidati dal bundle (esplorativo, POST con body vuoto)...")
     candidati = [
         p for p in report["endpoint_dal_bundle"]
         if p not in ENDPOINT_MISURA
@@ -378,6 +403,82 @@ def main() -> None:
                 },
             )
             report["chiamate"][path] = {"status": st, "risposta": anonimizza(risp)}
+
+    print(
+        f"\n[6/6] Verifica del ritardo di pubblicazione (ultimi "
+        f"{GIORNI_VERIFICA_RITARDO} giorni fino a oggi)..."
+    )
+    ritardo_pubblicazione: dict[str, Any] = {"nota": "non verificato: nessun POD o dato fiscale"}
+    if pod_utente and customer_tax_code_vat:
+        oggi = date.today()
+        pod_code = pod_utente[0]
+        r_start_iso, r_end_iso = _finestra_ultimi_giorni(GIORNI_VERIFICA_RITARDO)
+        st, risp = chiama(
+            sess, "ultimi giorni", f"{BASE}/readings/exabeat/measures-loadprofiles",
+            metodo="POST",
+            json={
+                "operation": "PRELIEVO",
+                "podType": pod_type or "orario",
+                "startDate": r_start_iso,
+                "endDate": r_end_iso,
+                "customerTaxCodeVat": customer_tax_code_vat,
+                "pod": pod_code,
+            },
+        )
+
+        # Per ogni giorno dell'intervallo, c'e' o non c'e' un elemento
+        # energyType "A1" con dei campioni - non ci interessano i valori
+        # qui, solo la presenza/assenza (vedi anche COSA FA).
+        giorni_presenti: set[date] = set()
+        if isinstance(risp, dict):
+            for elemento in (risp.get("loadProfiles") or []):
+                if elemento.get("energyType") != "A1" or not elemento.get("sampleValues"):
+                    continue
+                try:
+                    giorno = datetime.strptime(
+                        str(elemento.get("loadProfileDate", ""))[:10], "%d/%m/%Y"
+                    ).date()
+                except ValueError:
+                    continue
+                giorni_presenti.add(giorno)
+
+        dettaglio = []
+        ultimo_giorno_disponibile: date | None = None
+        for delta in range(GIORNI_VERIFICA_RITARDO):
+            giorno = oggi - timedelta(days=delta)
+            presente = giorno in giorni_presenti
+            dettaglio.append({"giorno": giorno.isoformat(), "presente": presente})
+            if presente and ultimo_giorno_disponibile is None:
+                ultimo_giorno_disponibile = giorno
+
+        for riga in dettaglio:
+            simbolo = "dati presenti" if riga["presente"] else "ancora assente"
+            print(f"    {riga['giorno']}  -  {simbolo}")
+
+        if ultimo_giorno_disponibile:
+            ritardo_giorni = (oggi - ultimo_giorno_disponibile).days
+            print(
+                f"  Ultimo giorno con dati disponibili: "
+                f"{ultimo_giorno_disponibile.isoformat()} ({ritardo_giorni} giorni fa)"
+            )
+        else:
+            print(
+                f"  Nessun giorno con dati negli ultimi {GIORNI_VERIFICA_RITARDO}: "
+                "il ritardo di pubblicazione e' maggiore di quanto controllato qui, "
+                "o il POD non ha ancora dati recenti per un altro motivo."
+            )
+
+        ritardo_pubblicazione = {
+            "giorni_controllati": GIORNI_VERIFICA_RITARDO,
+            "ultimo_giorno_disponibile": (
+                ultimo_giorno_disponibile.isoformat() if ultimo_giorno_disponibile else None
+            ),
+            "ritardo_in_giorni": (
+                (oggi - ultimo_giorno_disponibile).days if ultimo_giorno_disponibile else None
+            ),
+            "dettaglio_per_giorno": dettaglio,
+        }
+    report["ritardo_pubblicazione"] = ritardo_pubblicazione
 
     percorso = "ireti_report.json"
     with open(percorso, "w", encoding="utf-8") as f:
