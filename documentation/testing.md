@@ -35,17 +35,24 @@ tests/
     test_auth.py                        # non richiede HA
     test_api.py                         # non richiede HA
     test_coordinator_coda.py            # coda per-POD
+  ireti/
+    test_auth.py                        # non richiede HA
+    test_api.py                         # non richiede HA
+    test_statistics.py                  # aggregazione oraria (funzioni pure)
+    test_coordinator.py                 # finestra scorrevole, ripiego podType, recupera_storico
 ```
 
 ## Test senza Home Assistant installato
 
-`pcf_common/api.py` e `edistribuzione/auth.py`/`api.py` non importano
-`homeassistant.*` (solo `aiohttp` + libreria standard). I relativi test
-li caricano direttamente, quindi girano anche senza il pacchetto HA:
+`pcf_common/api.py`, `edistribuzione/auth.py`/`api.py` e
+`ireti/auth.py`/`api.py` non importano `homeassistant.*` (solo `aiohttp`
++ libreria standard). I relativi test li caricano direttamente, quindi
+girano anche senza il pacchetto HA:
 
 ```bash
 pytest tests/pcf_common/test_api.py tests/pcf_common/test_api_errori.py \
-       tests/edistribuzione/test_auth.py tests/edistribuzione/test_api.py
+       tests/edistribuzione/test_auth.py tests/edistribuzione/test_api.py \
+       tests/ireti/test_auth.py tests/ireti/test_api.py
 ```
 
 Tutto il resto richiede `pytest-homeassistant-custom-component`.

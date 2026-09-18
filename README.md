@@ -5,7 +5,7 @@ Unofficial meta-integration for Italian electricity distributor meter data in Ho
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://hacs.xyz/)
 [![GitHub Release](https://img.shields.io/github/v/release/riccardorossi92/HomeAssistant-Contatore.svg?style=for-the-badge&color=blue)](https://github.com/riccardorossi92/HomeAssistant-Contatore/releases)
 
-> **Disclaimer:** This is an unofficial integration and is not affiliated with or endorsed by ARERA, Duereti, Unareti, E-Distribuzione, Areti, or any other distributor in any way.
+> **Disclaimer:** This is an unofficial integration and is not affiliated with or endorsed by ARERA, Duereti, Unareti, E-Distribuzione, Areti, Ireti, or any other distributor in any way.
 
 Integrazione per Home Assistant che, dato il tuo comune, individua
 automaticamente il distributore elettrico competente (interrogando
@@ -24,6 +24,7 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | Unareti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
 | E-Distribuzione | Email + password + OTP | `recupera_storico` |
 | Areti | Email + password | `recupera_storico` |
+| Ireti | Username + password | `recupera_storico` |
 
 Per Duereti/Unareti/E-Distribuzione: login, lettura dati, import nella
 Energy Dashboard e più POD per configurazione — tutto confermato
@@ -39,6 +40,16 @@ funzionante su installazioni reali. Dettagli sulle azioni in
 > (come Duereti/Unareti; solo E-Distribuzione resta giorno per giorno):
 > vedi [Cosa fa una volta configurata](#cosa-fa-una-volta-configurata).
 
+> [!NOTE]
+> **Ireti** è nuovo: l'endpoint dei consumi è confermato con dati reali
+> (curva di carico a **15 minuti** — più granulare di tutti gli altri
+> distributori supportati), ma **non ancora testato ufficialmente dentro
+> Home Assistant**. Alcuni dettagli restano da verificare con l'uso reale
+> (unità di misura esatta dei campioni, POD a fasce multiple anziché
+> monorari) — vedi
+> [documentation/protocols/ireti-protocol.md](documentation/protocols/ireti-protocol.md).
+> Se lo provi e trovi un problema, apri una issue.
+
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
 uno di quelli supportati, o si ferma con un messaggio chiaro altrimenti.
@@ -51,15 +62,6 @@ uno di quelli supportati, o si ferma con un messaggio chiaro altrimenti.
 > nessuno dei tre, quindi da solo non può andare oltre — **se hai una
 > fornitura attiva con uno di questi distributori, sei tu il pezzo
 > mancante.**
-
-<details>
-<summary><b>Ireti</b> — login e anagrafica ok, mancano gli endpoint dei consumi</summary>
-
-Login e anagrafica già funzionanti, mancano gli endpoint dei consumi. Se
-hai una fornitura Ireti puoi aiutare a completarlo — vedi
-[documentation/protocols/ireti-protocol.md](documentation/protocols/ireti-protocol.md).
-
-</details>
 
 <details>
 <summary><b>SET Distribuzione</b> (Rovereto, gruppo Dolomiti Energia) — da confermare se i consumi sono letture vere</summary>
@@ -209,6 +211,19 @@ inserirli a mano, uno alla volta, e li verifica subito.
 
 </details>
 
+<details>
+<summary><b>Ireti (username + password)</b></summary>
+
+Nessuna richiesta di abilitazione preventiva e **nessun OTP**: usa le
+stesse credenziali del [portale SmartPOD](https://smartpod.ireti.it/).
+Come E-Distribuzione (non come Areti), i POD si scoprono automaticamente
+dall'account: se ce n'è più di uno potrai selezionarne uno o più.
+**Serve almeno un POD già associato sul portale** (SmartPOD → "Aggiungi
+POD"): se il tuo account non ne ha ancora nessuno, il wizard te lo dice
+chiaramente invece di procedere a vuoto.
+
+</details>
+
 ## Installazione
 
 ### Tramite HACS (custom repository)
@@ -234,10 +249,12 @@ inserirli a mano, uno alla volta, e li verifica subito.
    [Prerequisiti](#prerequisiti) sopra)
 
 Dopo la configurazione, puoi aggiungere/rimuovere POD in qualsiasi momento
-da **Configura** sull'integrazione (Opzioni) — per qualunque distributore.
-Per **E-Distribuzione** puoi anche cambiare l'orario della richiesta
-giornaliera (per Duereti/Unareti/Areti non serve: importano a mese chiuso,
-vedi sotto).
+da **Configura** sull'integrazione (Opzioni) — per Duereti/Unareti/
+E-Distribuzione/Areti. Per **Ireti** le opzioni non hanno ancora nessuna
+voce (v1 minimale): per cambiare i POD monitorati, rimuovi e riconfigura
+l'integrazione. Per **E-Distribuzione** puoi anche cambiare l'orario della
+richiesta giornaliera (per Duereti/Unareti/Areti non serve: importano a
+mese chiuso, vedi sotto; Ireti nemmeno, vedi sotto).
 
 ## Cosa fa una volta configurata
 
@@ -259,6 +276,14 @@ niente backfill automatico.
 19:00** (orario configurabile dalle opzioni) viene richiesto il giorno
 precedente; se non è ancora pubblicato finisce in una coda e viene
 riprovato nei giorni successivi, così non si creano buchi.
+
+**Ireti** pubblica una curva a **15 minuti** (non oraria/giornaliera come
+gli altri) tramite un'unica API che accetta un intervallo di date
+qualsiasi: invece di una coda per giorno, **una volta al giorno**
+l'integrazione richiede una finestra scorrevole degli ultimi giorni (non
+un singolo giorno) e importa tutto quello che trova — un giorno
+pubblicato in ritardo rientra da solo al giro successivo, senza bisogno
+di tracciare cosa manca.
 
 Per tutti, **lo storico pregresso non viene recuperato automaticamente**:
 si richiede con l'azione `recupera_storico` (vedi [Azioni](#azioni) sotto).
@@ -312,6 +337,22 @@ dispositivo "Account" più due per POD) — cambia solo che qui il consumo
 
 </details>
 
+<details>
+<summary><b>Entità esposte — Ireti</b></summary>
+
+| Entità | Dispositivo | Cosa mostra |
+|---|---|---|
+| POD configurati | Account | Quanti e quali POD in questa istanza |
+| Ultima data disponibile | POD | Ultimo giorno per cui esistono dati importati |
+| Consumo ultimo giorno importato | POD | kWh dell'ultimo giorno importato nella finestra scorrevole |
+
+Stessa struttura di E-Distribuzione (stesso numero di entità e stesso
+significato) — cambia solo la sorgente dei dati (curva a 15 minuti
+invece di giornaliera) e come viene richiesta (finestra scorrevole,
+vedi [Cosa fa una volta configurata](#cosa-fa-una-volta-configurata)).
+
+</details>
+
 ## Azioni
 
 **`contatore_letture.recupera_storico`** — richiede un periodo passato e lo
@@ -335,7 +376,10 @@ Per le sfumature specifiche di ciascun distributore (limite di 6 mesi
 documentato o auto-imposto, targeting per singolo POD) vedi
 [`documentation/`](documentation/). Per Areti, che non ha una vera API a
 intervallo di date, l'intervallo scelto viene convertito nei mesi solari
-che attraversa e per ciascuno si importa il mese intero.
+che attraversa e per ciascuno si importa il mese intero. Per Ireti
+(limite auto-imposto: 731 giorni) l'intervallo viene invece spezzato in
+blocchi da un mese circa, la dimensione dell'unica richiesta finora
+confermata su dati reali.
 
 **`contatore_letture.recupera_ticket`** — solo Duereti/Unareti (gli altri
 distributori non hanno il concetto di ticket): riprende un ticket già

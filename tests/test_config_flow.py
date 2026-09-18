@@ -42,6 +42,17 @@ from custom_components.contatore_letture.distributors.edistribuzione.const impor
     CONF_ORA_RICHIESTA,
     CONF_REFRESH_TOKEN,
 )
+from custom_components.contatore_letture.distributors.ireti import api as ireti_api
+from custom_components.contatore_letture.distributors.ireti import auth as ireti_auth
+from custom_components.contatore_letture.distributors.ireti.auth import (
+    IretiInvalidCredentials,
+)
+from custom_components.contatore_letture.distributors.ireti.const import (
+    CONF_PASSWORD as IRETI_CONF_PASSWORD,
+)
+from custom_components.contatore_letture.distributors.ireti.const import (
+    CONF_USERNAME as IRETI_CONF_USERNAME,
+)
 from custom_components.contatore_letture.distributors.pcf_common.const import (
     CONF_PENDING_DATA_A,
     CONF_PENDING_DATA_DA,
@@ -557,3 +568,158 @@ async def test_edist_opzioni_aggiungi_pod(hass, edist_mocks):
     )
     assert res["type"] == FlowResultType.CREATE_ENTRY
     assert entry.data[CONF_PODS] == ["IT001E00000009", "IT001E00000010"]
+
+
+# --- ramo Ireti (login -> POD dall'account, come edistribuzione ma senza OTP) ---
+
+@pytest.fixture
+def ireti_mocks(monkeypatch):
+    """Sostituisce IretiAuthClient / IretiApiClient e le sessioni aiohttp.
+    Default: login ok, un solo POD sull'account."""
+    auth = Mock()
+    auth.async_login = AsyncMock(return_value="token-fantasia")
+
+    api = Mock()
+    api.async_get_company_id = AsyncMock(return_value="id-company-fantasia")
+    api.async_get_consumer = AsyncMock(return_value={"idConsumer": "id-consumer-fantasia"})
+    api.async_get_pods = AsyncMock(
+        return_value=[{"idPod": "id-pod-1", "code": "IT020E00000000001", "name": None}]
+    )
+
+    monkeypatch.setattr(ireti_auth, "IretiAuthClient", Mock(return_value=auth))
+    monkeypatch.setattr(ireti_api, "IretiApiClient", Mock(return_value=api))
+    monkeypatch.setattr(cf, "async_create_clientsession", lambda *a, **k: Mock())
+    return SimpleNamespace(auth=auth, api=api)
+
+
+async def _fino_a_ireti_user(hass):
+    """user -> ... -> distributor_info -> submit, con ARERA che dà un
+    operatore non supportato e scelta manuale di Ireti."""
+    res = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"regione": "Lombardia"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"provincia": "Milano"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"comune": "Vimodrone"})
+    # manual_select -> scelgo ireti
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"distributor": "ireti"}
+    )
+    # distributor_info -> submit
+    return await hass.config_entries.flow.async_configure(res["flow_id"], {})
+
+
+async def test_ireti_credenziali_non_valide(hass, _arera_sconosciuto, ireti_mocks):
+    ireti_mocks.auth.async_login.side_effect = IretiInvalidCredentials("credenziali errate")
+    res = await _fino_a_ireti_user(hass)
+    assert res["step_id"] == "ireti_user"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "u", "password": "sbagliata"}
+    )
+    assert res["type"] == FlowResultType.FORM
+    assert res["step_id"] == "ireti_user"
+    assert res["errors"] == {"base": "invalid_auth"}
+
+
+async def test_ireti_un_solo_pod_crea_entry_subito(hass, _arera_sconosciuto, ireti_mocks):
+    res = await _fino_a_ireti_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "u", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.CREATE_ENTRY
+    assert res["data"]["distributor"] == "ireti"
+    assert res["data"][IRETI_CONF_USERNAME] == "u"
+    assert res["data"][IRETI_CONF_PASSWORD] == "x"
+    assert res["data"][CONF_PODS] == ["IT020E00000000001"]
+
+
+async def test_ireti_nessun_pod_associato_abortisce(hass, _arera_sconosciuto, ireti_mocks):
+    """Lo stato di partenza di questa integrazione (issue #6): un account
+    SmartPOD senza nessun POD associato - va segnalato chiaramente, non
+    trattato come un errore generico."""
+    ireti_mocks.api.async_get_pods.return_value = []
+    res = await _fino_a_ireti_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "u", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "no_ireti_pods_associated"
+
+
+async def test_ireti_recupero_pod_fallito_abortisce(hass, _arera_sconosciuto, ireti_mocks):
+    ireti_mocks.api.async_get_pods.side_effect = RuntimeError("boom")
+    res = await _fino_a_ireti_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "u", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "ireti_pods_failed"
+
+
+async def test_ireti_piu_pod_si_scelgono(hass, _arera_sconosciuto, ireti_mocks):
+    ireti_mocks.api.async_get_pods.return_value = [
+        {"idPod": "id1", "code": "IT020E00000000001", "name": None},
+        {"idPod": "id2", "code": "IT020E00000000002", "name": "Seconda casa"},
+    ]
+    res = await _fino_a_ireti_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "u", "password": "x"}
+    )
+    assert res["step_id"] == "ireti_pod"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {CONF_PODS: ["IT020E00000000002"]}
+    )
+    assert res["type"] == FlowResultType.CREATE_ENTRY
+    assert res["data"][CONF_PODS] == ["IT020E00000000002"]
+
+
+def _entry_ireti(hass, pods=("IT020E00000000001",)):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "distributor": "ireti",
+            IRETI_CONF_USERNAME: "u",
+            IRETI_CONF_PASSWORD: "vecchia",
+            CONF_PODS: list(pods),
+        },
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def test_ireti_reauth_aggiorna_credenziali(hass, ireti_mocks):
+    entry = _entry_ireti(hass)
+    res = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "reauth", "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    assert res["step_id"] == "ireti_reauth_user"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "u", "password": "nuova"}
+    )
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "reauth_successful"
+    assert entry.data[IRETI_CONF_PASSWORD] == "nuova"
+
+
+async def test_ireti_reauth_credenziali_non_valide(hass, ireti_mocks):
+    entry = _entry_ireti(hass)
+    ireti_mocks.auth.async_login.side_effect = IretiInvalidCredentials("no")
+    res = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "reauth", "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "u", "password": "sbagliata"}
+    )
+    assert res["type"] == FlowResultType.FORM
+    assert res["errors"] == {"base": "invalid_auth"}
+
+
+async def test_ireti_opzioni_non_supportate(hass):
+    """v1 minimale: i POD si aggiornano solo tramite reauth, nessuna voce
+    di opzioni dedicata ancora (vedi documentation/protocols/ireti-protocol.md)."""
+    entry = _entry_ireti(hass)
+    res = await hass.config_entries.options.async_init(entry.entry_id)
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "options_not_supported"

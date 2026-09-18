@@ -1,18 +1,25 @@
-# Ireti — stato della ricerca (supporto non ancora implementato)
+# Ireti — protocollo e design (supportato dalla v0.7.0)
 
-Ireti (`smartpod.ireti.it`) **non è ancora supportato**, ma è **fattibile
-ed è stato confermato con dati reali**: [issue #6](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/6)
+Ireti (`smartpod.ireti.it`) **è supportato**: login, POD scoperti
+dall'account e curva di carico a 15 minuti importata come external
+statistics con una finestra scorrevole giornaliera (nessun cursore/coda
+persistito — vedi [Design del coordinator](#design-del-coordinator)).
+L'endpoint di misura è **confermato con dati reali**:
+[issue #6](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/6)
 (russomichele, 17/09/2026) ha un POD attivo e ha condiviso sia il report
 dello script sia la cattura diretta di `measures-loadprofiles` dal
-browser, con curva di carico reale. Manca solo l'implementazione
-(coordinator + config flow), vedi [Endpoint di misura](#endpoint-di-misura).
+browser.
 
 > A differenza di **Areti** (portale di sole pratiche, nessun dato di
 > misura — vedi [areti-protocol.md](areti-protocol.md)), qui il backend
 > di misura esiste, risponde, ed è più granulare degli altri distributori
 > supportati: curva a 15 minuti invece che giornaliera/mensile.
 
-Se hai una fornitura Ireti attiva, puoi aiutare — vedi
+**Non ancora testato ufficialmente dentro Home Assistant**: nessuna
+installazione reale lo ha ancora usato in produzione (config flow, import
+automatico, sensori). Alcune ipotesi restano da confermare con l'uso
+reale — vedi [Cosa resta aperto](#cosa-resta-aperto). Se hai una
+fornitura Ireti attiva, puoi aiutare — vedi
 [Come contribuire](#come-contribuire) in fondo.
 
 __Le informazioni qui sotto vengono dall'analisi del traffico del portale
@@ -194,14 +201,85 @@ L'informativa privacy del portale indica il POD come dato richiesto in
 fase di registrazione, quindi un account Ireti "normale" dovrebbe avere
 già il POD associato — quello di cattura è un caso anomalo.
 
+## Design del coordinator
+
+Implementazione: `custom_components/contatore_letture/distributors/ireti/`
+(stesso schema a 7 file di `distributors/areti/`: `const.py`, `auth.py`,
+`api.py`, `coordinator.py`, `statistics.py`, `sensor.py`, `__init__.py`).
+
+**Finestra scorrevole, non cursore/coda.** A differenza di E-Distribuzione
+(una chiamata = un giorno, serve una coda per tracciare cosa manca) e di
+Areti (una chiamata = un mese intero, disponibile solo a mese chiuso,
+serve un cursore), `measures-loadprofiles` accetta un range di date
+arbitrario e restituisce un `loadProfiles[]` con un elemento per ogni
+giorno disponibile in quel range (confermato: un mese intero in una sola
+chiamata). Quindi: **nessuno stato persistito** — ogni ciclo (una volta al
+giorno) si richiede una finestra degli ultimi `FINESTRA_GIORNI_DEFAULT`
+giorni (14, `const.py`) e si importa tutto quello che torna. Un giorno
+pubblicato in ritardo rientra da solo al ciclo successivo — non è noto
+il ritardo di pubblicazione reale, ma non serve conoscerlo: la finestra
+lo assorbe, purché sia abbastanza larga.
+
+**Credenziali salvate, login rifatto ad ogni ciclo.** Il `refresh_token`
+dura solo 30 minuti (inutilizzabile con un ciclo giornaliero/orario):
+si salvano username/password sull'entry (come `pcf_common`, non come
+E-Distribuzione, il cui refresh_token Salesforce è invece durevole) e si
+rifà il password-grant ad ogni ciclo. Credenziali non valide sollevano
+`ConfigEntryAuthFailed` (reauth automatico di Home Assistant), non un
+semplice `UpdateFailed`.
+
+**`podType` con ripiego.** Necessario nel payload di
+`measures-loadprofiles`, si legge da `/users/exabeat/history` —
+endpoint **mai confermato con dati reali** (vedi sopra). Se fallisce o
+non lo contiene, si ricade su `"orario"` (l'unico valore osservato
+finora) con un avviso nei log una tantum per POD, invece di far fallire
+l'intero ciclo: un'ipotesi sbagliata qui produce nella peggiore delle
+ipotesi un payload che il portale rifiuta esplicitamente
+(`IretiApiError` → `UpdateFailed`), non un dato silenziosamente sbagliato.
+
+**Solo `energyType: "A1"` viene importato.** Non è noto se un POD
+`"fasce"`/`"mono orario"` restituisca più elementi per giorno con
+`energyType` diversi per fascia: sommare alla cieca rischierebbe di
+mescolare grandezze eterogenee, quindi si importa solo l'energia attiva
+("A1", l'unico tipo osservato) e si scarta (con un log) qualunque altro
+valore — un sottoinsieme sicuramente corretto piuttosto che un totale
+potenzialmente sbagliato.
+
+## Cosa resta aperto
+
+Non blocca l'uso, ma va tenuto d'occhio quando arriva un riscontro reale:
+
+- **Unità di `sampleValues`**: assunta kWh per intervallo di 15 minuti
+  (somma giornaliera ~1.9 nell'unico esempio reale, plausibile per un
+  consumo di base) — non confermata al 100%, potrebbe essere potenza
+  media in kW. Se sbagliata, si corregge in un punto solo
+  (`statistics.py`, moltiplicando per 0.25): l'import è idempotente,
+  ricalcola sempre la somma progressiva da zero.
+- **`podType` diverso da `"orario"`**: mai osservato. Potrebbe cambiare
+  la forma di `loadProfiles` (più elementi per giorno, per fascia).
+- **Giorni di cambio ora legale**: il codice del bundle JS ipotizza 92
+  campioni invece di 96 (vs 96 confermati su un giorno normale) — mai
+  verificato con un giorno di cambio ora reale.
+- **`/users/exabeat/history`, `/users/exabeat/registry`,
+  `/readings/exabeat/measures`**: mai confermati con dati reali, solo
+  ricavati dal codice del bundle. Il coordinator dipende da `history` solo
+  per `podType`, con un ripiego se fallisce (vedi sopra) — `registry` e
+  `measures` non sono usati.
+- **Range più corti di un mese** per `measures-loadprofiles`: l'unico
+  esempio reale è un mese intero. Il coordinator li usa comunque (finestra
+  di 14 giorni) partendo dal presupposto ragionevole che l'API accetti
+  range arbitrari (è solo `startDate`/`endDate` ISO) — non ancora
+  verificato.
+- **POD di produzione** (`operation: "IMMISSIONE"` invece di
+  `"PRELIEVO"`): non supportato, mai testato.
+
 ## Come contribuire
 
 Il dato principale (`measures-loadprofiles`, curva a 15 min) è già
-confermato — vedi sopra. Resta utile una conferma per: `podType: "fasce"`
-o `"mono orario"` (finora visto solo `"orario"`), l'endpoint
-`/readings/exabeat/measures` (letture per fascia, non ancora confermato),
-il comportamento nei giorni di cambio ora legale, e un eventuale POD di
-produzione (`operation: "IMMISSIONE"`).
+confermato — vedi sopra. Il modo più utile di aiutare ora è **usare
+l'integrazione con un account Ireti reale** e segnalare cosa non torna
+(vedi [Cosa resta aperto](#cosa-resta-aperto)), non più raccogliere dati
+a mano.
 
 Se hai una **fornitura Ireti attiva e almeno un POD associato**, c'è uno
 script che fa tutto da solo (corretto il 18/09/2026 — vedi

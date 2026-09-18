@@ -141,6 +141,12 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._areti_email: str | None = None
         self._areti_password: str | None = None
         self._areti_pods: list[str] = []
+        # Stato del ramo Ireti
+        self._ireti_session = None
+        self._ireti_access_token: str | None = None
+        self._ireti_username: str | None = None
+        self._ireti_password: str | None = None
+        self._ireti_pods: list[dict] = []
 
     # ------------------------------------------------------------------
     # Wizard ARERA: regione -> provincia -> comune -> lookup
@@ -290,6 +296,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_pcf_credentials()
             if info["kind"] == "areti":
                 return await self.async_step_areti_user()
+            if info["kind"] == "ireti":
+                return await self.async_step_ireti_user()
             return await self.async_step_edistribuzione_user()
 
         return self.async_show_form(
@@ -829,6 +837,182 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     # ------------------------------------------------------------------
+    # Ramo Ireti: login username/password (nessun OTP osservato) -> POD
+    # scoperti dall'account (come edistribuzione, non a mano come areti):
+    # getbykeycloakusername + getallbyconsumerandcompany elencano i POD
+    # gia' associati sul portale SmartPOD.
+    # ------------------------------------------------------------------
+
+    async def async_step_ireti_user(self, user_input: dict[str, Any] | None = None):
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            from .distributors.ireti.auth import (
+                IretiAuthClient,
+                IretiAuthError,
+                IretiInvalidCredentials,
+            )
+
+            if self._ireti_session is None:
+                self._ireti_session = async_create_clientsession(self.hass)
+            auth = IretiAuthClient(self._ireti_session)
+
+            try:
+                access_token = await auth.async_login(user_input["username"], user_input["password"])
+            except IretiInvalidCredentials:
+                errors["base"] = "invalid_auth"
+            except IretiAuthError:
+                _LOGGER.exception("Login Ireti fallito")
+                errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                _LOGGER.exception("Errore imprevisto durante il login Ireti")
+                errors["base"] = "cannot_connect"
+            else:
+                self._ireti_username = user_input["username"]
+                self._ireti_password = user_input["password"]
+                self._ireti_access_token = access_token
+                return await self.async_step_ireti_pod()
+
+        return self.async_show_form(
+            step_id="ireti_user",
+            data_schema=vol.Schema({
+                vol.Required("username"): str,
+                vol.Required("password"): str,
+            }),
+            errors=errors,
+        )
+
+    async def async_step_ireti_pod(self, user_input: dict[str, Any] | None = None):
+        from .distributors.ireti.api import IretiApiClient, IretiApiError
+        from .distributors.ireti.const import CONF_PASSWORD, CONF_PODS, CONF_USERNAME
+
+        api = IretiApiClient(self._ireti_session, self._ireti_access_token)
+
+        if not self._ireti_pods:
+            try:
+                id_company = await api.async_get_company_id()
+                consumer = await api.async_get_consumer(self._ireti_username)
+                self._ireti_pods = await api.async_get_pods(consumer["idConsumer"], id_company)
+            except (IretiApiError, KeyError):
+                # Login gia' riuscito qui: un OTP non c'e' da rifare, ma un
+                # retry di questo stesso step non risolverebbe nulla senza
+                # rifare il login da capo - stesso principio del recupero
+                # POD E-Distribuzione (async_step_edistribuzione_pod).
+                _LOGGER.exception("Errore imprevisto nel recupero dei POD Ireti")
+                return self.async_abort(reason="ireti_pods_failed")
+            except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                _LOGGER.exception("Errore imprevisto nel recupero dei POD Ireti")
+                return self.async_abort(reason="ireti_pods_failed")
+
+        pod_codes = [p["code"] for p in self._ireti_pods if p.get("code")]
+        if not pod_codes:
+            # E' proprio la situazione di partenza di questa integrazione
+            # (issue di ricerca #6): un account SmartPOD senza nessun POD
+            # associato. Non e' un errore dell'integrazione, va risolto
+            # sul portale prima di poter continuare qui.
+            return self.async_abort(reason="no_ireti_pods_associated")
+
+        def crea_entry(pods: list[str]):
+            titolo = pods[0] if len(pods) == 1 else f"{len(pods)} POD"
+            return self.async_create_entry(
+                title=f"Ireti ({titolo})",
+                data={
+                    "distributor": "ireti",
+                    "comune": self._comune_name,
+                    CONF_USERNAME: self._ireti_username,
+                    CONF_PASSWORD: self._ireti_password,
+                    CONF_PODS: pods,
+                },
+            )
+
+        # Con un solo POD sull'account non serve far scegliere - come
+        # edistribuzione.
+        if len(pod_codes) == 1:
+            return crea_entry(pod_codes)
+
+        if user_input is not None:
+            scelti = user_input[CONF_PODS]
+            if not scelti:
+                return self.async_show_form(
+                    step_id="ireti_pod",
+                    data_schema=self._schema_ireti_pod(),
+                    errors={"pods": "nessun_pod_selezionato"},
+                )
+            return crea_entry(scelti)
+
+        return self.async_show_form(step_id="ireti_pod", data_schema=self._schema_ireti_pod())
+
+    def _schema_ireti_pod(self) -> vol.Schema:
+        from .distributors.ireti.const import CONF_PODS
+
+        pod_codes = [p["code"] for p in self._ireti_pods if p.get("code")]
+        opzioni = [
+            {
+                "value": p["code"],
+                "label": f"{p['code']} ({p['name']})" if p.get("name") else p["code"],
+            }
+            for p in self._ireti_pods
+            if p.get("code")
+        ]
+        return vol.Schema({
+            vol.Required(CONF_PODS, default=pod_codes): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=opzioni, multiple=True)
+            )
+        })
+
+    # ------------------------------------------------------------------
+    # Reauth Ireti: stesso login dell'onboarding, niente riselezione POD
+    # (la entry esistente ha gia' i suoi) - aggiorna username/password
+    # sulla entry esistente. Nessun OTP, quindi un solo step (come areti).
+    # ------------------------------------------------------------------
+
+    async def async_step_ireti_reauth_user(self, user_input: dict[str, Any] | None = None):
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            from .distributors.ireti.auth import (
+                IretiAuthClient,
+                IretiAuthError,
+                IretiInvalidCredentials,
+            )
+            from .distributors.ireti.const import CONF_PASSWORD, CONF_USERNAME
+
+            session = async_create_clientsession(self.hass)
+            auth = IretiAuthClient(session)
+
+            try:
+                await auth.async_login(user_input["username"], user_input["password"])
+            except IretiInvalidCredentials:
+                errors["base"] = "invalid_auth"
+            except IretiAuthError:
+                _LOGGER.exception("Login Ireti fallito (reauth)")
+                errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                _LOGGER.exception("Errore imprevisto durante il login Ireti (reauth)")
+                errors["base"] = "cannot_connect"
+            else:
+                nuovi_dati = {
+                    **self._reauth_entry.data,
+                    CONF_USERNAME: user_input["username"],
+                    CONF_PASSWORD: user_input["password"],
+                }
+                self.hass.config_entries.async_update_entry(self._reauth_entry, data=nuovi_dati)
+                await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="ireti_reauth_user",
+            data_schema=vol.Schema({
+                vol.Required("username"): str,
+                vol.Required("password"): str,
+            }),
+            errors=errors,
+            description_placeholders={
+                "pod_correnti": ", ".join(self._reauth_entry.data.get(CONF_PODS, []))
+            },
+        )
+
+    # ------------------------------------------------------------------
     # Reauth E-Distribuzione: stesso login+OTP dell'onboarding iniziale,
     # ma niente selezione POD (la entry esistente ha gia' i suoi) - alla
     # fine aggiorna il refresh_token sulla entry esistente invece di
@@ -967,6 +1151,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_edistribuzione_reauth_user()
         if kind == "areti":
             return await self.async_step_areti_reauth_user()
+        if kind == "ireti":
+            return await self.async_step_ireti_reauth_user()
         return self.async_abort(reason="reauth_not_supported")
 
     async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None):
