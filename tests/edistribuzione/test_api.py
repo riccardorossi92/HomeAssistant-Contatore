@@ -76,8 +76,17 @@ class _Risposta:
 
     def raise_for_status(self):
         if self.status >= 400:
+            # request_info con un 'real_url' finto: ClientResponseError.__str__
+            # lo legge sempre, e con None crasha nel momento in cui api.py
+            # prova a formattare l'errore in un messaggio (str(err)) - non un
+            # problema del codice di produzione (una vera risposta aiohttp ha
+            # sempre un request_info reale), solo di questo fixture
+            # semplificato (stesso pattern di tests/areti/test_api.py e
+            # tests/ireti/test_api.py).
+            request_info = types.SimpleNamespace(real_url="http://test")
             raise aiohttp.ClientResponseError(
-                request_info=None, history=(), status=self.status, message=f"status {self.status}"
+                request_info=request_info, history=(), status=self.status,
+                message=f"status {self.status}",
             )
 
     @property
@@ -198,7 +207,7 @@ class TestAsyncGetSupplies:
     @pytest.mark.asyncio
     async def test_status_errore_solleva_eccezione(self):
         client = _client({"getSupplies": (500, {"meta": {"status": "KO"}})})
-        with pytest.raises(aiohttp.ClientResponseError):
+        with pytest.raises(api.EdistribuzioneApiError):
             await client.async_get_supplies()
 
 

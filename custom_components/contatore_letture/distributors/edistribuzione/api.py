@@ -56,42 +56,45 @@ class EdistribuzioneApiClient:
         }
 
     async def _get_json(self, url: str, method_user: str, params: dict) -> dict:
-        async with self._session.get(
-            url, headers=self._headers(method_user), params=params
-        ) as resp:
-            if resp.status == 401:
-                raise EdistribuzioneApiError("401 Unauthorized - access_token expired")
-            if resp.status == 404:
-                # Osservato il 21/08/2026 chiedendo il giorno corrente
-                # all'01:01 (dati del giorno prima verosimilmente non
-                # ancora pubblicati): il backend risponde 404 invece di un
-                # 200 con data:[] vuoto come nelle altre richieste andate
-                # a vuoto. Trattato come "nessun dato disponibile ancora"
-                # (stessa semantica di data:[] vuoto) invece che come
-                # errore fatale, cosi' il meccanismo di coda del
-                # coordinator lo gestisce come un giorno non ancora
-                # pronto invece di far fallire l'intero aggiornamento.
-                # Non confermato se un 404 possa MAI significare
-                # qualcos'altro (es. POD non valido): logghiamo il corpo
-                # per scoprirlo se succede.
-                body_preview = await resp.text()
-                _LOGGER.debug(
-                    "404 su %s (probabile 'nessun dato ancora disponibile', non un "
-                    "errore). Corpo (primi 300 caratteri): %r",
-                    url,
-                    body_preview[:300],
-                )
-                return {"data": []}
-            if resp.status >= 400:
-                body_preview = await resp.text()
-                _LOGGER.error(
-                    "%s ha risposto %s. Corpo (primi 500 caratteri): %r",
-                    url,
-                    resp.status,
-                    body_preview[:500],
-                )
-            resp.raise_for_status()
-            payload = await resp.json(content_type=None)
+        try:
+            async with self._session.get(
+                url, headers=self._headers(method_user), params=params
+            ) as resp:
+                if resp.status == 401:
+                    raise EdistribuzioneApiError("401 Unauthorized - access_token expired")
+                if resp.status == 404:
+                    # Osservato il 21/08/2026 chiedendo il giorno corrente
+                    # all'01:01 (dati del giorno prima verosimilmente non
+                    # ancora pubblicati): il backend risponde 404 invece di un
+                    # 200 con data:[] vuoto come nelle altre richieste andate
+                    # a vuoto. Trattato come "nessun dato disponibile ancora"
+                    # (stessa semantica di data:[] vuoto) invece che come
+                    # errore fatale, cosi' il meccanismo di coda del
+                    # coordinator lo gestisce come un giorno non ancora
+                    # pronto invece di far fallire l'intero aggiornamento.
+                    # Non confermato se un 404 possa MAI significare
+                    # qualcos'altro (es. POD non valido): logghiamo il corpo
+                    # per scoprirlo se succede.
+                    body_preview = await resp.text()
+                    _LOGGER.debug(
+                        "404 su %s (probabile 'nessun dato ancora disponibile', non un "
+                        "errore). Corpo (primi 300 caratteri): %r",
+                        url,
+                        body_preview[:300],
+                    )
+                    return {"data": []}
+                if resp.status >= 400:
+                    body_preview = await resp.text()
+                    _LOGGER.error(
+                        "%s ha risposto %s. Corpo (primi 500 caratteri): %r",
+                        url,
+                        resp.status,
+                        body_preview[:500],
+                    )
+                resp.raise_for_status()
+                payload = await resp.json(content_type=None)
+        except aiohttp.ClientError as err:
+            raise EdistribuzioneApiError(f"Errore di trasporto chiamando {url}: {err}") from err
 
         meta = payload.get("meta", {})
         if meta.get("status") not in ("OK", None):
@@ -111,20 +114,23 @@ class EdistribuzioneApiClient:
         # invece dei due gestiti separatamente. Non confermato byte-per-byte
         # (nessuna HAR reale per questo endpoint), ma comportamento più
         # plausibile del precedente, che ha eliminato il 415 ma non il 500.
-        async with self._session.post(
-            MISURE_GET_SUPPLIES_URL,
-            headers=self._headers(METHOD_USER_ELENCO_POD),
-            json={},
-        ) as resp:
-            if resp.status >= 400:
-                body_preview = await resp.text()
-                _LOGGER.error(
-                    "getSupplies ha risposto %s. Corpo (primi 500 caratteri): %r",
-                    resp.status,
-                    body_preview[:500],
-                )
-            resp.raise_for_status()
-            payload = await resp.json(content_type=None)
+        try:
+            async with self._session.post(
+                MISURE_GET_SUPPLIES_URL,
+                headers=self._headers(METHOD_USER_ELENCO_POD),
+                json={},
+            ) as resp:
+                if resp.status >= 400:
+                    body_preview = await resp.text()
+                    _LOGGER.error(
+                        "getSupplies ha risposto %s. Corpo (primi 500 caratteri): %r",
+                        resp.status,
+                        body_preview[:500],
+                    )
+                resp.raise_for_status()
+                payload = await resp.json(content_type=None)
+        except aiohttp.ClientError as err:
+            raise EdistribuzioneApiError(f"Errore di trasporto chiamando getSupplies: {err}") from err
         try:
             return payload["data"][0]["pods"]
         except (KeyError, IndexError):
