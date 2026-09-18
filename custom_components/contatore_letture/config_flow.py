@@ -1190,8 +1190,9 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
     """Aggiungi/rimuovi POD e imposta l'orario, dopo la configurazione iniziale.
 
     Generico: legge il distributore dalla config entry (self.config_entry.data)
-    per sapere quale modulo usare per validare i POD. Per E-Distribuzione (kind
-    diverso da "pcf") non offre nulla di specifico oggi: solo un abort chiaro.
+    per sapere quale modulo usare per validare i POD. Per Ireti (kind non
+    ancora gestito qui sotto) non offre nulla di specifico oggi: solo un
+    abort chiaro.
     """
 
     def _modulo(self):
