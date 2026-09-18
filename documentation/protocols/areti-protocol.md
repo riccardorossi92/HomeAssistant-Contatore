@@ -18,7 +18,7 @@ delle risposte), sul modello di `pcf-protocol.md`/
 |---|---|
 | Portale distributore espone consumi/curve di carico? | **Sì** — curva a 15 minuti + aggregato giornaliero, verificato con dati reali (agosto 2026) |
 | Meccanismo di login | **Verificato** — email/password su form Visualforce/JSF + ticket-exchange Salesforce, **nessun OTP** osservato (su alcuni account compare un passaggio extra senza form, "ARIA_MaintenanceFlow" — gestito, vedi sezione Login) |
-| Implementazione | **Fatta**: `distributors/areti/` (auth.py/api.py/coordinator.py/sensor.py/statistics.py), agganciata a config_flow/reauth/options/recupera_storico. Test in `tests/areti/`. **Non ancora testata su un'installazione Home Assistant reale** (v0.5.0, appena rilasciata) — solo login/curva verificati da terminale con `scripts/verify_areti_login.py`. |
+| Implementazione | **Fatta e verificata su Home Assistant reale** (v0.7.4): `distributors/areti/` (auth.py/api.py/coordinator.py/sensor.py/statistics.py), agganciata a config_flow/reauth/options/recupera_storico. Test in `tests/areti/`. Configurazione iniziale e `recupera_storico` confermati funzionanti end-to-end (login → curva → statistiche esterne) - tre fix di login emersi nel farlo (vedi [note di rilascio v0.7.4](https://github.com/riccardorossi92/HomeAssistant-Contatore/releases/tag/v0.7.4)). |
 
 ## Quadro generale
 
