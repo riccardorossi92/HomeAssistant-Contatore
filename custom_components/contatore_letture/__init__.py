@@ -7,7 +7,7 @@ E-Distribuzione ha un coordinator proprio (protocollo diverso, OAuth2+OTP
 invece di Client ID/Secret ID), Areti un altro ancora (sessione a cookie,
 nessun OTP, cursore mensile invece di coda giornaliera) e Ireti un altro
 ancora (REST + Bearer token Keycloak, nessun OTP, finestra scorrevole
-invece di coda/cursore) - tutti e tre implementano la stessa azione
+invece di coda/cursore) - tutti implementano la stessa azione
 'recupera_storico' con firma compatibile (pod opzionale, non solo per
 l'intera configurazione come i PCF).
 """
@@ -144,7 +144,7 @@ async def _async_registra_servizi(hass: HomeAssistant) -> None:
 
     'recupera_ticket' e' specifico del modello a ticket di Duereti/Unareti;
     'recupera_storico' e' condiviso da tutti i distributori che lo
-    implementano (oggi: pcf e edistribuzione)."""
+    implementano."""
     if hass.services.has_service(DOMAIN, SERVICE_RECUPERA_STORICO):
         return
 
