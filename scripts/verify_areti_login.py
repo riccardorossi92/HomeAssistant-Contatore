@@ -133,19 +133,73 @@ class AretiAuthError(RuntimeError):
     documentation/protocols/areti-protocol.md."""
 
 
-def _estrai_campo_hidden(html: str, nome_campo: str) -> str:
+def _salva_pagina_debug(r: requests.Response, nome_file: str, contesto: str) -> None:
+    """Salva la risposta completa (corpo + diagnostica) su disco quando un
+    parsing fallisce, cosi' non serve rilanciare lo script per scoprire
+    cosa e' cambiato - stesso principio di _log_parsing_failure_context
+    in distributors/edistribuzione/auth.py.
+
+    Stampa anche a schermo un'anteprima (URL finale dopo eventuali
+    redirect, status, lunghezza, titolo): spesso basta quella per capire
+    se il problema e' un redirect inatteso (es. verso una pagina di
+    "completa il profilo" o un errore) prima ancora di aprire il file."""
+    titolo_match = re.search(r"<title>(.*?)</title>", r.text, re.IGNORECASE | re.DOTALL)
+    titolo = titolo_match.group(1).strip() if titolo_match else "(nessun <title> trovato)"
+    print(f"  [debug] {contesto}")
+    print(f"  [debug] URL finale: {r.url}")
+    print(f"  [debug] Status: {r.status_code}  Lunghezza: {len(r.text)} caratteri")
+    print(f"  [debug] Titolo pagina: {titolo!r}")
+    try:
+        percorso = Path(nome_file)
+        percorso.write_text(r.text, encoding="utf-8")
+        print(f"  [debug] Pagina completa salvata in {percorso.resolve()}")
+    except OSError as exc:
+        print(f"  [debug] Impossibile salvare la pagina su disco: {exc}")
+
+
+def _estrai_campo_hidden(html: str, nome_campo: str, r: requests.Response | None = None) -> str:
     """Estrae il 'value' di un <input type="hidden" name="..."> dalla
     pagina di login Visualforce/JSF. Il regex non assume un ordine fisso
     degli attributi dell'input, solo che 'value' segua 'name' nello
     stesso tag."""
     m = re.search(rf'name="{re.escape(nome_campo)}"[^>]*\bvalue="([^"]*)"', html)
     if not m:
+        if r is not None:
+            _salva_pagina_debug(r, "areti_login_debug.html", f"Campo '{nome_campo}' non trovato")
         raise AretiAuthError(
             f"Campo '{nome_campo}' non trovato nella pagina di login - la "
             "struttura della pagina e' probabilmente cambiata rispetto a "
             "quanto documentato in documentation/protocols/areti-protocol.md."
         )
     return m.group(1)
+
+
+def _segui_redirect_js(sess: requests.Session, r: requests.Response, max_hop: int = 5) -> requests.Response:
+    """Segue un redirect fatto in JAVASCRIPT (window.location.replace/href),
+    non HTTP - 'requests' non lo segue da solo perche' non c'e' nessun
+    header Location. Stesso trucco della pagina-ponte frontdoor.jsp di
+    E-Distribuzione (vedi distributors/edistribuzione/auth.py,
+    _extract_js_redirect_url). Osservato per la prima volta il 18/09/2026:
+    dopo il login, /portaleareti/s/ puo' restituire una paginetta-ponte di
+    poche centinaia di caratteri che rimanda a
+    loginflow/loginFlowOnly.apexp invece della vera app Lightning - non
+    osservato nelle catture precedenti (04/09/2026), probabile passaggio
+    aggiuntivo legato all'account o al dispositivo/IP.
+
+    Segue la catena finche' non trova piu' questo pattern (o max_hop),
+    stampando ogni hop cosi' si vede a schermo dove porta senza dover
+    aprire i file di debug."""
+    for _ in range(max_hop):
+        m = re.search(r"window\.location\.replace\('([^']+)'\)", r.text)
+        if not m:
+            m = re.search(r"window\.location\.href\s*=\s*'([^']+)'", r.text)
+        if not m:
+            return r
+        prossimo_url = m.group(1)
+        print(f"  [redirect JS] -> {prossimo_url}")
+        r = sess.get(prossimo_url, headers={**HEADERS_BASE, "Referer": r.url}, timeout=30)
+        r.raise_for_status()
+    return r
 
 
 def login(sess: requests.Session, email: str, password: str) -> None:
@@ -166,11 +220,11 @@ def login(sess: requests.Session, email: str, password: str) -> None:
     r.raise_for_status()
     html = r.text
 
-    view_state = _estrai_campo_hidden(html, "com.salesforce.visualforce.ViewState")
+    view_state = _estrai_campo_hidden(html, "com.salesforce.visualforce.ViewState", r)
     view_state_version = _estrai_campo_hidden(
-        html, "com.salesforce.visualforce.ViewStateVersion"
+        html, "com.salesforce.visualforce.ViewStateVersion", r
     )
-    view_state_mac = _estrai_campo_hidden(html, "com.salesforce.visualforce.ViewStateMAC")
+    view_state_mac = _estrai_campo_hidden(html, "com.salesforce.visualforce.ViewStateMAC", r)
 
     print("[2/3] Invio email/password...")
     dati = {
@@ -222,15 +276,26 @@ def carica_contesto_aura(sess: requests.Session) -> dict:
     print("\nLeggo fwuid e token CSRF dalla home (/s/)...")
     r = sess.get(HOME_URL, headers={**HEADERS_BASE, "Referer": LOGIN_URL}, timeout=30)
     r.raise_for_status()
+    r = _segui_redirect_js(sess, r)
     html = r.text
 
     m = re.search(r'"fwuid":"([^"]+)"', html)
     if not m:
+        _salva_pagina_debug(r, "areti_home_debug.html", "fwuid non trovato nella home")
+        if re.search(r"com\.salesforce\.visualforce\.ViewState|<form", html, re.IGNORECASE):
+            raise AretiAuthError(
+                "Non e' la home Lightning attesa ma sembra un modulo/form "
+                "Visualforce (possibile passaggio di verifica aggiuntivo, es. "
+                "OTP/MFA, mai osservato nelle catture precedenti) - non gestito "
+                "da questo script. Guarda areti_home_debug.html (URL sopra) per "
+                "capire di che pagina si tratta."
+            )
         raise AretiAuthError("fwuid non trovato nella home - pagina cambiata?")
     fwuid = m.group(1)
 
     m = re.search(r'"APPLICATION@markup://siteforce:communityApp":"([^"]+)"', html)
     if not m:
+        _salva_pagina_debug(r, "areti_home_debug.html", "Id applicazione ('loaded') non trovato")
         raise AretiAuthError("Id applicazione ('loaded') non trovato nella home.")
     loaded_app_id = m.group(1)
 
@@ -239,6 +304,7 @@ def carica_contesto_aura(sess: requests.Session) -> dict:
     # del cookie che porta il vero aura.token, non un id fisso.
     m = re.search(r'"eikoocnekot":"([^"]+)"', html)
     if not m:
+        _salva_pagina_debug(r, "areti_home_debug.html", "Nome del cookie-token non trovato")
         raise AretiAuthError("Nome del cookie-token non trovato nella home.")
     nome_cookie_token = m.group(1)
 
