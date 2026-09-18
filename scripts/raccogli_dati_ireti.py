@@ -44,7 +44,7 @@ import getpass
 import json
 import re
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from typing import Any
 
 try:
@@ -217,13 +217,16 @@ def _finestra_ultimo_mese_completo() -> tuple[str, str]:
     inizio_mese_scorso = fine_mese_scorso.replace(day=1)
     inizio = datetime(
         inizio_mese_scorso.year, inizio_mese_scorso.month, inizio_mese_scorso.day,
-        tzinfo=timezone.utc,
+        tzinfo=datetime.UTC,
     )
     fine = datetime(
         fine_mese_scorso.year, fine_mese_scorso.month, fine_mese_scorso.day,
-        23, 59, 59, tzinfo=timezone.utc,
+        23, 59, 59, tzinfo=datetime.UTC,
     )
-    iso = lambda dt: dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    def iso(dt: datetime) -> str:
+        return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
     return iso(inizio), iso(fine)
 
 
