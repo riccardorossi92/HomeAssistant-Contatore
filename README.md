@@ -28,13 +28,8 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 
 Per Duereti/Unareti/E-Distribuzione/Areti: login, lettura dati, import
 nella Energy Dashboard e più POD per configurazione — tutto confermato
-funzionante su installazioni reali (Areti dalla v0.7.4, dopo tre fix di
-login emersi testandolo su Home Assistant vero — vedi le
-[note di rilascio](https://github.com/riccardorossi92/HomeAssistant-Contatore/releases/tag/v0.7.4)).
-Dettagli sulle azioni in [Azioni](#azioni) più sotto. Areti importa a
-**mese** intero (come Duereti/Unareti; solo E-Distribuzione resta giorno
-per giorno): vedi
-[Cosa fa una volta configurata](#cosa-fa-una-volta-configurata).
+funzionante su installazioni reali. Dettagli sulle azioni in
+[Azioni](#azioni) più sotto.
 
 > [!NOTE]
 > **Ireti** è nuovo: l'endpoint dei consumi è confermato con dati reali
