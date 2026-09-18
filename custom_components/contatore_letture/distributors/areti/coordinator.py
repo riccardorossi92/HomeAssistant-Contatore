@@ -97,32 +97,48 @@ class AretiCoordinator(DataUpdateCoordinator[dict]):
         )
         self.entry = entry
         self.pods: list[str] = list(entry.data[CONF_PODS])
-        # Sessione DEDICATA (non quella condivisa di Home Assistant),
-        # creata al bisogno (non qui: __init__ e' sincrono, ma
-        # async_create_session deve fare I/O bloccante in un executor -
-        # vedi il suo docstring) da _async_ensure_session.
+        # Sessione dell'ultimo login riuscito, tenuta solo per poterla
+        # chiudere prima di aprirne una nuova (vedi _async_login) - MAI
+        # riusata per un nuovo tentativo di login.
         self._session: aiohttp.ClientSession | None = None
-        self._auth: AretiAuthClient | None = None
         # {pod: (codiceBP, codiceFiscale)}, risolti la prima volta che
         # servono e tenuti in memoria per la vita del coordinator (sono
         # identificativi stabili di un POD, non cambiano da un ciclo
         # all'altro) - persi a un riavvio di Home Assistant, ma
         # ririsolti senza problemi al primo ciclo successivo.
         self._config_pod: dict[str, tuple[str, str]] = {}
+        # Chiude l'ultima sessione aperta anche se la entry viene
+        # scaricata/rimossa prima del prossimo login (altrimenti resta
+        # aperta fino al prossimo arresto di Home Assistant - vedi
+        # async_create_session, che la chiude solo li').
+        entry.async_on_unload(self._async_close_session)
 
-    async def _async_ensure_session(self) -> None:
-        """Crea la sessione dedicata (con l'intermedio DigiCert aggiunto,
-        vedi auth.async_create_session) al primo utilizzo, non in
-        __init__: costruirla richiede I/O bloccante in un executor, non
-        eseguibile da un __init__ sincrono."""
-        if self._session is None:
-            self._session = await async_create_session(self.hass)
-            self._auth = AretiAuthClient(self._session)
+    async def _async_close_session(self) -> None:
+        if self._session is not None:
+            await self._session.close()
 
     async def _async_login(self) -> AretiApiClient:
-        await self._async_ensure_session()
+        """Login da zero su una sessione NUOVA (cookie jar vuota), ogni
+        volta - mai riusando quella di un login precedente.
+
+        Necessario perche' il protocollo verificato (documentation/
+        protocols/areti-protocol.md) parte sempre da una sessione senza
+        cookie Areti preesistenti: una sessione che porta ancora 'sid' e
+        aura.token di un login riuscito prima si e' osservata in
+        produzione il 19/09/2026 far fallire il login successivo
+        (POST di login senza header 'Location' nella risposta,
+        AretiInvalidCredentials nonostante le credenziali fossero
+        corrette) - probabile che Areti gestisca diversamente un tentativo
+        di login con una sessione gia' autenticata. Costa una sessione
+        aiohttp in piu' per login (una volta al giorno, o su
+        recupera_storico manuale): irrilevante a questa cadenza.
+        """
+        if self._session is not None:
+            await self._session.close()
+        self._session = await async_create_session(self.hass)
+        auth = AretiAuthClient(self._session)
         try:
-            contesto: AretiAuraContext = await self._auth.async_login(
+            contesto: AretiAuraContext = await auth.async_login(
                 self.entry.data[CONF_EMAIL], self.entry.data[CONF_PASSWORD]
             )
         except AretiAuthError as err:
