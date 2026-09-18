@@ -6,12 +6,16 @@ sezione "Design del coordinator". In sintesi:
   - measures-loadprofiles accetta un range di date arbitrario e restituisce
     un loadProfiles[] con un elemento per ogni giorno disponibile in quel
     range (confermato: un mese intero in una sola chiamata, issue #6) -
-    quindi NESSUNA coda/cursore persistito: ogni ciclo si richiede una
-    FINESTRA SCORREVOLE (FINESTRA_GIORNI_DEFAULT giorni, const.py) e si
-    importa tutto quello che torna. Un giorno pubblicato in ritardo
-    rientra da solo al ciclo successivo, senza bisogno di tracciare cosa
-    manca (a differenza di edistribuzione, che lavora un giorno per
-    chiamata e per questo ha bisogno di una coda con abbandono).
+    stesso meccanismo di edistribuzione: ogni ciclo si chiede in UNA SOLA
+    richiesta l'intervallo dal più vecchio giorno ancora in coda fino al
+    giorno atteso (oggi - RITARDO_DATI_GIORNI). I giorni ricevuti escono
+    dalla coda, quelli mancanti ci entrano e vengono riprovati ai cicli
+    successivi, abbandonati (con un avviso nei log) dopo
+    ABBANDONO_CODA_DOPO_GIORNI senza dati. A differenza di una finestra
+    fissa "abbastanza larga" (l'approccio della prima versione di questo
+    file), un giorno che non arriva mai non sparisce silenziosamente: lo
+    dice nei log, ed è comunque recuperabile a mano con
+    contatore_letture.recupera_storico.
 
   - Il refresh_token Keycloak dura solo 30 minuti: inutilizzabile con un
     ciclo giornaliero, quindi non viene nemmeno conservato - si rifà
@@ -33,6 +37,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, time, timedelta
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -49,12 +54,15 @@ from ...const import DOMAIN
 from .api import IretiApiClient, IretiApiError
 from .auth import IretiAuthClient, IretiAuthError, IretiInvalidCredentials
 from .const import (
+    ABBANDONO_CODA_DOPO_GIORNI,
+    CONF_GIORNI_DA_RIPROVARE,
     CONF_PASSWORD,
     CONF_PODS,
     CONF_USERNAME,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
-    FINESTRA_GIORNI_DEFAULT,
+    MAX_GIORNI_IN_CODA,
     MAX_GIORNI_RECUPERO_STORICO,
+    RITARDO_DATI_GIORNI,
 )
 from .statistics import async_get_ultima_data_disponibile, async_import_curva_giorni
 
@@ -95,6 +103,49 @@ def _blocchi_nel_periodo(data_da: date, data_a: date) -> list[tuple[date, date]]
         blocchi.append((inizio, fine))
         inizio = fine + timedelta(days=1)
     return blocchi
+
+
+def _giorni_nel_periodo(data_da: date, data_a: date) -> list[date]:
+    """Elenco dei giorni compresi nell'intervallo, estremi inclusi."""
+    giorni, cursore = [], data_da
+    while cursore <= data_a:
+        giorni.append(cursore)
+        cursore += timedelta(days=1)
+    return giorni
+
+
+def _giorno_di(elemento: dict[str, Any]) -> date | None:
+    """loadProfileDate ('DD/MM/YYYY HH:MM:SS +ZZZZ') -> solo la data, o
+    None se il campo manca/non è nel formato atteso."""
+    try:
+        return datetime.strptime(str(elemento["loadProfileDate"])[:10], "%d/%m/%Y").date()
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _giorni_ricevuti(load_profiles: list[dict[str, Any]]) -> set[date]:
+    """Giorni effettivamente presenti nella risposta con dati validi
+    (energyType 'A1' + almeno un campione - stesso filtro di
+    statistics.py), scartando elementi vuoti o di altro tipo."""
+    giorni: set[date] = set()
+    for elemento in load_profiles:
+        if elemento.get("energyType") != "A1" or not elemento.get("sampleValues"):
+            continue
+        giorno = _giorno_di(elemento)
+        if giorno is not None:
+            giorni.add(giorno)
+    return giorni
+
+
+def _kwh_del_giorno(load_profiles: list[dict[str, Any]], giorno: date) -> float | None:
+    """Somma dei sampleValues del giorno indicato dentro una risposta
+    multi-giorno, o None se quel giorno non c'è."""
+    for elemento in load_profiles:
+        if elemento.get("energyType") == "A1" and _giorno_di(elemento) == giorno:
+            return sum(
+                float(v) for v in (elemento.get("sampleValues") or []) if v not in (None, "")
+            )
+    return None
 
 
 class IretiCoordinator(DataUpdateCoordinator[dict]):
@@ -168,53 +219,184 @@ class IretiCoordinator(DataUpdateCoordinator[dict]):
         return pod_type
 
     # ------------------------------------------------------------------
-    # Ciclo di polling automatico: finestra scorrevole, nessun cursore
+    # Coda dei giorni da riprovare, PER POD (stesso meccanismo di
+    # edistribuzione/coordinator.py - vedi quel file per i commenti
+    # estesi sul formato/retrocompatibilità, qui non duplicati).
+    # ------------------------------------------------------------------
+
+    def _leggi_code(self) -> dict[str, dict[str, date]]:
+        grezzo = self.entry.data.get(CONF_GIORNI_DA_RIPROVARE) or {}
+        oggi = dt_util.now().date()
+
+        def _con_date(coda: dict) -> dict[str, date]:
+            risultato: dict[str, date] = {}
+            for giorno, valore in coda.items():
+                try:
+                    risultato[giorno] = date.fromisoformat(valore)
+                except (TypeError, ValueError):
+                    risultato[giorno] = oggi
+            return risultato
+
+        return {pod: _con_date(coda) for pod, coda in grezzo.items()}
+
+    def _scrivi_code(self, code: dict[str, dict[str, date]]) -> None:
+        oggi = dt_util.now().date()
+        pulite: dict[str, dict[str, str]] = {}
+        for pod, coda in code.items():
+            pulita = {
+                giorno: da
+                for giorno, da in coda.items()
+                if (oggi - da).days < ABBANDONO_CODA_DOPO_GIORNI
+            }
+            abbandonati = set(coda) - set(pulita)
+            if abbandonati:
+                _LOGGER.warning(
+                    "POD %s: giorni abbandonati dopo %d giorni in coda senza dati da "
+                    "Ireti: %s. Se servono, richiedili con l'azione "
+                    "contatore_letture.recupera_storico.",
+                    pod,
+                    ABBANDONO_CODA_DOPO_GIORNI,
+                    ", ".join(sorted(abbandonati)),
+                )
+
+            if len(pulita) > MAX_GIORNI_IN_CODA:
+                tenuti = sorted(pulita, reverse=True)[:MAX_GIORNI_IN_CODA]
+                scartati = set(pulita) - set(tenuti)
+                _LOGGER.warning(
+                    "POD %s: coda dei giorni da riprovare oltre %d elementi: scarto i "
+                    "più vecchi (%s)",
+                    pod,
+                    MAX_GIORNI_IN_CODA,
+                    ", ".join(sorted(scartati)),
+                )
+                pulita = {g: pulita[g] for g in tenuti}
+
+            if pulita:
+                pulite[pod] = {g: da.isoformat() for g, da in pulita.items()}
+
+        if pulite != self.entry.data.get(CONF_GIORNI_DA_RIPROVARE):
+            self.hass.config_entries.async_update_entry(
+                self.entry,
+                data={**self.entry.data, CONF_GIORNI_DA_RIPROVARE: pulite},
+            )
+
+    def _accoda_giorno(self, pod: str, giorno: date) -> None:
+        code = self._leggi_code()
+        coda = code.setdefault(pod, {})
+        chiave = giorno.isoformat()
+        if chiave in coda:
+            _LOGGER.info(
+                "POD %s: giorno %s ancora senza dati da Ireti, in coda da %d giorni "
+                "(max %d)",
+                pod,
+                chiave,
+                (dt_util.now().date() - coda[chiave]).days,
+                ABBANDONO_CODA_DOPO_GIORNI,
+            )
+        else:
+            coda[chiave] = dt_util.now().date()
+            _LOGGER.info(
+                "POD %s: giorno %s senza dati da Ireti, messo in coda per riprovare "
+                "(max %d giorni)",
+                pod,
+                chiave,
+                ABBANDONO_CODA_DOPO_GIORNI,
+            )
+        self._scrivi_code(code)
+
+    def _rimuovi_dalla_coda(self, pod: str, giorni: list[date]) -> None:
+        code = self._leggi_code()
+        coda = code.get(pod, {})
+        rimossi = [g.isoformat() for g in giorni if g.isoformat() in coda]
+        if not rimossi:
+            return
+        for chiave in rimossi:
+            del coda[chiave]
+        _LOGGER.info("POD %s: dati ricevuti per %s, rimossi dalla coda", pod, ", ".join(rimossi))
+        self._scrivi_code(code)
+
+    async def _prossima_richiesta(self, pod: str) -> tuple[date, date] | None:
+        """Decide che intervallo chiedere per questo POD in questo ciclo.
+
+        Stessa logica di edistribuzione: chiede in UNA SOLA richiesta
+        l'intervallo che va dal più vecchio giorno arretrato fino al
+        giorno atteso (oggi - RITARDO_DATI_GIORNI) - a meno che
+        quest'ultimo non risulti già coperto dalle statistiche esistenti.
+        Nessun orario di cortesia da aspettare (a differenza di
+        edistribuzione): non abbiamo ancora nessuna osservazione su
+        quando Ireti pubblica i dati, quindi si prova a ogni ciclo.
+        """
+        oggi = dt_util.now().date()
+        atteso = oggi - timedelta(days=RITARDO_DATI_GIORNI)
+
+        code = self._leggi_code()
+        coda = code.get(pod, {})
+        arretrati = sorted(date.fromisoformat(g) for g in coda if date.fromisoformat(g) < atteso)
+        if arretrati:
+            # Una sola richiesta dal più vecchio arretrato al giorno atteso,
+            # con lo stesso margine di edistribuzione (150 giorni): in
+            # pratica non si attiva quasi mai, la coda tiene al massimo
+            # MAX_GIORNI_IN_CODA giorni.
+            return max(arretrati[0], atteso - timedelta(days=150)), atteso
+
+        ultima_disponibile = await async_get_ultima_data_disponibile(self.hass, pod)
+        if ultima_disponibile and ultima_disponibile >= atteso:
+            return None
+
+        return atteso, atteso
+
+    # ------------------------------------------------------------------
+    # Ciclo di polling automatico
     # ------------------------------------------------------------------
 
     async def _async_update_data(self) -> dict:
         api = await self._async_login()
         tax_code = await self._async_customer_tax_code_vat(api)
 
-        oggi = dt_util.now().date()
-        giorno_da = oggi - timedelta(days=FINESTRA_GIORNI_DEFAULT - 1)
-        start_iso, end_iso = _finestra_iso(giorno_da, oggi)
-
         by_pod: dict[str, dict] = {}
         for pod in self.pods:
-            pod_type = await self._async_pod_type(api, pod, tax_code, start_iso, end_iso)
-            try:
-                load_profiles = await api.async_get_measures_loadprofiles(
-                    pod, tax_code, pod_type, start_iso, end_iso
-                )
-            except IretiApiError as err:
-                raise UpdateFailed(
-                    f"Errore recuperando la curva di carico Ireti per il POD {pod}: {err}"
-                ) from err
-
-            await async_import_curva_giorni(self.hass, pod, load_profiles)
-
-            kwh_ultimo_giorno = None
+            richiesta = await self._prossima_richiesta(pod)
+            kwh_ultimo_giorno_importato = None
             ultimo_giorno_importato = None
-            giorni_validi = [
-                lp for lp in load_profiles
-                if lp.get("energyType") == "A1" and lp.get("sampleValues")
-            ]
-            if giorni_validi:
-                ultimo = max(
-                    giorni_validi,
-                    key=lambda lp: datetime.strptime(lp["loadProfileDate"][:10], "%d/%m/%Y"),
-                )
-                kwh_ultimo_giorno = sum(
-                    float(v) for v in ultimo["sampleValues"] if v not in (None, "")
-                )
-                ultimo_giorno_importato = datetime.strptime(
-                    ultimo["loadProfileDate"][:10], "%d/%m/%Y"
-                ).date().isoformat()
+
+            if richiesta is not None:
+                data_da, data_a = richiesta
+                start_iso, end_iso = _finestra_iso(data_da, data_a)
+                pod_type = await self._async_pod_type(api, pod, tax_code, start_iso, end_iso)
+                try:
+                    load_profiles = await api.async_get_measures_loadprofiles(
+                        pod, tax_code, pod_type, start_iso, end_iso
+                    )
+                except IretiApiError as err:
+                    # I giorni richiesti vanno in coda invece di andare
+                    # persi: al ciclo successivo 'atteso' sarebbe già avanzato.
+                    for giorno in _giorni_nel_periodo(data_da, data_a):
+                        self._accoda_giorno(pod, giorno)
+                    raise UpdateFailed(
+                        f"Errore recuperando la curva di carico Ireti per il POD {pod}: {err}"
+                    ) from err
+
+                await async_import_curva_giorni(self.hass, pod, load_profiles)
+
+                # L'intervallo può tornare parziale (i giorni più recenti
+                # non ancora pubblicati): quelli ricevuti escono dalla
+                # coda, quelli mancanti ci entrano.
+                ricevuti = _giorni_ricevuti(load_profiles)
+                richiesti = _giorni_nel_periodo(data_da, data_a)
+                self._rimuovi_dalla_coda(pod, [g for g in richiesti if g in ricevuti])
+                for giorno in richiesti:
+                    if giorno not in ricevuti:
+                        self._accoda_giorno(pod, giorno)
+
+                if ricevuti:
+                    ultimo = max(ricevuti)
+                    kwh_ultimo_giorno_importato = _kwh_del_giorno(load_profiles, ultimo)
+                    ultimo_giorno_importato = ultimo.isoformat()
 
             ultima_data_disponibile = await async_get_ultima_data_disponibile(self.hass, pod)
             by_pod[pod] = {
                 "ultimo_giorno_importato": ultimo_giorno_importato,
-                "kwh_ultimo_giorno_importato": kwh_ultimo_giorno,
+                "kwh_ultimo_giorno_importato": kwh_ultimo_giorno_importato,
                 "ultima_data_disponibile": (
                     ultima_data_disponibile.isoformat() if ultima_data_disponibile else None
                 ),
@@ -236,7 +418,9 @@ class IretiCoordinator(DataUpdateCoordinator[dict]):
         blocchi di _GIORNI_PER_BLOCCO_RECUPERO giorni (vedi il commento
         sulla costante): non è noto se measures-loadprofiles accetti
         range più ampi di quello confermato (un mese) in una sola
-        richiesta, quindi non si rischia.
+        richiesta, quindi non si rischia. I giorni recuperati con successo
+        vengono anche tolti dalla coda del ciclo automatico, se ci erano
+        finiti.
 
         Solleva HomeAssistantError se al termine non è stato importato
         nessun giorno: l'azione è manuale e lanciata dall'interfaccia,
@@ -296,9 +480,10 @@ class IretiCoordinator(DataUpdateCoordinator[dict]):
                     continue
 
                 await async_import_curva_giorni(self.hass, pod_corrente, load_profiles)
-                giorni_validi = [lp for lp in load_profiles if lp.get("energyType") == "A1"]
-                trovati += len(giorni_validi)
-                giorni_importati += len(giorni_validi)
+                ricevuti_blocco = _giorni_ricevuti(load_profiles)
+                self._rimuovi_dalla_coda(pod_corrente, sorted(ricevuti_blocco))
+                trovati += len(ricevuti_blocco)
+                giorni_importati += len(ricevuti_blocco)
 
             _LOGGER.info(
                 "POD %s: recupero storico completato, %d giorni trovati nel periodo %s - %s",

@@ -278,12 +278,13 @@ precedente; se non è ancora pubblicato finisce in una coda e viene
 riprovato nei giorni successivi, così non si creano buchi.
 
 **Ireti** pubblica una curva a **15 minuti** (non oraria/giornaliera come
-gli altri) tramite un'unica API che accetta un intervallo di date
-qualsiasi: invece di una coda per giorno, **una volta al giorno**
-l'integrazione richiede una finestra scorrevole degli ultimi giorni (non
-un singolo giorno) e importa tutto quello che trova — un giorno
-pubblicato in ritardo rientra da solo al giro successivo, senza bisogno
-di tracciare cosa manca.
+gli altri), con la stessa logica a coda di E-Distribuzione (un giorno non
+ancora disponibile viene riprovato, non perso), ma senza un orario di
+cortesia configurabile: non sappiamo ancora quando Ireti pubblica i dati
+(nessuna osservazione empirica come per E-Distribuzione), quindi si prova
+a ogni ciclo invece di aspettare un'ora precisa. A differenza degli altri,
+l'API accetta un intervallo di date qualsiasi in una sola chiamata: se c'è
+arretrato, un solo ciclo può recuperare più giorni insieme.
 
 Per tutti, **lo storico pregresso non viene recuperato automaticamente**:
 si richiede con l'azione `recupera_storico` (vedi [Azioni](#azioni) sotto).
@@ -344,12 +345,11 @@ dispositivo "Account" più due per POD) — cambia solo che qui il consumo
 |---|---|---|
 | POD configurati | Account | Quanti e quali POD in questa istanza |
 | Ultima data disponibile | POD | Ultimo giorno per cui esistono dati importati |
-| Consumo ultimo giorno importato | POD | kWh dell'ultimo giorno importato nella finestra scorrevole |
+| Consumo ultimo giorno importato | POD | kWh dell'ultimo giorno effettivamente ricevuto |
 
-Stessa struttura di E-Distribuzione (stesso numero di entità e stesso
-significato) — cambia solo la sorgente dei dati (curva a 15 minuti
-invece di giornaliera) e come viene richiesta (finestra scorrevole,
-vedi [Cosa fa una volta configurata](#cosa-fa-una-volta-configurata)).
+Stessa struttura di E-Distribuzione (stesso numero di entità, stessa
+logica a coda) — cambia solo la sorgente dei dati: curva a 15 minuti
+invece di giornaliera (vedi [Cosa fa una volta configurata](#cosa-fa-una-volta-configurata)).
 
 </details>
 

@@ -2,8 +2,9 @@
 
 Ireti (`smartpod.ireti.it`) **è supportato**: login, POD scoperti
 dall'account e curva di carico a 15 minuti importata come external
-statistics con una finestra scorrevole giornaliera (nessun cursore/coda
-persistito — vedi [Design del coordinator](#design-del-coordinator)).
+statistics, con una coda dei giorni da riprovare per POD (stesso
+meccanismo di E-Distribuzione — vedi
+[Design del coordinator](#design-del-coordinator)).
 L'endpoint di misura è **confermato con dati reali**:
 [issue #6](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/6)
 (russomichele, 17/09/2026) ha un POD attivo e ha condiviso sia il report
@@ -207,18 +208,31 @@ Implementazione: `custom_components/contatore_letture/distributors/ireti/`
 (stesso schema a 7 file di `distributors/areti/`: `const.py`, `auth.py`,
 `api.py`, `coordinator.py`, `statistics.py`, `sensor.py`, `__init__.py`).
 
-**Finestra scorrevole, non cursore/coda.** A differenza di E-Distribuzione
-(una chiamata = un giorno, serve una coda per tracciare cosa manca) e di
-Areti (una chiamata = un mese intero, disponibile solo a mese chiuso,
-serve un cursore), `measures-loadprofiles` accetta un range di date
-arbitrario e restituisce un `loadProfiles[]` con un elemento per ogni
-giorno disponibile in quel range (confermato: un mese intero in una sola
-chiamata). Quindi: **nessuno stato persistito** — ogni ciclo (una volta al
-giorno) si richiede una finestra degli ultimi `FINESTRA_GIORNI_DEFAULT`
-giorni (14, `const.py`) e si importa tutto quello che torna. Un giorno
-pubblicato in ritardo rientra da solo al ciclo successivo — non è noto
-il ritardo di pubblicazione reale, ma non serve conoscerlo: la finestra
-lo assorbe, purché sia abbastanza larga.
+**Coda dei giorni da riprovare, come E-Distribuzione — non più una
+finestra fissa.** Una prima versione di questo coordinator (fino al
+18/09/2026) chiedeva ogni ciclo una finestra fissa degli ultimi 14 giorni,
+senza nessuno stato persistito: più semplice, ma con un buco silenzioso —
+un giorno mai pubblicato usciva dalla finestra dopo 14 cicli senza che
+nessuno se ne accorgesse. Sostituita con lo stesso meccanismo di
+E-Distribuzione (`edistribuzione/coordinator.py`, `_prossima_richiesta`/
+`_accoda_giorno`/`_scrivi_code`): ogni ciclo si chiede in **una sola
+richiesta** l'intervallo dal più vecchio giorno ancora in coda (per POD)
+fino al giorno atteso (`oggi - RITARDO_DATI_GIORNI`); `measures-loadprofiles`
+accetta un range arbitrario e restituisce un `loadProfiles[]` con un
+elemento per ogni giorno disponibile in quel range (confermato: un mese
+intero in una sola chiamata), quindi dalla stessa risposta si vede subito
+quali giorni sono arrivati (escono dalla coda) e quali no (ci entrano,
+riprovati ai cicli successivi, **abbandonati con un avviso nei log** dopo
+`ABBANDONO_CODA_DOPO_GIORNI` giorni — non più silenziosamente).
+
+`RITARDO_DATI_GIORNI = 1` ("il giorno prima") è un punto di partenza, non
+un valore misurato: a differenza di E-Distribuzione (dati reali su quando
+il giorno prima diventa disponibile), per Ireti non abbiamo ancora nessuna
+osservazione — vedi il punto 6 di `scripts/raccogli_dati_ireti.py`,
+aggiunto apposta per misurarlo su un account reale. Nessun
+`ora_richiesta` configurabile per lo stesso motivo (non c'è ancora una
+base per calibrarlo): si prova a ogni ciclo, senza aspettare un'ora
+precisa del giorno.
 
 **Credenziali salvate, login rifatto ad ogni ciclo.** Il `refresh_token`
 dura solo 30 minuti (inutilizzabile con un ciclo giornaliero/orario):
@@ -266,10 +280,14 @@ Non blocca l'uso, ma va tenuto d'occhio quando arriva un riscontro reale:
   per `podType`, con un ripiego se fallisce (vedi sopra) — `registry` e
   `measures` non sono usati.
 - **Range più corti di un mese** per `measures-loadprofiles`: l'unico
-  esempio reale è un mese intero. Il coordinator li usa comunque (finestra
-  di 14 giorni) partendo dal presupposto ragionevole che l'API accetti
-  range arbitrari (è solo `startDate`/`endDate` ISO) — non ancora
-  verificato.
+  esempio reale è un mese intero. Il coordinator li usa comunque
+  (tipicamente un solo giorno, `data - RITARDO_DATI_GIORNI`) partendo dal
+  presupposto ragionevole che l'API accetti range arbitrari (è solo
+  `startDate`/`endDate` ISO) — non ancora verificato.
+- **Ritardo di pubblicazione reale**: `RITARDO_DATI_GIORNI = 1` è una
+  scelta di partenza ("il giorno prima"), non misurata — vedi il punto 6
+  di `scripts/raccogli_dati_ireti.py`. Il meccanismo di coda lo rende
+  comunque robusto anche se sbagliato (vedi "Design del coordinator").
 - **POD di produzione** (`operation: "IMMISSIONE"` invece di
   `"PRELIEVO"`): non supportato, mai testato.
 

@@ -59,17 +59,54 @@ HEADERS_BROWSER = {
 # questa cadenza.
 DEFAULT_UPDATE_INTERVAL_MINUTES = 24 * 60
 
-# measures-loadprofiles accetta un range arbitrario e restituisce un
-# loadProfiles[] con un elemento per ogni giorno disponibile in quel range
-# (confermato: un mese intero in una sola chiamata, issue #6) - quindi,
-# a differenza di edistribuzione (una chiamata = un giorno, serve una coda
-# per tracciare cosa manca) qui basta richiedere ogni ciclo una FINESTRA
-# SCORREVOLE che copra abbondantemente qualunque ritardo di pubblicazione
-# reale (non ancora misurato): quello che è già disponibile arriva, quello
-# che manca semplicemente non compare nella risposta e rientra al ciclo
-# successivo senza bisogno di uno stato persistito. Vedi "Design del
-# coordinator" in ireti-protocol.md.
-FINESTRA_GIORNI_DEFAULT = 14
+# --- Import automatico curva giornaliera + coda di retry ----------------------
+# Stesso meccanismo di edistribuzione (vedi distributors/edistribuzione/const.py
+# per il ragionamento completo, duplicato qui invece che condiviso perché
+# ogni distributore resta un pacchetto a sé). measures-loadprofiles accetta
+# un range arbitrario e restituisce un loadProfiles[] con un elemento per
+# ogni giorno disponibile in quel range (confermato: un mese intero in una
+# sola chiamata, issue #6), quindi come edistribuzione (e NON come una
+# prima versione di questo file, che usava una finestra fissa senza stato
+# persistito): ogni ciclo si chiede in una sola richiesta l'intervallo dal
+# più vecchio giorno ancora in coda fino al giorno atteso - i giorni
+# ricevuti escono dalla coda, quelli mancanti ci entrano. Una finestra
+# fissa "abbastanza larga" (l'approccio precedente) faceva perdere
+# silenziosamente un giorno mai pubblicato una volta uscito dalla finestra,
+# senza nessun avviso - vedi "Design del coordinator" in ireti-protocol.md.
+
+# A differenza di edistribuzione (dati reali su quando il giorno prima
+# diventa disponibile, vedi la nota in edistribuzione/const.py), per Ireti
+# NON abbiamo ancora nessuna misura del ritardo di pubblicazione reale:
+# 1 giorno è un punto di partenza ragionevole ("il giorno prima"), non un
+# valore confermato. Il meccanismo di coda lo rende comunque robusto anche
+# se sbagliato: se il ritardo vero fosse maggiore, il giorno finisce
+# semplicemente in coda finché non arriva, entro ABBANDONO_CODA_DOPO_GIORNI.
+# Vedi anche il punto 6 di scripts/raccogli_dati_ireti.py, pensato apposta
+# per misurarlo su un account reale.
+RITARDO_DATI_GIORNI = 1
+
+CONF_GIORNI_DA_RIPROVARE = "giorni_da_riprovare"
+
+# Nessun CONF_ORA_RICHIESTA/ORA_MINIMA_RICHIESTA qui (a differenza di
+# edistribuzione): quelli sono calibrati su un orario di pubblicazione
+# osservato ("i dati del giorno prima sono già disponibili alle 18:00");
+# per Ireti non abbiamo ancora nessuna osservazione simile, quindi non
+# c'è ancora una base per un orario di cortesia - si prova a ogni ciclo,
+# senza aspettare una certa ora. Da aggiungere se/quando emerge un pattern.
+
+# Un giorno resta in coda e viene riprovato ai cicli successivi, abbandonato
+# dopo questo numero di giorni REALI dal primo inserimento (non dopo N
+# tentativi). Stesso valore di edistribuzione: ~1 settimana copre eventuali
+# ritardi di pubblicazione senza accanirsi su date che non arriveranno mai;
+# chi le vuole comunque puo' richiederle a mano con
+# contatore_letture.recupera_storico.
+ABBANDONO_CODA_DOPO_GIORNI = 7
+
+# Nel ciclo automatico questo limite non viene mai avvicinato (la coda si
+# stabilizza sui giorni di margine concessi sopra): serve solo quando un
+# import copre un periodo lungo e la risposta torna incompleta, accodando
+# molti giorni in un colpo solo.
+MAX_GIORNI_IN_CODA = 30
 
 # Limite di cortesia per l'azione recupera_storico (auto-imposto, non un
 # vincolo noto delle API Ireti - l'unico esempio reale è una richiesta di

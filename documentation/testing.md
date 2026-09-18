@@ -36,10 +36,12 @@ tests/
     test_api.py                         # non richiede HA
     test_coordinator_coda.py            # coda per-POD
   ireti/
+    conftest.py                        # harness: make_ireti_coordinator
     test_auth.py                        # non richiede HA
     test_api.py                         # non richiede HA
     test_statistics.py                  # aggregazione oraria (funzioni pure)
-    test_coordinator.py                 # finestra scorrevole, ripiego podType, recupera_storico
+    test_coordinator.py                 # ciclo automatico, ripiego podType, recupera_storico
+    test_coordinator_coda.py            # coda per-POD (stesso meccanismo di edistribuzione)
 ```
 
 ## Test senza Home Assistant installato
