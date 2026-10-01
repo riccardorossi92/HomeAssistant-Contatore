@@ -5,12 +5,18 @@ elettricità e gas in **Emilia-Romagna e Toscana**) — sede a Bologna.
 
 > [!NOTE]
 > **Correzione (01/10/2026)**: una versione precedente di questa scheda
-> concludeva "non fattibile", basandosi su una lettura incompleta della
-> pagina pubblica (il paragrafo generico "Clienti Finali in solo
-> Prelievo → Portale Consumi ARERA"). La stessa pagina, più sotto,
-> descrive **un canale separato e self-service per gli utenti BT** — vedi
-> sotto. Lezione: leggere il testo integrale della pagina, non un
-> riassunto, prima di scrivere un verdetto definitivo.
+> (13/09/2026) concludeva "non fattibile", vedendo solo il paragrafo
+> generico "Clienti Finali in solo Prelievo → Portale Consumi ARERA". La
+> pagina attuale descrive anche **un canale separato e self-service per
+> gli utenti BT** (sotto) — ma il footer della pagina riporta
+> "Pagina aggiornata al 15/09/2026", **due giorni dopo** la prima lettura:
+> non è escluso che la sezione BT sia stata aggiunta in quell'aggiornamento
+> e semplicemente non esistesse ancora il 13/09, piuttosto che essere
+> stata persa in una lettura incompleta (non verificabile a posteriori:
+> nessuno snapshot Wayback Machine disponibile per quella pagina in quel
+> periodo). In ogni caso, da qui in avanti vale leggere il testo
+> integrale di una pagina pubblica, non un riassunto, prima di un
+> verdetto definitivo.
 
 Stato: **non ancora supportato, ma promettente**. Login verificato
 (pagina pubblica raggiunta, nessuna credenziale reale provata); non
