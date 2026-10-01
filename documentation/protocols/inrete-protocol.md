@@ -5,18 +5,18 @@ elettricità e gas in **Emilia-Romagna e Toscana**) — sede a Bologna.
 
 > [!NOTE]
 > **Correzione (01/10/2026)**: una versione precedente di questa scheda
-> (13/09/2026) concludeva "non fattibile", vedendo solo il paragrafo
-> generico "Clienti Finali in solo Prelievo → Portale Consumi ARERA". La
-> pagina attuale descrive anche **un canale separato e self-service per
-> gli utenti BT** (sotto) — ma il footer della pagina riporta
-> "Pagina aggiornata al 15/09/2026", **due giorni dopo** la prima lettura:
-> non è escluso che la sezione BT sia stata aggiunta in quell'aggiornamento
-> e semplicemente non esistesse ancora il 13/09, piuttosto che essere
-> stata persa in una lettura incompleta (non verificabile a posteriori:
-> nessuno snapshot Wayback Machine disponibile per quella pagina in quel
-> periodo). In ogni caso, da qui in avanti vale leggere il testo
-> integrale di una pagina pubblica, non un riassunto, prima di un
-> verdetto definitivo.
+> (13/09/2026) concludeva "non fattibile" per il cliente BT, rimandato
+> solo al Portale Consumi ARERA o al venditore. Non era un errore di
+> lettura: secondo l'utente, che ha seguito la pagina nel tempo, quello
+> era davvero l'unico canale indicato all'epoca per la BT — la sezione
+> **"PORTALE HERA 105"** (sotto) è stata aggiunta dopo, coerente con il
+> footer della pagina attuale ("aggiornata al 15/09/2026", due giorni
+> dopo la prima lettura). Non verificabile su Wayback Machine (nessuno
+> snapshot disponibile per quella pagina in quel periodo), ma resta
+> l'ipotesi più probabile. Verdetto quindi legato alla **data di
+> lettura**, non a un difetto del processo di ricerca — vale comunque
+> ricontrollare periodicamente le pagine pubbliche di un distributore già
+> scartato, visto che possono cambiare.
 
 Stato: **non ancora supportato, ma promettente**. Login verificato
 (pagina pubblica raggiunta, nessuna credenziale reale provata); non
