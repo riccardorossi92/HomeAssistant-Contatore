@@ -11,19 +11,21 @@ curve di carico del distributore.
 
 > [!WARNING]
 > AcegasApsAmga fa parte del gruppo Hera, come **Inrete Distribuzione**
-> — già valutata e **non fattibile** per il cliente residenziale (vedi
-> [inrete-protocol.md](inrete-protocol.md)): Inrete rimanda i clienti al
-> Portale Consumi ARERA, nessun self-service. AcegasApsAmga è una
-> società di distribuzione diversa da Inrete (rete propria a
-> Trieste/Padova/Gorizia, non confluita in Inrete), ma il portale
+> (vedi [inrete-protocol.md](inrete-protocol.md), corretta il 01/10/2026:
+> per gli utenti BT Inrete ha un **portale dedicato alla misura**,
+> "Portale Hera 105" — tenant Azure B2C `portalehera2gwebprodb2c`,
+> **diverso** dal tenant `myheraapp` usato qui per MyHera). AcegasApsAmga
+> è una società di distribuzione diversa da Inrete (rete propria a
+> Trieste/Padova/Gorizia, non confluita in Inrete), e il portale
 > catturato qui (`servizionline.acegasapsamga.it`, app "MyHera") è
-> l'area clienti **unificata** del gruppo — condivide lo stesso bundle
-> con altri brand Hera (risulta anche un file di traduzioni servito da
-> `servizionline.gruppohera.it`). Non è escluso che le funzioni
-> "energia/curve" viste nel bundle siano codice condiviso ma **non
-> attivo** per questo brand, come già capitato altrove nel gruppo. Va
-> verificato con un account reale prima di dare per scontato che
-> funzioni.
+> l'area clienti **unificata** del gruppo per fatturazione/anagrafica —
+> condivide lo stesso bundle con altri brand Hera (risulta anche un file
+> di traduzioni servito da `servizionline.gruppohera.it`). Non è escluso
+> che le funzioni "energia/curve" viste nel bundle di MyHera siano codice
+> condiviso ma **non attivo** per questo brand, e che AcegasApsAmga abbia
+> un suo portale di misura dedicato separato (come "Portale Hera 105" lo
+> è per Inrete) non ancora individuato. Va verificato con un account
+> reale prima di dare per scontato che funzioni.
 
 Se hai una fornitura AcegasApsAmga attiva (elettrica o gas, con POD/PDR
 associato nel portale), puoi aiutare — vedi

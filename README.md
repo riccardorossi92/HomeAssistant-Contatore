@@ -110,24 +110,22 @@ elettrica V-Reti già validata (con POD associato) puoi aiutare — vedi
 
 Login (Azure AD B2C) e anagrafica verificati, endpoint energia
 individuati nel bundle dell'app ma mai provati — la cattura disponibile
-è di un account "prospect" senza alcun contratto associato. Attenzione:
-il gruppo Hera include anche **Inrete Distribuzione**, già valutata come
-non fattibile (vedi sotto), quindi non è scontato che le funzioni viste
-nel bundle siano davvero attive per questo brand. Se hai una fornitura
-AcegasApsAmga con un POD/PDR attivo puoi aiutare — vedi
+è di un account "prospect" senza alcun contratto associato. Se hai una
+fornitura AcegasApsAmga con un POD/PDR attivo puoi aiutare — vedi
 [documentation/protocols/acegasapsamga-protocol.md](documentation/protocols/acegasapsamga-protocol.md).
 
 </details>
 
-### Valutati e non fattibili
-
 <details>
-<summary><b>Inrete Distribuzione</b> (Emilia-Romagna e Toscana, gruppo Hera) — non fattibile per il cliente finale</summary>
+<summary><b>Inrete Distribuzione</b> (Emilia-Romagna e Toscana, gruppo Hera) — portale BT self-service individuato, da verificare con un account reale</summary>
 
-Non fattibile per il cliente finale in bassa tensione. Il distributore
-stesso rimanda i clienti in solo prelievo al Portale Consumi ARERA (solo
-SPID/CIE) o al proprio venditore — non esiste un portale self-service
-Inrete per il consumo residenziale. Dettagli in
+Per gli utenti in bassa tensione (il caso residenziale tipico) il
+distributore offre un portale self-service dedicato ("Portale Hera 105",
+Azure AD B2C, registrazione "Iscrizione Immediata" con nome, codice
+fiscale, email, POD e documento d'identità) — login pubblico verificato,
+ma nessun account ancora registrato, quindi non sappiamo se espone
+davvero dati di misura. Se hai una fornitura Inrete BT puoi aiutare —
+vedi
 [documentation/protocols/inrete-protocol.md](documentation/protocols/inrete-protocol.md).
 
 </details>
