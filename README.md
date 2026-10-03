@@ -4,6 +4,7 @@ Unofficial meta-integration for Italian electricity distributor meter data in Ho
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://hacs.xyz/)
 [![GitHub Release](https://img.shields.io/github/v/release/riccardorossi92/HomeAssistant-Contatore.svg?style=for-the-badge&color=blue)](https://github.com/riccardorossi92/HomeAssistant-Contatore/releases)
+[![Downloads](https://img.shields.io/github/downloads/riccardorossi92/HomeAssistant-Contatore/total.svg?style=for-the-badge&color=blue)](https://github.com/riccardorossi92/HomeAssistant-Contatore/releases)
 
 > **Disclaimer:** This is an unofficial integration and is not affiliated with or endorsed by ARERA, Duereti, Unareti, E-Distribuzione, Areti, Ireti, or any other distributor in any way.
 
