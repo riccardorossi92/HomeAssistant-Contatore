@@ -17,6 +17,19 @@ letture periodiche).
 > disponibili solo "fino al mese appena concluso": il cursore mensile di
 > `pcf_common` funziona comunque, al più è prudente. Modulo:
 > `distributors/retipiu.py`. Non ancora provato con credenziali reali.
+
+> [!NOTE]
+> **Altri portali con lo stesso schema** (`areaclienti.<dominio>/Clienti<Nome>Web`),
+> non ancora integrati:
+>
+> - **Reti Valtellina Valchiavenna** (RE.V.V., gruppo Acinque/A2A) —
+>   `areaclienti.valtellinarevv.it/ClientiRvvWeb`, elettricità a Sondrio,
+>   Tirano, Sernio, Valdisotto (~26.000 utenze), P.IVA `01017590140` (da
+>   registro imprese, non ancora confrontata con la scheda ARERA). Manca la
+>   conferma che esponga le API PCF: il manuale andrebbe cercato su
+>   `.../ClientiRvvWeb/downloadFileTemplate.action?codice=MANUALE_RICH_API`.
+> - **Lereti** (gruppo Acinque) — `areaclienti.leretispa.it/ClientiLeRetiWeb`,
+>   ma distribuisce gas e acqua, non elettricità: non rilevante qui.
 ## Modello dati: mese solare chiuso (dal 08/09/2026)
 
 I manuali `Manuale_PCF_Rich_API` di Unareti e Duereti (identici tra loro a
