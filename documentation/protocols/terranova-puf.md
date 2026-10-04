@@ -23,7 +23,7 @@ caso per caso.
 | Deval | Valle d'Aosta | [deval-protocol.md](deval-protocol.md) — login con 2FA, nessun POD |
 | Edyna | Alto Adige | [edyna-protocol.md](edyna-protocol.md) — login ok, nessun POD |
 | Odoardo Zecca S.r.l. | Ortona (CH) | ramo distribuzione **ceduto a DEA nel 2023**: i suoi clienti stanno ora sul portale DEA |
-| RetiPiù | Desio/Seregno (Brianza) | **nessun PUF Terranova**: l'area clienti è `areaclienti.retipiu.it/ClientiRPiuWeb`, stessa piattaforma "Portale Clienti Finali" di Unareti (`/ClientiWeb`) e Duereti (`/ClientiDueRetiWeb`) — **supportato** via `pcf_common` (`distributors/retipiu.py`), vedi sotto |
+| RetiPiù (gruppo A2A) | elettricità: solo Seregno (MB), ~26.000 utenze; gas in molti comuni della Brianza | **nessun PUF Terranova**: l'area clienti è `areaclienti.retipiu.it/ClientiRPiuWeb`, stessa piattaforma "Portale Clienti Finali" di Unareti (`/ClientiWeb`) e Duereti (`/ClientiDueRetiWeb`) — **supportato** via `pcf_common` (`distributors/retipiu.py`), vedi sotto |
 | SIEC — Società per l'Illuminazione Elettrica in Chiavenna | Chiavenna e Prata Camportaccio (SO), ~8.000 utenze | portale clienti non trovato |
 | V-Reti | Verona, Vicenza, Grezzana | [v-reti-protocol.md](v-reti-protocol.md) — login ok, account in attesa di validazione |
 

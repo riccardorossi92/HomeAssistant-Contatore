@@ -43,7 +43,7 @@ funzionante su installazioni reali. Dettagli sulle azioni in
 > Se lo provi e trovi un problema, apri una issue.
 
 > [!NOTE]
-> **RetiPiù** (Desio/Seregno) è nuovo: usa lo stesso Portale Clienti
+> **RetiPiù** (Seregno, gruppo A2A) è nuovo: usa lo stesso Portale Clienti
 > Finali e le stesse API di Duereti/Unareti (verificato sul manuale API
 > ufficiale di RetiPiù), quindi riusa lo stesso codice già collaudato — ma
 > **non è ancora stato provato con credenziali reali**. Se hai un'utenza

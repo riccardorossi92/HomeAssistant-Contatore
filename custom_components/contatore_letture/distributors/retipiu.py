@@ -19,7 +19,7 @@ from .pcf_common.coordinator import PcfCoordinator
 from .pcf_common.sensor import build_pcf_entities
 
 DISPLAY_NAME = "RetiPiù"
-PIVA = "04152790962"  # RETIPIU' S.R.L. (Desio/Seregno), presente negli elenchi operatori ARERA
+PIVA = "04152790962"  # confermata via scheda operatore ARERA (Id operatore 353, gruppo A2A)
 BASE_URL = "https://areaclienti.retipiu.it/ClientiRPiuWeb/public/misure"
 PORTAL_URL = "https://areaclienti.retipiu.it/ClientiRPiuWeb"
 
