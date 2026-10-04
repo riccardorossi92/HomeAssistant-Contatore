@@ -265,10 +265,11 @@ chiaramente invece di procedere a vuoto.
 
 Dopo la configurazione, puoi aggiungere/rimuovere POD in qualsiasi momento
 da **Configura** sull'integrazione (Opzioni) — per Duereti/Unareti/
-E-Distribuzione/Areti. Per **Ireti** le opzioni non hanno ancora nessuna
+RetiPiù/Reti Valtellina Valchiavenna/E-Distribuzione/Areti. Per **Ireti** le opzioni non hanno ancora nessuna
 voce (v1 minimale): per cambiare i POD monitorati, rimuovi e riconfigura
 l'integrazione. Per **E-Distribuzione** puoi anche cambiare l'orario della
-richiesta giornaliera (per Duereti/Unareti/Areti non serve: importano a
+richiesta giornaliera (per Duereti/Unareti/RetiPiù/Reti Valtellina
+Valchiavenna/Areti non serve: importano a
 mese chiuso, vedi sotto; Ireti nemmeno, vedi sotto).
 
 ## Cosa fa una volta configurata
@@ -278,10 +279,11 @@ I dati importati sono visibili come **external statistics**
 Statistiche**, utilizzabili nella Energy Dashboard, per tutti i
 distributori supportati.
 
-**Duereti, Unareti e Areti** pubblicano i dati a **mese solare chiuso**,
-non giorno per giorno (per Duereti/Unareti è un cambio imposto dai
-distributori a settembre 2026: prima si poteva chiedere il singolo
-giorno). L'integrazione tiene, per ogni POD, il **mese che sta
+**Duereti, Unareti, RetiPiù, Reti Valtellina Valchiavenna e Areti**
+pubblicano i dati a **mese solare chiuso**, non giorno per giorno (per
+Duereti/Unareti è un cambio imposto dai distributori a settembre 2026:
+prima si poteva chiedere il singolo giorno; RetiPiù e Reti Valtellina
+Valchiavenna usano lo stesso codice, quindi lo stesso modello). L'integrazione tiene, per ogni POD, il **mese che sta
 aspettando**, e **una volta al giorno** controlla se è disponibile: se sì
 lo importa e passa al successivo, se no riprova al giro dopo — senza mai
 abbandonare un mese in attesa. Un POD nuovo parte dal mese corrente:
@@ -310,7 +312,7 @@ più uno per ogni POD. Espandi la sezione del tuo distributore per il
 dettaglio.
 
 <details>
-<summary><b>Entità esposte — Duereti / Unareti</b></summary>
+<summary><b>Entità esposte — Duereti / Unareti / RetiPiù / Reti Valtellina Valchiavenna</b></summary>
 
 | Entità | Dispositivo | Cosa mostra |
 |---|---|---|
@@ -396,7 +398,8 @@ che attraversa e per ciascuno si importa il mese intero. Per Ireti
 blocchi da un mese circa, la dimensione dell'unica richiesta finora
 confermata su dati reali.
 
-**`contatore_letture.recupera_ticket`** — solo Duereti/Unareti (gli altri
+**`contatore_letture.recupera_ticket`** — solo Duereti/Unareti/RetiPiù/Reti
+Valtellina Valchiavenna (gli altri
 distributori non hanno il concetto di ticket): riprende un ticket già
 esistente presso il distributore, saltando la richiesta di un nuovo export.
 
@@ -404,7 +407,7 @@ esistente presso il distributore, saltando la richiesta di un nuovo export.
 action: contatore_letture.recupera_ticket
 data:
   ticket: "ENdZS6CausBMlUzrS3as5Q"
-  entry_id: <opzionale, se hai più istanze Duereti/Unareti>
+  entry_id: <opzionale, se hai più istanze Duereti/Unareti/RetiPiù/RE.V.V.>
 ```
 
 ## Documentazione tecnica

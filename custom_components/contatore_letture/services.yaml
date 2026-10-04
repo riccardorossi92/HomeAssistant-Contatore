@@ -38,7 +38,7 @@ recupera_ticket:
     entry_id:
       name: ID configurazione
       description: >-
-        Necessario solo se hai più istanze Duereti/Unareti configurate, per
+        Necessario solo se hai più istanze Duereti/Unareti/RetiPiù/RE.V.V. configurate, per
         indicare su quale agire. Con una sola istanza lascialo vuoto.
       required: false
       selector:
@@ -48,10 +48,10 @@ recupera_storico:
   name: Recupera storico
   description: >-
     Richiede al distributore i dati di un periodo passato e li importa.
-    Funziona per Duereti/Unareti, E-Distribuzione e Areti, con un'unica
-    richiesta per l'intero periodo (per Duereti/Unareti può restare in
+    Funziona per Duereti/Unareti/RetiPiù/RE.V.V., E-Distribuzione e Areti, con un'unica
+    richiesta per l'intero periodo (per Duereti/Unareti/RetiPiù/RE.V.V. può restare in
     coda per ore). Il recupero dello storico non è automatico: sei tu a
-    decidere quando e quanto recuperare. Per Duereti/Unareti le API
+    decidere quando e quanto recuperare. Per Duereti/Unareti/RetiPiù/RE.V.V. le API
     accettano al massimo 6 mesi per richiesta (limite documentato); per
     E-Distribuzione è un limite di cortesia auto-imposto, non un vincolo
     noto delle loro API (confermato funzionante fino a 181 giorni in
@@ -65,7 +65,7 @@ recupera_storico:
       name: Configurazione / POD
       description: >-
         Scegli il dispositivo per cui recuperare lo storico. Per
-        Duereti/Unareti il dispositivo "account" recupera sempre tutti i
+        Duereti/Unareti/RetiPiù/RE.V.V. il dispositivo "account" recupera sempre tutti i
         POD della configurazione insieme; per E-Distribuzione e Areti puoi
         scegliere un dispositivo per un singolo POD, per limitare il
         recupero solo a quello.
@@ -77,7 +77,7 @@ recupera_storico:
     data_da:
       name: Data inizio
       description: >-
-        Primo giorno del periodo da recuperare. Per Duereti/Unareti non può
+        Primo giorno del periodo da recuperare. Per Duereti/Unareti/RetiPiù/RE.V.V. non può
         essere anteriore a 6 mesi prima della data di fine.
       required: true
       example: "2026-02-01"
