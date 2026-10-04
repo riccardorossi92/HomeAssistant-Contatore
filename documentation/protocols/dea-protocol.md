@@ -6,11 +6,12 @@ Comuni di **Marche** (Osimo, Recanati, …), **Abruzzo** (Ortona),
 **Liguria** (Sanremo) e, più di recente, della provincia di **Brescia**.
 **Non ancora supportato.**
 
-Aggiornamento 04/10/2026: prima cattura HAR reale disponibile — login
+Aggiornamento 04/10/2026: due catture HAR reale disponibile — login
 completo (credenziali, **senza 2FA**) da un account **attivo** (nessun
 messaggio di "attesa di validazione" come per [V-Reti](v-reti-protocol.md))
-ma **senza alcuna utenza associata**: la sezione Utenze, aperta a mano
-dal browser, mostra "Nessun risultato".
+ma **senza alcuna utenza associata**: la seconda cattura arriva fino
+alla pagina Utenze (griglia con colonne Letture e Curve), che però
+mostra "Nessun risultato".
 
 ## Quadro generale
 
@@ -24,7 +25,7 @@ dal browser, mostra "Nessun risultato".
 > (coerente con `D1E`/`DJY`/`dD4` degli altri). Il token compare anche in
 > `/EPUF/Frontend/customs/DG4/custom.js` e in
 > `Images.ashx?...&tmp=DG4`, quindi sembra identificare l'istanza/tema
-> più che la sessione — da verificare con una seconda cattura.
+> più che la sessione — confermato dalla seconda cattura (vedi sotto).
 
 - Portale: `https://portale.deaelettrica.it/EPUF/PROD/it-IT/DG4/Page/Login.tws`
 - Raggiungibile dal sito istituzionale (`www.deaelettrica.it/clienti/` →
@@ -76,12 +77,38 @@ Rispetto a V-Reti manca lo Sportello On-Line Gas e la Modulistica.
 Nessuna voce di menu di primo livello per Letture/Curve: come per gli
 altri PUF ci si aspetta che stiano **dentro Utenze**, per singolo POD.
 
-### Pagina Utenze (da screenshot, non presente nella HAR)
+### Pagina Utenze — verificata con seconda cattura (04/10/2026)
 
-Filtri: **Servizio**, **Codice PDR / Codice POD**, **Ruolo**, pulsante
-Cerca. Colonne della tabella: Servizio, Codice utenza, Ruolo, Venditore,
-Codice Misuratore (più altre fuori schermo). Legenda: "Interruzioni
-programmate". Con l'account della cattura: "Nessun risultato".
+Navigazione: `POST Single.tws` con
+`__EVENTTARGET=ctl00$body$ctl00$mMenu1$FirstLevelMenuRepeater$ctl01$lnkLevelMenu`
+(prima voce di menu = Utenze), che risponde con la pagina ancora senza
+contenuto; il browser rilancia poi da solo il solito
+`__EVENTTARGET=body_ctl00_SecondPostback` ed è **quella** risposta a
+contenere il form Utenze. Ogni cambio pagina costa quindi due POST.
+
+Form di ricerca (prefisso
+`ctl00$body$ctl00$ctl00$tcListUtenze$TList$cUFListUtenze$`):
+
+| Campo | Nome | Valori |
+|---|---|---|
+| Servizio | `ddlServizio` | `""` (tutti), `E` = Energia Elettrica |
+| Codice PDR / POD | `txtCodute` | testo libero |
+| Ruolo | `ddlRuolo` | `""`, `E` = Prelievo, `C` = Immissione, `P` = Produzione, `X` = Assorbimento, `Y` = Rilascio |
+| Cerca | `btnCerca` | `Cerca` |
+
+Colonne della griglia: Servizio, Codice utenza, Ruolo, Venditore,
+Codice Misuratore, Indirizzo, Città/Provincia, Stato, più tre colonne
+azione da 60px: **Dettaglio**, **Letture**, **Curve**. Quindi letture e
+curve sono raggiungibili per riga (per POD e ruolo) direttamente dalla
+griglia. Legenda: interruzioni programmate, interruzioni subite
+nell'anno, diritto a rimborsi/indennizzi.
+
+Con l'account della cattura la griglia è vuota ("Nessun risultato") già
+al primo caricamento, senza premere Cerca.
+
+Il token `DG4` nel path è **identico in due sessioni distinte** (prima e
+seconda cattura): è fisso per l'istanza DEA, non per sessione, quindi
+l'URL di login si può scrivere in chiaro nel codice.
 
 ## Cosa manca
 
@@ -91,8 +118,8 @@ programmate". Con l'account della cattura: "Nessun risultato".
    codice fiscale dell'intestatario? richiesta manuale?).
 2. Con quell'account: se l'export delle curve produce un file
    scaricabile diretto o un flusso differito, e in che formato.
-3. Verificare se `DG4` è fisso per l'istanza (vedi nota sopra): se sì,
-   l'URL di login si può scrivere in chiaro nel codice.
+3. Cosa restituiscono i pulsanti **Letture** e **Curve** di una riga
+   (postback con argomento di riga? pagina dedicata? download?).
 
 ## Come contribuire
 
