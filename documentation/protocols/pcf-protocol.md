@@ -1,4 +1,4 @@
-# Duereti / Unareti / RetiPiù — protocollo PCF
+# Duereti / Unareti / RetiPiù / Reti Valtellina Valchiavenna — protocollo PCF
 
 Codice: `custom_components/contatore_letture/distributors/pcf_common/`.
 Protocollo "Portale Clienti Finali" (Client ID + Secret ID, abilitazione
@@ -19,17 +19,21 @@ letture periodiche).
 > `distributors/retipiu.py`. Non ancora provato con credenziali reali.
 
 > [!NOTE]
-> **Altri portali con lo stesso schema** (`areaclienti.<dominio>/Clienti<Nome>Web`),
-> non ancora integrati:
+> **Reti Valtellina Valchiavenna** (RE.V.V., gruppo Acinque, dal
+> 04/10/2026): manuale API scaricato da
+> `areaclienti.valtellinarevv.it/ClientiRvvWeb/downloadFileTemplate.action?codice=MANUALE_RICH_API`,
+> identico parola per parola a quello di RetiPiù salvo `HOST_NAME =
+> areaclienti.valtellinarevv.it/ClientiRvvWeb`. Elettricità a Sondrio,
+> Tirano, Sernio, Valdisotto (~26.000 utenze). Modulo:
+> `distributors/revv.py`, P.IVA `01017590140` da registro imprese (non
+> ancora confrontata con la scheda ARERA). Non ancora provato con
+> credenziali reali.
 >
-> - **Reti Valtellina Valchiavenna** (RE.V.V., gruppo Acinque/A2A) —
->   `areaclienti.valtellinarevv.it/ClientiRvvWeb`, elettricità a Sondrio,
->   Tirano, Sernio, Valdisotto (~26.000 utenze), P.IVA `01017590140` (da
->   registro imprese, non ancora confrontata con la scheda ARERA). Manca la
->   conferma che esponga le API PCF: il manuale andrebbe cercato su
->   `.../ClientiRvvWeb/downloadFileTemplate.action?codice=MANUALE_RICH_API`.
+> Stesso schema di portale, non rilevante qui:
+>
 > - **Lereti** (gruppo Acinque) — `areaclienti.leretispa.it/ClientiLeRetiWeb`,
 >   ma distribuisce gas e acqua, non elettricità: non rilevante qui.
+
 ## Modello dati: mese solare chiuso (dal 08/09/2026)
 
 I manuali `Manuale_PCF_Rich_API` di Unareti e Duereti (identici tra loro a

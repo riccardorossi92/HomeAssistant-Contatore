@@ -13,7 +13,8 @@ contatore_letture/
     duereti.py                 # BASE_URL/DISPLAY_NAME/PIVA Duereti (sottile)
     unareti.py                  # BASE_URL/DISPLAY_NAME/PIVA Unareti (sottile)
     retipiu.py                  # BASE_URL/DISPLAY_NAME/PIVA RetiPiù (sottile)
-    pcf_common/                   # libreria condivisa Duereti/Unareti/RetiPiù
+    revv.py                     # BASE_URL/DISPLAY_NAME/PIVA Reti Valtellina Valchiavenna (sottile)
+    pcf_common/                   # libreria condivisa Duereti/Unareti/RetiPiù/RE.V.V.
       api.py                       # client requestToken/requestExport/requestResult
       coordinator.py                 # cursore mensile per POD (mese chiuso), retry ticket
       date_utils.py                   # helper di mese puri (no import da homeassistant)
