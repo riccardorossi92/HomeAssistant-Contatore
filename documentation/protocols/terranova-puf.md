@@ -23,7 +23,7 @@ caso per caso.
 | Deval | Valle d'Aosta | [deval-protocol.md](deval-protocol.md) — login con 2FA, nessun POD |
 | Edyna | Alto Adige | [edyna-protocol.md](edyna-protocol.md) — login ok, nessun POD |
 | Odoardo Zecca S.r.l. | Ortona (CH) | ramo distribuzione **ceduto a DEA nel 2023**: i suoi clienti stanno ora sul portale DEA |
-| RetiPiù | Desio/Seregno (Brianza) | **nessun PUF Terranova**: l'area clienti è `areaclienti.retipiu.it/ClientiRPiuWeb`, stessa piattaforma "Portale Clienti Finali" di Unareti (`/ClientiWeb`) e Duereti (`/ClientiDueRetiWeb`) — candidato per `pcf_common`, vedi sotto |
+| RetiPiù | Desio/Seregno (Brianza) | **nessun PUF Terranova**: l'area clienti è `areaclienti.retipiu.it/ClientiRPiuWeb`, stessa piattaforma "Portale Clienti Finali" di Unareti (`/ClientiWeb`) e Duereti (`/ClientiDueRetiWeb`) — **supportato** via `pcf_common` (`distributors/retipiu.py`), vedi sotto |
 | SIEC — Società per l'Illuminazione Elettrica in Chiavenna | Chiavenna e Prata Camportaccio (SO), ~8.000 utenze | portale clienti non trovato |
 | V-Reti | Verona, Vicenza, Grezzana | [v-reti-protocol.md](v-reti-protocol.md) — login ok, account in attesa di validazione |
 
@@ -34,14 +34,13 @@ tensione, SIEC non ha un portale noto.
 
 ### RetiPiù e il protocollo PCF
 
-Il path `ClientiRPiuWeb` segue lo stesso schema di Unareti e Duereti, già
-supportati da `pcf_common`, e RetiPiù pubblica un manuale intitolato
-"[PCF - TICA] Manuale portale clienti finali". Se RetiPiù espone anche
-le API PCF (abilitazione manuale, Client ID + Secret ID), il supporto
-potrebbe ridursi a un modulo sottile come `unareti.py` con
-`BASE_URL = "https://areaclienti.retipiu.it/ClientiRPiuWeb/public/misure"`.
-**Non verificato**: serve un cliente RetiPiù che controlli se nella sua
-area clienti compare la richiesta di abilitazione API.
+Confermato dal manuale API ufficiale di RetiPiù (stesso percorso
+`downloadFileTemplate.action?codice=MANUALE_RICH_API` di Duereti):
+`HOST_NAME = areaclienti.retipiu.it/ClientiRPiuWeb`, stesse chiamate
+`requestToken`/`requestExport`/`requestResult` di Duereti/Unareti. Aggiunto
+come modulo sottile `distributors/retipiu.py` — vedi
+[pcf-protocol.md](pcf-protocol.md). Non ancora provato con credenziali
+reali.
 
 ## Istanze PUF confermate
 

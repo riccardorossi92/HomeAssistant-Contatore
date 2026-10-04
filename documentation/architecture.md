@@ -12,7 +12,8 @@ contatore_letture/
     __init__.py               # registry: DISTRIBUTOR_REGISTRY, PIVA_TO_KEY
     duereti.py                 # BASE_URL/DISPLAY_NAME/PIVA Duereti (sottile)
     unareti.py                  # BASE_URL/DISPLAY_NAME/PIVA Unareti (sottile)
-    pcf_common/                   # libreria condivisa Duereti/Unareti
+    retipiu.py                  # BASE_URL/DISPLAY_NAME/PIVA RetiPiù (sottile)
+    pcf_common/                   # libreria condivisa Duereti/Unareti/RetiPiù
       api.py                       # client requestToken/requestExport/requestResult
       coordinator.py                 # cursore mensile per POD (mese chiuso), retry ticket
       date_utils.py                   # helper di mese puri (no import da homeassistant)

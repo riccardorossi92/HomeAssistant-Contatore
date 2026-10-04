@@ -5,7 +5,7 @@ Unofficial meta-integration for Italian electricity distributor meter data in Ho
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://hacs.xyz/)
 [![GitHub Release](https://img.shields.io/github/v/release/riccardorossi92/HomeAssistant-Contatore.svg?style=for-the-badge&color=blue)](https://github.com/riccardorossi92/HomeAssistant-Contatore/releases)
 
-> **Disclaimer:** This is an unofficial integration and is not affiliated with or endorsed by ARERA, Duereti, Unareti, E-Distribuzione, Areti, Ireti, or any other distributor in any way.
+> **Disclaimer:** This is an unofficial integration and is not affiliated with or endorsed by ARERA, Duereti, Unareti, RetiPiù, E-Distribuzione, Areti, Ireti, or any other distributor in any way.
 
 Integrazione per Home Assistant che, dato il tuo comune, individua
 automaticamente il distributore elettrico competente (interrogando
@@ -22,6 +22,7 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 |---|---|---|
 | Duereti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
 | Unareti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
+| RetiPiù | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
 | E-Distribuzione | Email + password + OTP | `recupera_storico` |
 | Areti | Email + password | `recupera_storico` |
 | Ireti | Username + password | `recupera_storico` |
@@ -40,6 +41,13 @@ funzionante su installazioni reali. Dettagli sulle azioni in
 > monorari) — vedi
 > [documentation/protocols/ireti-protocol.md](documentation/protocols/ireti-protocol.md).
 > Se lo provi e trovi un problema, apri una issue.
+
+> [!NOTE]
+> **RetiPiù** (Desio/Seregno) è nuovo: usa lo stesso Portale Clienti
+> Finali e le stesse API di Duereti/Unareti (verificato sul manuale API
+> ufficiale di RetiPiù), quindi riusa lo stesso codice già collaudato — ma
+> **non è ancora stato provato con credenziali reali**. Se hai un'utenza
+> RetiPiù e lo provi, apri una issue con l'esito.
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
@@ -162,7 +170,7 @@ protocolli distinti imposti da ciascun distributore. Espandi la sezione
 del tuo distributore per i dettagli.
 
 <details>
-<summary><b>Duereti / Unareti (Client ID + Secret ID)</b></summary>
+<summary><b>Duereti / Unareti / RetiPiù (Client ID + Secret ID)</b></summary>
 
 Le API PCF non sono pubbliche in modo libero: vanno abilitate manualmente
 dal distributore, che poi invia via email le credenziali (`client_id` e
@@ -171,6 +179,7 @@ dal distributore, che poi invia via email le credenziali (`client_id` e
 1. Accedi al **Portale Clienti Finali (PCF)** del tuo distributore:
    - Duereti: [areaclienti.duereti.it](https://areaclienti.duereti.it/ClientiDueRetiWeb)
    - Unareti: [areaclienti.unareti.it](https://areaclienti.unareti.it/ClientiWeb)
+   - RetiPiù: [areaclienti.retipiu.it](https://areaclienti.retipiu.it/ClientiRPiuWeb)
 2. Assicurati di avere **almeno un'identificazione validata** dal
    backoffice del distributore sul tuo profilo: senza questo passaggio la
    richiesta di abilitazione API non compare nemmeno.

@@ -1,4 +1,4 @@
-# Duereti / Unareti — protocollo PCF
+# Duereti / Unareti / RetiPiù — protocollo PCF
 
 Codice: `custom_components/contatore_letture/distributors/pcf_common/`.
 Protocollo "Portale Clienti Finali" (Client ID + Secret ID, abilitazione
@@ -7,6 +7,16 @@ manuale via portale), a due fasi: richiesta di un ticket di export
 (`requestResult`) e download del file (CSV per la curva, XLSX per le
 letture periodiche).
 
+> [!NOTE]
+> **RetiPiù** (dal 04/10/2026): il suo manuale "API per Estrazione Curve e
+> Letture" (`areaclienti.retipiu.it/ClientiRPiuWeb/downloadFileTemplate.action?codice=MANUALE_RICH_API`,
+> stesso percorso di Duereti) dichiara `HOST_NAME =
+> areaclienti.retipiu.it/ClientiRPiuWeb` e descrive le stesse tre
+> chiamate, gli stessi campi, gli stessi codici di errore e lo stesso zip
+> Base64. La versione scaricata **non** contiene la frase sulle curve
+> disponibili solo "fino al mese appena concluso": il cursore mensile di
+> `pcf_common` funziona comunque, al più è prudente. Modulo:
+> `distributors/retipiu.py`. Non ancora provato con credenziali reali.
 ## Modello dati: mese solare chiuso (dal 08/09/2026)
 
 I manuali `Manuale_PCF_Rich_API` di Unareti e Duereti (identici tra loro a

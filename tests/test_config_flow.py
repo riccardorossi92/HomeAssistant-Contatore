@@ -25,7 +25,7 @@ from custom_components.contatore_letture.const import (
     CONF_SECRET_ID,
     DOMAIN,
 )
-from custom_components.contatore_letture.distributors import duereti, unareti
+from custom_components.contatore_letture.distributors import duereti, retipiu, unareti
 from custom_components.contatore_letture.distributors.edistribuzione import (
     api as edist_api,
 )
@@ -73,6 +73,7 @@ FAKE_TREE = {
 
 OP_DUERETI = {"ragione_sociale": "DUERETI S.P.A.", "piva": duereti.PIVA}
 OP_UNARETI = {"ragione_sociale": "UNARETI S.P.A.", "piva": unareti.PIVA}
+OP_RETIPIU = {"ragione_sociale": "RETIPIU' S.R.L.", "piva": retipiu.PIVA}
 OP_SCONOSCIUTO = {"ragione_sociale": "ACME Energia", "piva": "00000000000"}
 
 
@@ -153,6 +154,33 @@ async def test_operatore_non_supportato_va_a_manual_select(hass, flow_mocks):
     flow_mocks["query"].return_value = [OP_SCONOSCIUTO]
     res = await _fino_a_comune(hass)
     assert res["step_id"] == "manual_select"
+
+
+async def test_retipiu_usa_il_ramo_pcf_col_proprio_modulo(hass, flow_mocks, monkeypatch):
+    """RetiPiù riconosciuto da ARERA per P.IVA: stesso ramo "pcf" di
+    Duereti/Unareti, ma le validazioni passano dal modulo retipiu (quindi
+    dal suo BASE_URL), non da quello di Duereti."""
+    flow_mocks["query"].return_value = [OP_RETIPIU]
+    monkeypatch.setattr(retipiu, "async_valida_credenziali", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        retipiu,
+        "async_valida_pod",
+        AsyncMock(return_value=(None, ("TCK", date(2026, 8, 1), date(2026, 8, 31)))),
+    )
+    res = await _fino_a_comune(hass)
+    assert res["step_id"] == "distributor_info"
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {})
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {CONF_CLIENT_ID: "cid", CONF_SECRET_ID: "sid"}
+    )
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"],
+        {"pod": "IT001E00000001", "df": "RSSMRA80A01H501U", "aggiungi_altro": False},
+    )
+    assert res["type"] == FlowResultType.CREATE_ENTRY
+    assert res["data"]["distributor"] == "retipiu"
+    retipiu.async_valida_credenziali.assert_awaited_once()
+    duereti.async_valida_credenziali.assert_not_awaited()
 
 
 # --- ramo PCF -------------------------------------------------------------

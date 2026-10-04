@@ -1,7 +1,7 @@
 """Registry centrale dei distributori supportati da contatore_letture.
 
-Duereti e Unareti condividono la stessa libreria (pcf_common) ma restano
-moduli distinti (distributors/duereti.py, distributors/unareti.py): se
+Duereti, Unareti e RetiPiù condividono la stessa libreria (pcf_common) ma
+restano moduli distinti (distributors/duereti.py, unareti.py, retipiu.py): se
 domani uno dei due diverge, si cambia solo il suo modulo. E-Distribuzione
 e' un pacchetto a se' (protocollo OAuth2+PKCE/OTP via Salesforce,
 completamente diverso da PCF) - vedi distributors/edistribuzione/. Areti
@@ -14,10 +14,10 @@ coda/cursore) - vedi distributors/ireti/.
 """
 from __future__ import annotations
 
-from . import areti, duereti, edistribuzione, ireti, unareti
+from . import areti, duereti, edistribuzione, ireti, retipiu, unareti
 
 # "kind" distingue il tipo di flow che il distributore usa nel config flow:
-# "pcf" ha credenziali client_id/secret_id + lista POD (Duereti/Unareti,
+# "pcf" ha credenziali client_id/secret_id + lista POD (Duereti/Unareti/RetiPiù,
 # stesso schema condiviso), "edistribuzione" ha login email/password + OTP
 # + selezione POD tra quelli dell'account, "areti" ha login email/password
 # (nessun OTP osservato) + POD inseriti a mano (nessun elenco "tutti i POD
@@ -38,6 +38,13 @@ DISTRIBUTOR_REGISTRY: dict[str, dict] = {
         "kind": "pcf",
         "module": unareti,
         "required_info": unareti.REQUIRED_INFO,
+    },
+    "retipiu": {
+        "display_name": retipiu.DISPLAY_NAME,
+        "piva": retipiu.PIVA,
+        "kind": "pcf",
+        "module": retipiu,
+        "required_info": retipiu.REQUIRED_INFO,
     },
     "edistribuzione": {
         "display_name": edistribuzione.DISPLAY_NAME,
