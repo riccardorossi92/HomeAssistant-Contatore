@@ -106,6 +106,19 @@ elettrica V-Reti già validata (con POD associato) puoi aiutare — vedi
 </details>
 
 <details>
+<summary><b>DEA</b> (Osimo/Recanati, Ortona, Sanremo, Bresciano — Distribuzione Elettrica Adriatica) — login ok, nessun POD associato</summary>
+
+Quarta istanza dello stesso prodotto Terranova PUF di Edyna, Deval e
+V-Reti, con registrazione self-service online. Login verificato con una
+cattura reale (senza 2FA, identico a V-Reti) da un account attivo ma
+senza utenze associate, quindi manca ancora la conferma delle sezioni
+Letture/Curve. Se hai una fornitura DEA con il POD visibile in "Utenze"
+puoi aiutare — vedi
+[documentation/protocols/dea-protocol.md](documentation/protocols/dea-protocol.md).
+
+</details>
+
+<details>
 <summary><b>AcegasApsAmga</b> (Trieste / Padova / Gorizia, gruppo Hera) — endpoint individuati ma mai provati</summary>
 
 Login (Azure AD B2C) e anagrafica verificati, endpoint energia
