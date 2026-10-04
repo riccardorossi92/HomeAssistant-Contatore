@@ -1,8 +1,8 @@
 recupera_ticket:
   name: Recupera un ticket
   description: >-
-    Riprende un ticket già esistente presso il distributore (Duereti o
-    Unareti), saltando la chiamata requestExport. Utile quando si è ottenuto
+    Riprende un ticket già esistente presso il distributore (Duereti,
+    Unareti, RetiPiù o RE.V.V.), saltando la chiamata requestExport. Utile quando si è ottenuto
     un ticket per altre vie (es. una chiamata manuale con curl/Bruno) o
     quando l'integrazione ne aveva perso uno ancora valido: evita di
     chiedere un nuovo export, che è la chiamata più spesso bloccata dal WAF.
