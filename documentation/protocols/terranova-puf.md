@@ -17,15 +17,31 @@ caso per caso.
 
 | Distributore | Zona | Stato nel repository |
 |---|---|---|
-| AMET S.p.A. | Trani (BT) | non ancora esaminato |
-| ASM Terni S.p.A. | Terni | non ancora esaminato |
+| AMET S.p.A. (distribuzione: ADistribuzione Reti Trani) | Trani (BT) | nessun PUF trovato: solo un "Portale Utenti MT" (media tensione) |
+| ASM Terni S.p.A. (TDE — Terni Distribuzione Elettrica) | Terni | portale `distribuzione.asmtde.it` (pagine `.aspx` con `idn=00AE`, stesso parametro `idn` del PUF): letture solo per utenti MT, curve orarie su richiesta via PEC — nessun PUF per BT trovato |
 | DEA — Distribuzione Elettrica Adriatica | Osimo/Recanati, Ortona, Sanremo, Bresciano | [dea-protocol.md](dea-protocol.md) — login ok, nessun POD |
 | Deval | Valle d'Aosta | [deval-protocol.md](deval-protocol.md) — login con 2FA, nessun POD |
 | Edyna | Alto Adige | [edyna-protocol.md](edyna-protocol.md) — login ok, nessun POD |
-| Zecca ("energia vicina dal 1905") | da verificare | non ancora esaminato |
-| RetiPiù | Brianza (gruppo AEB), da verificare | non ancora esaminato |
-| SIEC soc. coop. | da verificare | non ancora esaminato |
+| Odoardo Zecca S.r.l. | Ortona (CH) | ramo distribuzione **ceduto a DEA nel 2023**: i suoi clienti stanno ora sul portale DEA |
+| RetiPiù | Desio/Seregno (Brianza) | **nessun PUF Terranova**: l'area clienti è `areaclienti.retipiu.it/ClientiRPiuWeb`, stessa piattaforma "Portale Clienti Finali" di Unareti (`/ClientiWeb`) e Duereti (`/ClientiDueRetiWeb`) — candidato per `pcf_common`, vedi sotto |
+| SIEC — Società per l'Illuminazione Elettrica in Chiavenna | Chiavenna e Prata Camportaccio (SO), ~8.000 utenze | portale clienti non trovato |
 | V-Reti | Verona, Vicenza, Grezzana | [v-reti-protocol.md](v-reti-protocol.md) — login ok, account in attesa di validazione |
+
+In pratica, dei cinque nomi nuovi nessuno aggiunge per ora un PUF per
+clienti domestici: Zecca è confluita in DEA, RetiPiù usa un'altra
+piattaforma, AMET e ASM Terni espongono solo servizi per la media
+tensione, SIEC non ha un portale noto.
+
+### RetiPiù e il protocollo PCF
+
+Il path `ClientiRPiuWeb` segue lo stesso schema di Unareti e Duereti, già
+supportati da `pcf_common`, e RetiPiù pubblica un manuale intitolato
+"[PCF - TICA] Manuale portale clienti finali". Se RetiPiù espone anche
+le API PCF (abilitazione manuale, Client ID + Secret ID), il supporto
+potrebbe ridursi a un modulo sottile come `unareti.py` con
+`BASE_URL = "https://areaclienti.retipiu.it/ClientiRPiuWeb/public/misure"`.
+**Non verificato**: serve un cliente RetiPiù che controlli se nella sua
+area clienti compare la richiesta di abilitazione API.
 
 ## Istanze PUF confermate
 
