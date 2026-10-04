@@ -44,7 +44,9 @@ standard), token di sessione nel path (`DJY`).
 > postback e — plausibilmente — stessa forma di export dati. Terza
 > istanza confermata (14/09/2026, con una cattura reale — login senza
 > 2FA, a differenza di qui): **[V-Reti](v-reti-protocol.md)** (Verona/
-> Vicenza), app `PUF` — vedi quel documento.
+> Vicenza), app `PUF` — vedi quel documento. Quarta: **[DEA](dea-protocol.md)**.
+> Elenco completo dei clienti Terranova (prodotto RETIENERGIA) in
+> [terranova-puf.md](terranova-puf.md).
 
 Significa, come per Edyna, che **non c'è un bundle JS da leggere per
 indovinare gli endpoint dati**: l'unico modo per sapere davvero come

@@ -27,6 +27,8 @@ mostra "Nessun risultato".
 > `Images.ashx?...&tmp=DG4`, quindi sembra identificare l'istanza/tema
 > più che la sessione — confermato dalla seconda cattura (vedi sotto).
 
+- Elenco degli altri distributori sullo stesso prodotto (RETIENERGIA):
+  [terranova-puf.md](terranova-puf.md).
 - Portale: `https://portale.deaelettrica.it/EPUF/PROD/it-IT/DG4/Page/Login.tws`
 - Raggiungibile dal sito istituzionale (`www.deaelettrica.it/clienti/` →
   "Portale Clienti" → Accedi / registrati qui).
