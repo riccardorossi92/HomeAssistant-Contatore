@@ -20,7 +20,7 @@ from .pcf_common.coordinator import PcfCoordinator
 from .pcf_common.sensor import build_pcf_entities
 
 DISPLAY_NAME = "Reti Valtellina Valchiavenna"
-PIVA = "01017590140"  # RE.V.V. S.R.L. (Sondrio, gruppo Acinque), da registro imprese
+PIVA = "01017590140"  # confermata via scheda operatore ARERA (Id operatore 28064, gruppo Acinque)
 BASE_URL = "https://areaclienti.valtellinarevv.it/ClientiRvvWeb/public/misure"
 PORTAL_URL = "https://areaclienti.valtellinarevv.it/ClientiRvvWeb"
 

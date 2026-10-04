@@ -25,8 +25,8 @@ letture periodiche).
 > identico parola per parola a quello di RetiPiù salvo `HOST_NAME =
 > areaclienti.valtellinarevv.it/ClientiRvvWeb`. Elettricità a Sondrio,
 > Tirano, Sernio, Valdisotto (~26.000 utenze). Modulo:
-> `distributors/revv.py`, P.IVA `01017590140` da registro imprese (non
-> ancora confrontata con la scheda ARERA). Non ancora provato con
+> `distributors/revv.py`, P.IVA `01017590140` confermata dalla scheda
+> operatore ARERA (Id 28064). Non ancora provato con
 > credenziali reali.
 >
 > Stesso schema di portale, non rilevante qui:
