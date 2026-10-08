@@ -147,6 +147,9 @@ def _log_parsing_failure_context(
 
 _MAX_REDIRECT_HOPS = 15
 
+# Titolo della pagina di blocco anti-bot Imperva (ex Distil Networks).
+_RE_PAGINA_ANTIBOT = re.compile(r"Pardon\s+Our\s+Interruption", re.IGNORECASE)
+
 
 class EdistribuzioneAuthError(Exception):
     """Generic authentication failure."""
@@ -168,6 +171,18 @@ class EdistribuzioneTroppeSessioni(EdistribuzioneAuthError):
     altre sessioni non vengono chiuse o non scadono (app ufficiale, sito,
     tentativi precedenti di questa stessa integrazione) non c'e' niente da
     reinserire nel form, va liberata una sessione e riprovato.
+    """
+
+
+class EdistribuzioneBloccoAntibot(EdistribuzioneAuthError):
+    """Il portale ha risposto con la pagina "Pardon Our Interruption" della
+    protezione anti-bot Imperva invece che con la pagina di login.
+
+    Visto in un log reale l'08/10/2026: HTTP 200 direttamente su
+    /services/oauth2/authorize, nessun redirect, 6183 caratteri. Non e' un
+    cambio di markup ne' un problema di credenziali: la richiesta viene
+    fermata prima di arrivare al login, quindi nessun regex puo' trovarci
+    dentro fwuid.
     """
 
 
@@ -331,6 +346,20 @@ class EdistribuzioneAuthClient:
         # finirebbe nei log che gli utenti incollano nelle issue.
         landing_url = str(resp.url.with_query(None))
         resp.close()
+
+        if _RE_PAGINA_ANTIBOT.search(login_page_html):
+            _LOGGER.warning(
+                "E-Distribuzione ha risposto con la pagina anti-bot Imperva "
+                "(\"Pardon Our Interruption\", HTTP %s su %s) invece che con "
+                "la pagina di login",
+                landing_status,
+                landing_url,
+            )
+            _salva_pagina_debug(login_page_html, "login_page_debug.html")
+            raise EdistribuzioneBloccoAntibot(
+                f"Richiesta bloccata dalla protezione anti-bot del portale "
+                f"(HTTP {landing_status} su {landing_url})"
+            )
 
         try:
             self._flow.fwuid = self._extract_fwuid(login_page_html)

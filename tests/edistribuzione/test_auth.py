@@ -123,6 +123,30 @@ class TestBeginLoginSenzaFwuid:
         assert "mario" not in messaggio
         assert "Servizio non disponibile" in caplog.text
 
+    async def test_pagina_antibot_solleva_eccezione_dedicata(
+        self, monkeypatch, tmp_path
+    ):
+        """Visto in un log reale l'08/10/2026: HTTP 200 su oauth2/authorize
+        con la pagina di blocco Imperva al posto del login."""
+        monkeypatch.chdir(tmp_path)
+        risposta = _RispostaLoginFinta(
+            200,
+            "https://private.e-distribuzione.it/PortaleClienti/services/oauth2/"
+            "authorize?login_hint=mario%40example.com",
+            "<!DOCTYPE html>\r\n<html>\r\n<head>\r\n <noscript>\r\n"
+            " <title>Pardon Our Interruption</title>\r\n </noscript>",
+        )
+
+        async def _finto_get(*args, **kwargs):
+            return risposta
+
+        monkeypatch.setattr(auth, "_get_following_redirects", _finto_get)
+        client = auth.EdistribuzioneAuthClient(session=None)
+        with pytest.raises(auth.EdistribuzioneBloccoAntibot) as exc_info:
+            await client.async_begin_login("mario@example.com", "pw")
+        assert not isinstance(exc_info.value, auth.EdistribuzioneParsingError)
+        assert "mario" not in str(exc_info.value)
+
 
 # ---------------------------------------------------------------------------
 # _extract_loaded

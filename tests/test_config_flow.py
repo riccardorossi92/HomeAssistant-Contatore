@@ -33,6 +33,7 @@ from custom_components.contatore_letture.distributors.edistribuzione import (
     auth as edist_auth,
 )
 from custom_components.contatore_letture.distributors.edistribuzione.auth import (
+    EdistribuzioneBloccoAntibot,
     EdistribuzioneInvalidCredentials,
     EdistribuzioneInvalidOtp,
     EdistribuzioneParsingError,
@@ -401,6 +402,23 @@ async def test_edist_pagina_login_cambiata(hass, _arera_sconosciuto, edist_mocks
         res["flow_id"], {"email": "a@b.it", "password": "x"}
     )
     assert res["errors"] == {"base": "cannot_connect"}
+
+
+async def test_edist_bloccato_dalla_protezione_antibot(
+    hass, _arera_sconosciuto, edist_mocks
+):
+    """La pagina anti-bot Imperva non e' un cambio di markup: va mostrato un
+    errore dedicato, non il generico cannot_connect."""
+    edist_mocks.auth.async_begin_login.side_effect = EdistribuzioneBloccoAntibot(
+        "Pardon Our Interruption"
+    )
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.FORM
+    assert res["step_id"] == "edistribuzione_user"
+    assert res["errors"] == {"base": "bloccato_antibot"}
 
 
 async def test_edist_otp_non_valido(hass, _arera_sconosciuto, edist_mocks):
