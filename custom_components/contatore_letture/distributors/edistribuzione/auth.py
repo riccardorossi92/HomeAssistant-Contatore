@@ -121,7 +121,9 @@ def _salva_pagina_debug(html: str, nome_file: str) -> None:
     loop.run_in_executor(None, _scrivi_pagina_debug, html, nome_file)
 
 
-def _log_parsing_failure_context(html: str, campo_cercato: str) -> None:
+def _log_parsing_failure_context(
+    html: str, campo_cercato: str, nome_file_debug: str = "otp_page_debug.html"
+) -> None:
     """Logga titolo + un'anteprima della pagina quando un campo atteso non
     si trova - serve a distinguere "regex sbagliato" (il campo c'e' ma in
     forma diversa) da "pagina completamente diversa da quella attesa"
@@ -141,7 +143,7 @@ def _log_parsing_failure_context(html: str, campo_cercato: str) -> None:
         len(html),
         html[:300],
     )
-    _salva_pagina_debug(html, "otp_page_debug.html")
+    _salva_pagina_debug(html, nome_file_debug)
 
 _MAX_REDIRECT_HOPS = 15
 
@@ -324,9 +326,28 @@ class EdistribuzioneAuthClient:
         )
         aura_page_uri = resp.url.path_qs
         referer = str(resp.url)
+        landing_status = resp.status
+        # Senza query string: contiene login_hint (l'email dell'utente) e
+        # finirebbe nei log che gli utenti incollano nelle issue.
+        landing_url = str(resp.url.with_query(None))
         resp.close()
 
-        self._flow.fwuid = self._extract_fwuid(login_page_html)
+        try:
+            self._flow.fwuid = self._extract_fwuid(login_page_html)
+        except EdistribuzioneParsingError as err:
+            # Distingue "portale giu'/in manutenzione" (status 5xx, pagina
+            # di errore, URL di atterraggio diverso dalla pagina di login)
+            # da "markup cambiato" (pagina di login regolare ma fwuid in una
+            # forma che i regex non riconoscono) senza dover chiedere una
+            # cattura HAR per scoprirlo.
+            _log_parsing_failure_context(
+                login_page_html, "fwuid su pagina di login", "login_page_debug.html"
+            )
+            raise EdistribuzioneParsingError(
+                f"fwuid not found on login page (HTTP {landing_status}, "
+                f"atterrati su {landing_url}, pagina lunga "
+                f"{len(login_page_html)} caratteri - vedi log per un'anteprima)"
+            ) from err
         loaded = self._extract_loaded(login_page_html)
         # aura.token: confermato su una HAR reale con login riuscito il
         # 20/08/2026 che il client invia letteralmente la stringa "null"

@@ -79,6 +79,51 @@ class TestExtractFwuid:
             auth.EdistribuzioneAuthClient._extract_fwuid("<html>niente qui</html>")
 
 
+class _RispostaLoginFinta:
+    def __init__(self, status: int, url: str, body: str) -> None:
+        from yarl import URL
+
+        self.status = status
+        self.url = URL(url)
+        self._body = body
+
+    async def text(self) -> str:
+        return self._body
+
+    def close(self) -> None:
+        pass
+
+
+class TestBeginLoginSenzaFwuid:
+    async def test_errore_riporta_status_e_url_senza_email(
+        self, monkeypatch, tmp_path, caplog
+    ):
+        """Con il portale in manutenzione arriva una pagina senza fwuid: il
+        messaggio deve bastare a distinguerlo da un cambio di markup, senza
+        far finire nei log l'email contenuta in login_hint."""
+        monkeypatch.chdir(tmp_path)
+        risposta = _RispostaLoginFinta(
+            503,
+            "https://private.e-distribuzione.it/PortaleClienti/s/login/"
+            "?login_hint=mario%40example.com&startURL=%2Fx",
+            "<html><head><title>Servizio non disponibile</title></head></html>",
+        )
+
+        async def _finto_get(*args, **kwargs):
+            return risposta
+
+        monkeypatch.setattr(auth, "_get_following_redirects", _finto_get)
+        client = auth.EdistribuzioneAuthClient(session=None)
+        with pytest.raises(auth.EdistribuzioneParsingError) as exc_info:
+            await client.async_begin_login("mario@example.com", "pw")
+
+        messaggio = str(exc_info.value)
+        assert "HTTP 503" in messaggio
+        assert "/PortaleClienti/s/login/" in messaggio
+        assert "mario" not in messaggio
+        assert "Servizio non disponibile" in caplog.text
+
+
 # ---------------------------------------------------------------------------
 # _extract_loaded
 # ---------------------------------------------------------------------------
