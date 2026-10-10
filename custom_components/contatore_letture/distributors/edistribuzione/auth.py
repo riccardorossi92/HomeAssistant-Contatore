@@ -661,12 +661,15 @@ class EdistribuzioneAuthClient:
                 login_status,
                 motivo,
             )
+            # "Errore Tecnico" e' un guasto noto del portale e la risposta
+            # e' sempre la stessa: il dump non aggiunge niente e la sua riga
+            # ERROR lo farebbe sembrare un problema dell'integrazione.
+            if _contiene(motivo, _MARCATORI_ERRORE_TECNICO):
+                raise EdistribuzioneErroreTecnico(motivo)
             _salva_pagina_debug(
                 _oscura_credenziali(raw_text, email, password),
                 "login_response_debug.json",
             )
-            if _contiene(motivo, _MARCATORI_ERRORE_TECNICO):
-                raise EdistribuzioneErroreTecnico(motivo)
             raise EdistribuzioneInvalidCredentials(motivo)
 
         frontdoor_url = self._su_host(return_value[len("OK:") :])

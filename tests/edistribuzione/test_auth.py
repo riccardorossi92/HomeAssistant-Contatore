@@ -180,12 +180,12 @@ class TestLoginRifiutato:
         dump = await self._dump(tmp_path)
         assert "***" in dump and "mario" not in dump.lower()
 
-    async def test_errore_tecnico_ha_eccezione_dedicata_e_resta_nel_dump(
+    async def test_errore_tecnico_ha_eccezione_dedicata_e_niente_dump(
         self, monkeypatch, tmp_path, caplog
     ):
         """"KO: Errore Tecnico" non dice che le credenziali sono sbagliate:
-        non deve finire nel ramo delle credenziali errate, ma il warning e il
-        dump servono lo stesso a capire cosa e' successo."""
+        non deve finire nel ramo delle credenziali errate. E' un guasto noto
+        del portale, quindi basta il warning: niente dump ne' riga ERROR."""
         monkeypatch.chdir(tmp_path)
         body = json.dumps({
             "actions": [{
@@ -198,7 +198,9 @@ class TestLoginRifiutato:
         )
         assert not isinstance(errore, auth.EdistribuzioneInvalidCredentials)
         assert "KO: Errore Tecnico" in caplog.text
-        assert "Errore Tecnico" in await self._dump(tmp_path)
+        assert not any(r.levelname == "ERROR" for r in caplog.records)
+        await asyncio.sleep(0.1)
+        assert not (tmp_path / "login_response_debug.json").exists()
 
     async def test_azione_in_errore_riporta_il_messaggio_del_server(
         self, monkeypatch, tmp_path, caplog
