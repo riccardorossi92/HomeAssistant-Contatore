@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -92,6 +93,104 @@ class _RispostaLoginFinta:
 
     def close(self) -> None:
         pass
+
+
+class _RispostaLoginUser:
+    def __init__(self, status: int, body: str) -> None:
+        self.status = status
+        self._body = body
+
+    async def text(self) -> str:
+        return self._body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info) -> bool:
+        return False
+
+
+class _SessioneLoginUser:
+    def __init__(self, risposta: _RispostaLoginUser) -> None:
+        self._risposta = risposta
+
+    def post(self, url, data=None, headers=None):
+        return self._risposta
+
+
+class TestLoginRifiutato:
+    PAGINA_LOGIN = (
+        '<script>var ctx = {"mode":"PROD","fwuid":"ABC123",'
+        '"loaded":{"APPLICATION@markup://siteforce:loginApp2":"1"}};</script>'
+    )
+
+    async def _rifiuta(self, monkeypatch, body: str):
+        risposta_login = _RispostaLoginFinta(
+            200,
+            "https://private.e-distribuzione.it/PortaleClienti/s/login/"
+            "?startURL=%2Fx",
+            self.PAGINA_LOGIN,
+        )
+
+        async def _finto_get(*args, **kwargs):
+            return risposta_login
+
+        monkeypatch.setattr(auth, "_get_following_redirects", _finto_get)
+        client = auth.EdistribuzioneAuthClient(
+            _SessioneLoginUser(_RispostaLoginUser(200, body))
+        )
+        with pytest.raises(auth.EdistribuzioneInvalidCredentials) as exc_info:
+            await client.async_begin_login("Mario@Example.com", "segreta")
+        return exc_info.value
+
+    async def _dump(self, tmp_path):
+        # Scritto in un executor, come gli altri dump di debug.
+        dump = tmp_path / "login_response_debug.json"
+        for _ in range(50):
+            if dump.exists() and dump.stat().st_size:
+                break
+            await asyncio.sleep(0.02)
+        return dump.read_text(encoding="utf-8")
+
+    async def test_warning_con_host_e_motivo_e_dump_senza_email(
+        self, monkeypatch, tmp_path, caplog
+    ):
+        """Credenziali che funzionano sul sito ma rifiutate qui: il log deve
+        dire su quale host e con quale messaggio, senza l'email."""
+        monkeypatch.chdir(tmp_path)
+        body = json.dumps({
+            "actions": [{
+                "state": "SUCCESS",
+                "returnValue": "Credenziali errate per mario%40example.com",
+            }]
+        })
+        errore = await self._rifiuta(monkeypatch, body)
+
+        avvisi = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert any(
+            "Login E-Distribuzione rifiutato su private.e-distribuzione.it (HTTP 200)"
+            in r.getMessage()
+            for r in avvisi
+        )
+        assert "Credenziali errate per ***" in caplog.text
+        assert "mario" not in caplog.text.lower()
+        assert "mario" not in str(errore).lower()
+        dump = await self._dump(tmp_path)
+        assert "***" in dump and "mario" not in dump.lower()
+
+    async def test_azione_in_errore_riporta_il_messaggio_del_server(
+        self, monkeypatch, tmp_path, caplog
+    ):
+        monkeypatch.chdir(tmp_path)
+        body = json.dumps({
+            "actions": [{
+                "state": "ERROR",
+                "returnValue": None,
+                "error": [{"message": "Utente bloccato"}],
+            }]
+        })
+        await self._rifiuta(monkeypatch, body)
+        assert "Utente bloccato" in caplog.text
 
 
 class TestBeginLoginSenzaFwuid:

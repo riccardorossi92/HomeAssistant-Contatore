@@ -33,7 +33,7 @@ import secrets
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 import aiohttp
 
@@ -120,6 +120,32 @@ def _e_pagina_cambio_password(html: str) -> bool:
 def _contiene(html: str, marcatori: tuple[str, ...]) -> bool:
     testo = html.lower()
     return any(marcatore in testo for marcatore in marcatori)
+
+
+def _oscura_credenziali(testo: str, *segreti: str) -> str:
+    """Toglie email e password (anche in forma percent-encoded) da un testo
+    destinato ai log o a un file di debug che l'utente allega a una issue."""
+    for segreto in segreti:
+        if not segreto:
+            continue
+        for forma in {segreto, quote(segreto, safe="")}:
+            testo = re.sub(re.escape(forma), "***", testo, flags=re.IGNORECASE)
+    return testo
+
+
+def _messaggio_rifiuto_login(payload: dict, return_value: object) -> str:
+    """Il motivo del rifiuto come lo da' il server: di solito e' il
+    returnValue stesso (una stringa senza il prefisso "OK:"), ma se l'azione
+    Aura e' andata in errore il returnValue e' null e il messaggio sta in
+    actions[0].error."""
+    if isinstance(return_value, str) and return_value:
+        return return_value
+    azione = payload["actions"][0]
+    errori = [
+        str(errore.get("message", errore)) if isinstance(errore, dict) else str(errore)
+        for errore in azione.get("error") or []
+    ]
+    return f"state={azione.get('state')!r}, error={errori!r}, returnValue={return_value!r}"
 
 
 def _scrivi_pagina_debug(html: str, nome_file: str) -> None:
@@ -571,6 +597,7 @@ class EdistribuzioneAuthClient:
             data=data,
             headers=login_headers,
         ) as resp:
+            login_status = resp.status
             raw_text = await _leggi_testo(resp)
             try:
                 payload = json.loads(raw_text)
@@ -603,7 +630,25 @@ class EdistribuzioneAuthClient:
                 return_value, _MARCATORI_TROPPE_SESSIONI
             ):
                 raise EdistribuzioneTroppeSessioni(return_value)
-            raise EdistribuzioneInvalidCredentials(str(return_value))
+            # Con credenziali che funzionano sul sito ufficiale il rifiuto
+            # puo' dipendere da altro (host alternativo, flusso cambiato):
+            # host, status e messaggio del server bastano a capirlo senza
+            # chiedere una cattura HAR, e la risposta intera finisce su
+            # disco come per le altre pagine inattese.
+            motivo = _oscura_credenziali(
+                _messaggio_rifiuto_login(payload, return_value), email, password
+            )
+            _LOGGER.warning(
+                "Login E-Distribuzione rifiutato su %s (HTTP %s): %s",
+                self._host,
+                login_status,
+                motivo,
+            )
+            _salva_pagina_debug(
+                _oscura_credenziali(raw_text, email, password),
+                "login_response_debug.json",
+            )
+            raise EdistribuzioneInvalidCredentials(motivo)
 
         frontdoor_url = self._su_host(return_value[len("OK:") :])
 
