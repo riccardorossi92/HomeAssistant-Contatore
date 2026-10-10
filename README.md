@@ -420,3 +420,11 @@ come funziona sotto.
 
 Se vuoi aggiungere un nuovo distributore o modificarne uno esistente,
 vedi [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Come è sviluppato
+
+Il codice è scritto con l'aiuto dell'AI (Claude Code); architettura e
+struttura del progetto sono ideate e decise dal maintainer. Ogni modifica
+parte da log o catture reali dei portali, passa test automatici in CI e
+viene provata su un'installazione reale di Home Assistant prima della
+release.
