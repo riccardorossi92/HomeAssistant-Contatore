@@ -124,7 +124,9 @@ class TestLoginRifiutato:
         '"loaded":{"APPLICATION@markup://siteforce:loginApp2":"1"}};</script>'
     )
 
-    async def _rifiuta(self, monkeypatch, body: str):
+    async def _rifiuta(
+        self, monkeypatch, body: str, eccezione=auth.EdistribuzioneInvalidCredentials
+    ):
         risposta_login = _RispostaLoginFinta(
             200,
             "https://private.e-distribuzione.it/PortaleClienti/s/login/"
@@ -139,7 +141,7 @@ class TestLoginRifiutato:
         client = auth.EdistribuzioneAuthClient(
             _SessioneLoginUser(_RispostaLoginUser(200, body))
         )
-        with pytest.raises(auth.EdistribuzioneInvalidCredentials) as exc_info:
+        with pytest.raises(eccezione) as exc_info:
             await client.async_begin_login("Mario@Example.com", "segreta")
         return exc_info.value
 
@@ -177,6 +179,26 @@ class TestLoginRifiutato:
         assert "mario" not in str(errore).lower()
         dump = await self._dump(tmp_path)
         assert "***" in dump and "mario" not in dump.lower()
+
+    async def test_errore_tecnico_ha_eccezione_dedicata_e_resta_nel_dump(
+        self, monkeypatch, tmp_path, caplog
+    ):
+        """"KO: Errore Tecnico" non dice che le credenziali sono sbagliate:
+        non deve finire nel ramo delle credenziali errate, ma il warning e il
+        dump servono lo stesso a capire cosa e' successo."""
+        monkeypatch.chdir(tmp_path)
+        body = json.dumps({
+            "actions": [{
+                "state": "SUCCESS",
+                "returnValue": "KO: Errore Tecnico",
+            }]
+        })
+        errore = await self._rifiuta(
+            monkeypatch, body, eccezione=auth.EdistribuzioneErroreTecnico
+        )
+        assert not isinstance(errore, auth.EdistribuzioneInvalidCredentials)
+        assert "KO: Errore Tecnico" in caplog.text
+        assert "Errore Tecnico" in await self._dump(tmp_path)
 
     async def test_azione_in_errore_riporta_il_messaggio_del_server(
         self, monkeypatch, tmp_path, caplog

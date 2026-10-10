@@ -68,6 +68,14 @@ _MARCATORI_TROPPE_SESSIONI = (
     "sessioni consentite",
 )
 
+# Rifiuto generico del controller di login del portale: "KO: Errore Tecnico"
+# con l'azione Aura in stato SUCCESS (visto su edistribuzione.my.site.com il
+# 10/10/2026, risposta in 4 ms). Lo stesso messaggio compariva in quel
+# momento anche accedendo dal sito ufficiale: e' un guasto lato portale, e
+# trattarlo come "credenziali errate" mandava l'utente a ricontrollare la
+# password senza motivo.
+_MARCATORI_ERRORE_TECNICO = ("errore tecnico",)
+
 # Pagine della protezione antibot di Imperva (Incapsula), che risponde al
 # posto degli endpoint di login e token quando classifica il traffico come
 # automatico: il blocco 403 "Request unsuccessful. Incapsula incident ID"
@@ -228,6 +236,15 @@ class EdistribuzioneTroppeSessioni(EdistribuzioneAuthError):
     altre sessioni non vengono chiuse o non scadono (app ufficiale, sito,
     tentativi precedenti di questa stessa integrazione) non c'e' niente da
     reinserire nel form, va liberata una sessione e riprovato.
+    """
+
+
+class EdistribuzioneErroreTecnico(EdistribuzioneAuthError):
+    """Il portale ha rifiutato il login con il suo messaggio generico
+    "Errore Tecnico" invece che con un motivo preciso.
+
+    Non e' un problema di credenziali ne' dell'integrazione: il 10/10/2026 lo
+    stesso errore compariva anche sul sito ufficiale.
     """
 
 
@@ -648,6 +665,8 @@ class EdistribuzioneAuthClient:
                 _oscura_credenziali(raw_text, email, password),
                 "login_response_debug.json",
             )
+            if _contiene(motivo, _MARCATORI_ERRORE_TECNICO):
+                raise EdistribuzioneErroreTecnico(motivo)
             raise EdistribuzioneInvalidCredentials(motivo)
 
         frontdoor_url = self._su_host(return_value[len("OK:") :])

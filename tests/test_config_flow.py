@@ -34,6 +34,7 @@ from custom_components.contatore_letture.distributors.edistribuzione import (
 )
 from custom_components.contatore_letture.distributors.edistribuzione.auth import (
     EdistribuzioneBloccoAntibot,
+    EdistribuzioneErroreTecnico,
     EdistribuzioneInvalidCredentials,
     EdistribuzioneInvalidOtp,
     EdistribuzioneParsingError,
@@ -448,6 +449,21 @@ async def test_edist_troppe_sessioni_al_login(hass, _arera_sconosciuto, edist_mo
     assert res["type"] == FlowResultType.FORM
     assert res["step_id"] == "edistribuzione_user"
     assert res["errors"] == {"base": "troppe_sessioni"}
+
+
+async def test_edist_errore_tecnico_al_login(hass, _arera_sconosciuto, edist_mocks):
+    """"KO: Errore Tecnico" dal portale: errore dedicato sul form delle
+    credenziali invece del generico "credenziali errate"."""
+    edist_mocks.auth.async_begin_login.side_effect = EdistribuzioneErroreTecnico(
+        "KO: Errore Tecnico"
+    )
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.FORM
+    assert res["step_id"] == "edistribuzione_user"
+    assert res["errors"] == {"base": "errore_tecnico_portale"}
 
 
 async def test_edist_otp_form_vuoto_chiede_il_codice(hass, _arera_sconosciuto, edist_mocks):

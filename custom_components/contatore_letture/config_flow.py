@@ -489,6 +489,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             from .distributors.edistribuzione.auth import (
                 EdistribuzioneAuthClient,
                 EdistribuzioneBloccoAntibot,
+                EdistribuzioneErroreTecnico,
                 EdistribuzioneInvalidCredentials,
                 EdistribuzioneParsingError,
                 EdistribuzioneTroppeSessioni,
@@ -527,6 +528,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "troppe_sessioni"
             except EdistribuzioneBloccoAntibot:
                 errors["base"] = "bloccato_antibot"
+            except EdistribuzioneErroreTecnico:
+                errors["base"] = "errore_tecnico_portale"
             except EdistribuzioneParsingError:
                 _LOGGER.exception("Parsing della pagina di login E-Distribuzione fallito")
                 errors["base"] = "cannot_connect"
@@ -1037,6 +1040,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             from .distributors.edistribuzione.auth import (
                 EdistribuzioneAuthClient,
                 EdistribuzioneBloccoAntibot,
+                EdistribuzioneErroreTecnico,
                 EdistribuzioneInvalidCredentials,
                 EdistribuzioneParsingError,
                 EdistribuzioneTroppeSessioni,
@@ -1067,6 +1071,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "troppe_sessioni"
             except EdistribuzioneBloccoAntibot:
                 errors["base"] = "bloccato_antibot"
+            except EdistribuzioneErroreTecnico:
+                errors["base"] = "errore_tecnico_portale"
             except EdistribuzioneParsingError:
                 _LOGGER.exception(
                     "Parsing della pagina di login E-Distribuzione fallito (reauth)"
