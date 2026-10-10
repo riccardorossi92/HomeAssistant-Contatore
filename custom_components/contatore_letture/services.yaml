@@ -13,7 +13,7 @@ recupera_ticket:
       name: Ticket
       description: L'identificativo restituito da requestExport.
       required: true
-      example: ENdZS6CausBMlUzrS3as5Q
+      example: IL_TUO_TICKET
       selector:
         text:
     data_da:

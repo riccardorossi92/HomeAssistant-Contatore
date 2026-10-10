@@ -412,7 +412,7 @@ esistente presso il distributore, saltando la richiesta di un nuovo export.
 ```yaml
 action: contatore_letture.recupera_ticket
 data:
-  ticket: "ENdZS6CausBMlUzrS3as5Q"
+  ticket: "IL_TUO_TICKET"
   entry_id: <opzionale, se hai più istanze Duereti/Unareti/RetiPiù/RE.V.V.>
 ```
 
