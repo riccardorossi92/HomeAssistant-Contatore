@@ -142,7 +142,7 @@
       "areti_pod_non_valido": "POD non riconosciuto su questo account Areti. Controlla il codice (inizia con IT e lo trovi in bolletta) e che sia associato all'account con cui hai fatto accesso.",
       "invalid_otp": "Codice OTP errato o scaduto. Deve essere il codice inviato da questa configurazione: uno generato sul sito o nell'app appartiene a un'altra sessione di login e viene sempre rifiutato.",
       "otp_mancante": "Inserisci il codice OTP, oppure spunta \"Richiedi un nuovo codice\" per farne inviare uno nuovo",
-      "bloccato_antibot": "E-Distribuzione ha bloccato la richiesta con la sua protezione anti-bot (pagina \"Pardon Our Interruption\") prima ancora di mostrare il login. Non dipende dalle credenziali: riprova più tardi. Se il blocco persiste per giorni, apri una issue.",
+      "bloccato_antibot": "E-Distribuzione ha bloccato la richiesta con la sua protezione anti-bot prima ancora di mostrare il login, sia sul sito principale sia sull'indirizzo alternativo. Non dipende dalle credenziali: riprova più tardi. Se il blocco persiste per giorni, apri una issue.",
       "troppe_sessioni": "E-Distribuzione ha rifiutato l'accesso perché l'account ha troppe sessioni aperte contemporaneamente. Esci dall'app ufficiale e dal sito, attendi qualche minuto e riprova: in questo stato nessun codice OTP viene inviato.",
       "nessun_pod_selezionato": "Seleziona almeno un POD"
     },

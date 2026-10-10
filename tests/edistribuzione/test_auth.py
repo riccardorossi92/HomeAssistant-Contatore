@@ -592,3 +592,162 @@ class TestGerarchiaEccezioni:
         assert not issubclass(
             auth.EdistribuzioneTroppeSessioni, auth.EdistribuzioneInvalidCredentials
         )
+
+
+# ---------------------------------------------------------------------------
+# Blocco antibot di Imperva e ripiego sull'host diretto (issue #8)
+# ---------------------------------------------------------------------------
+
+
+# Ridotta dalla risposta reale del 10/10/2026 (403 su
+# private.e-distribuzione.it con uno User-Agent da script).
+PAGINA_ANTIBOT = (
+    '<html style="height:100%"><head><META NAME="ROBOTS" CONTENT="NOINDEX, '
+    'NOFOLLOW"></head><body><iframe id="main-iframe" '
+    'src="/_Incapsula_Resource?CWUDNSAI=23">Request unsuccessful. Incapsula '
+    "incident ID: 1009000050172031670-138368431705620856</iframe></body></html>"
+)
+
+
+class _RispostaToken(_RispostaFinta):
+    def __init__(self, body: str, status: int = 200) -> None:
+        super().__init__(body)
+        self.status = status
+
+
+class _SessioneTokenPerHost:
+    """Risponde al token endpoint in base all'host della richiesta e
+    registra gli URL chiamati."""
+
+    def __init__(self, risposte_per_host: dict[str, _RispostaToken]) -> None:
+        self._risposte = risposte_per_host
+        self.url_chiamati: list[str] = []
+
+    def post(self, url, data=None, headers=None, allow_redirects=None):
+        self.url_chiamati.append(url)
+        for host, risposta in self._risposte.items():
+            if url.startswith(f"https://{host}/"):
+                return risposta
+        raise AssertionError(f"host inatteso: {url}")
+
+
+TOKEN_OK = '{"access_token": "AT", "refresh_token": "RT2", "instance_url": "I"}'
+
+
+class TestAntibot:
+    def test_pagina_antibot_riconosciuta(self):
+        with pytest.raises(auth.EdistribuzioneBloccoAntibot):
+            auth._verifica_non_bloccato(PAGINA_ANTIBOT)
+
+    def test_pagina_pardon_our_interruption_riconosciuta(self):
+        with pytest.raises(auth.EdistribuzioneBloccoAntibot):
+            auth._verifica_non_bloccato("<title>Pardon Our Interruption</title>")
+
+    def test_script_incapsula_su_pagina_normale_non_e_un_blocco(self):
+        auth._verifica_non_bloccato(
+            '<script src="/_Incapsula_Resource?SWJIYLWA=1"></script><p>Login</p>'
+        )
+
+    def test_blocco_antibot_e_sottoclasse_di_auth_error(self):
+        assert issubclass(auth.EdistribuzioneBloccoAntibot, auth.EdistribuzioneAuthError)
+
+
+class TestSuHost:
+    def test_host_principale_invariato_finche_non_si_ripiega(self):
+        client = auth.EdistribuzioneAuthClient(None)
+        url = "https://private.e-distribuzione.it/PortaleClienti/s/login/"
+        assert client._su_host(url) == url
+
+    def test_dopo_il_ripiego_riscrive_il_dominio_personalizzato(self):
+        client = auth.EdistribuzioneAuthClient(None)
+        client._host = auth.SF_HOST_DIRETTO
+        assert (
+            client._su_host("https://private.e-distribuzione.it/PortaleClienti/x?a=1")
+            == "https://edistribuzione.my.site.com/PortaleClienti/x?a=1"
+        )
+
+    def test_url_di_altri_host_e_relativi_passano_invariati(self):
+        client = auth.EdistribuzioneAuthClient(None)
+        client._host = auth.SF_HOST_DIRETTO
+        assert client._su_host("eneldist://redirect?code=X") == "eneldist://redirect?code=X"
+        assert client._su_host("/PortaleClienti/x") == "/PortaleClienti/x"
+
+    def test_parse_otp_page_usa_l_host_attivo_per_action_relative(self):
+        client = auth.EdistribuzioneAuthClient(None)
+        client._host = auth.SF_HOST_DIRETTO
+        client._parse_otp_page(
+            '<form id="f" action="/PortaleClienti/loginflow/loginFlow.apexp">'
+            + TestParseOtpPage.HTML_PAGINA_OTP
+        )
+        assert client._flow.form_action_url.startswith(
+            "https://edistribuzione.my.site.com/"
+        )
+
+    async def test_consenso_inviato_all_host_attivo(self):
+        session = _SessioneACoda([
+            _RispostaConLocation("", location="eneldist://redirect?code=C&state=S")
+        ])
+        client = auth.EdistribuzioneAuthClient(session)
+        client._host = auth.SF_HOST_DIRETTO
+        await client._async_approva_consenso(HTML_PAGINA_CONSENSO)
+        assert session.post_inviati[0]["url"].startswith(
+            "https://edistribuzione.my.site.com/"
+        )
+
+
+class TestRefreshConRipiego:
+    async def test_principale_libero_nessun_ripiego(self):
+        session = _SessioneTokenPerHost({
+            auth.SF_HOST_PRINCIPALE: _RispostaToken(TOKEN_OK),
+        })
+        client = auth.EdistribuzioneAuthClient(session)
+        tokens = await client.async_refresh_access_token("RT")
+        assert tokens.access_token == "AT"
+        assert len(session.url_chiamati) == 1
+
+    async def test_principale_bloccato_ripiega_sul_diretto(self):
+        session = _SessioneTokenPerHost({
+            auth.SF_HOST_PRINCIPALE: _RispostaToken(PAGINA_ANTIBOT, status=403),
+            auth.SF_HOST_DIRETTO: _RispostaToken(TOKEN_OK),
+        })
+        client = auth.EdistribuzioneAuthClient(session)
+        tokens = await client.async_refresh_access_token("RT")
+        assert tokens.refresh_token == "RT2"
+        assert session.url_chiamati[1].startswith(
+            "https://edistribuzione.my.site.com/PortaleClienti/services/oauth2/token"
+        )
+
+    async def test_blocco_con_status_200_riconosciuto(self):
+        session = _SessioneTokenPerHost({
+            auth.SF_HOST_PRINCIPALE: _RispostaToken(
+                "<title>Pardon Our Interruption</title>"
+            ),
+            auth.SF_HOST_DIRETTO: _RispostaToken(TOKEN_OK),
+        })
+        client = auth.EdistribuzioneAuthClient(session)
+        assert (await client.async_refresh_access_token("RT")).access_token == "AT"
+
+    async def test_entrambi_bloccati_solleva_blocco_antibot(self):
+        session = _SessioneTokenPerHost({
+            auth.SF_HOST_PRINCIPALE: _RispostaToken(PAGINA_ANTIBOT, status=403),
+            auth.SF_HOST_DIRETTO: _RispostaToken(PAGINA_ANTIBOT, status=403),
+        })
+        client = auth.EdistribuzioneAuthClient(session)
+        with pytest.raises(auth.EdistribuzioneBloccoAntibot):
+            await client.async_refresh_access_token("RT")
+
+    async def test_ogni_refresh_riparte_dal_principale(self):
+        session = _SessioneTokenPerHost({
+            auth.SF_HOST_PRINCIPALE: _RispostaToken(TOKEN_OK),
+        })
+        client = auth.EdistribuzioneAuthClient(session)
+        client._host = auth.SF_HOST_DIRETTO
+        await client.async_refresh_access_token("RT")
+        assert session.url_chiamati[0].startswith("https://private.e-distribuzione.it/")
+
+    async def test_refresh_token_vecchio_mantenuto_se_non_ne_arriva_uno_nuovo(self):
+        session = _SessioneTokenPerHost({
+            auth.SF_HOST_PRINCIPALE: _RispostaToken('{"access_token": "AT"}'),
+        })
+        client = auth.EdistribuzioneAuthClient(session)
+        assert (await client.async_refresh_access_token("RT")).refresh_token == "RT"

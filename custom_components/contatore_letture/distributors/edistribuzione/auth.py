@@ -1,5 +1,11 @@
 """Authentication client for e-Distribuzione (private.e-distribuzione.it).
 
+Il portale risponde su due host della stessa org Salesforce (vedi const.py):
+quando il dominio personalizzato risponde con la pagina antibot di Imperva,
+login e refresh del token ripartono sul dominio canonico
+(edistribuzione.my.site.com). Ogni tentativo riparte dal principale, cosi'
+si torna da soli al dominio ufficiale quando il blocco viene tolto.
+
 The login itself is a standard Salesforce OAuth2 Authorization Code flow with
 PKCE. The friction is in the middle: credentials are submitted via an Aura
 ("Lightning") remote action, and the OTP step is a classic Salesforce
@@ -39,6 +45,9 @@ from .const import (
     OAUTH_REDIRECT_URI,
     OAUTH_SCOPE,
     OAUTH_TOKEN_URL,
+    SF_HOST_DIRETTO,
+    SF_HOST_PRINCIPALE,
+    SF_HOSTS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -57,6 +66,18 @@ _MARCATORI_TROPPE_SESSIONI = (
     "sessioni contemporanee",
     "numero di sessioni",
     "sessioni consentite",
+)
+
+# Pagine della protezione antibot di Imperva (Incapsula), che risponde al
+# posto degli endpoint di login e token quando classifica il traffico come
+# automatico: il blocco 403 "Request unsuccessful. Incapsula incident ID"
+# (visto il 10/10/2026, issue #8) e il controllo JavaScript "Pardon Our
+# Interruption". Solo marcatori di queste due pagine: lo script
+# _Incapsula_Resource puo' comparire anche nelle pagine normali di un sito
+# protetto.
+_MARCATORI_ANTIBOT = (
+    "pardon our interruption",
+    "incapsula incident id",
 )
 
 # Testo con cui la risposta al primo submit del form conferma di avere
@@ -147,9 +168,6 @@ def _log_parsing_failure_context(
 
 _MAX_REDIRECT_HOPS = 15
 
-# Titolo della pagina di blocco anti-bot Imperva (ex Distil Networks).
-_RE_PAGINA_ANTIBOT = re.compile(r"Pardon\s+Our\s+Interruption", re.IGNORECASE)
-
 
 class EdistribuzioneAuthError(Exception):
     """Generic authentication failure."""
@@ -175,15 +193,34 @@ class EdistribuzioneTroppeSessioni(EdistribuzioneAuthError):
 
 
 class EdistribuzioneBloccoAntibot(EdistribuzioneAuthError):
-    """Il portale ha risposto con la pagina "Pardon Our Interruption" della
-    protezione anti-bot Imperva invece che con la pagina di login.
+    """Il portale ha risposto con la pagina anti-bot di Imperva invece che con
+    quella attesa: l'accesso automatico e' bloccato lato server.
 
-    Visto in un log reale l'08/10/2026: HTTP 200 direttamente su
-    /services/oauth2/authorize, nessun redirect, 6183 caratteri. Non e' un
-    cambio di markup ne' un problema di credenziali: la richiesta viene
-    fermata prima di arrivare al login, quindi nessun regex puo' trovarci
-    dentro fwuid.
+    Visto in un log reale l'08/10/2026: "Pardon Our Interruption" con HTTP 200
+    direttamente su /services/oauth2/authorize, nessun redirect; il 10/10/2026
+    anche il 403 "Incapsula incident ID". Non e' un cambio di markup ne' un
+    problema di credenziali. Arriva al chiamante solo se sono bloccati
+    entrambi gli host (vedi const.SF_HOSTS), e va riprovato piu' tardi.
     """
+
+
+def _verifica_non_bloccato(testo: str) -> None:
+    """Alza EdistribuzioneBloccoAntibot se la risposta e' la pagina antibot."""
+    if _contiene(testo, _MARCATORI_ANTIBOT):
+        raise EdistribuzioneBloccoAntibot(
+            "E-Distribuzione ha risposto con la pagina antibot (Imperva)"
+        )
+
+
+async def _leggi_testo(resp: aiohttp.ClientResponse) -> str:
+    """Corpo della risposta, dopo aver escluso la pagina antibot."""
+    testo = await resp.text()
+    _verifica_non_bloccato(testo)
+    return testo
+
+
+def _identita(url: str) -> str:
+    return url
 
 
 class EdistribuzioneParsingError(EdistribuzioneAuthError):
@@ -200,6 +237,7 @@ async def _get_following_redirects(
     *,
     params: dict | None = None,
     headers: dict | None = None,
+    riscrivi=_identita,
 ) -> aiohttp.ClientResponse:
     """GET seguendo i redirect a mano invece di allow_redirects=True.
 
@@ -215,6 +253,11 @@ async def _get_following_redirects(
     del Location non viene mai ri-processato: la stessa catena che con
     allow_redirects=True va in loop qui si risolve in 3 hop.
 
+    'riscrivi' riporta l'URL di ogni hop sull'host attivo (vedi
+    EdistribuzioneAuthClient._su_host): un Location puo' puntare al dominio
+    personalizzato dietro Imperva, e seguirlo cosi' com'e' farebbe atterrare
+    sulla pagina antibot invece che a destinazione.
+
     Ritorna la risposta finale (status < 300, nessun altro Location);
     il chiamante e' responsabile di chiudere/consumare 'resp' come al solito.
     """
@@ -228,6 +271,7 @@ async def _get_following_redirects(
         resp.close()
         location_url = aiohttp.client.URL(location, encoded=True)
         next_url = location_url if location_url.is_absolute() else resp.url.join(location_url)
+        next_url = aiohttp.client.URL(riscrivi(str(next_url)), encoded=True)
         resp = await session.get(next_url, headers=headers, allow_redirects=False)
 
     resp.close()
@@ -286,12 +330,34 @@ class EdistribuzioneAuthClient:
         self._code_verifier: str | None = None
         self._oauth_state: str | None = None
         self._flow = _LoginFlowState()
+        # Host Salesforce attivo: parte dal principale e passa al diretto solo
+        # se il principale risponde con la pagina antibot (vedi
+        # async_begin_login/async_refresh_access_token).
+        self._host = SF_HOST_PRINCIPALE
         # True/False dopo async_begin_login()/async_resend_otp() a seconda
         # che il portale abbia confermato l'invio del codice; None finche'
         # non ci si e' arrivati. Il config flow lo usa per avvisare l'utente
         # invece di lasciarlo aspettare un OTP che non arrivera' mai
         # (issue #2).
         self.otp_invio_confermato: bool | None = None
+
+    @property
+    def _origin(self) -> str:
+        return f"https://{self._host}"
+
+    def _su_host(self, url: str) -> str:
+        """Riporta un URL sull'host attivo.
+
+        Le costanti del modulo e gli URL generati dal server puntano al
+        dominio personalizzato: dopo il passaggio all'host diretto vanno
+        riscritti tutti, altrimenti la richiesta successiva tornerebbe sul
+        dominio bloccato. URL relativi o di altri host passano invariati.
+        """
+        for host in SF_HOSTS:
+            prefisso = f"https://{host}"
+            if url.startswith(prefisso):
+                return self._origin + url[len(prefisso):]
+        return url
 
     # -- Step 1: authorize + credentials -------------------------------------
 
@@ -301,7 +367,30 @@ class EdistribuzioneAuthClient:
         On success, internal state is primed so that async_submit_otp() can
         complete the flow. This always assumes an OTP step follows, matching
         every capture we've seen so far.
+
+        Prova prima l'host principale; se e' bloccato dalla pagina antibot
+        riparte da capo sull'host diretto. Il blocco arriva al primo passo,
+        prima che parta qualunque OTP, quindi ripartire non spreca codici;
+        gli step successivi (async_submit_otp) restano sull'host che ha
+        funzionato.
         """
+        self._host = SF_HOST_PRINCIPALE
+        try:
+            await self._async_begin_login_su_host(email, password)
+        except EdistribuzioneBloccoAntibot:
+            if self._host == SF_HOST_DIRETTO:
+                raise
+            _LOGGER.warning(
+                "Login bloccato dall'antibot su %s, riprovo via %s",
+                SF_HOST_PRINCIPALE,
+                SF_HOST_DIRETTO,
+            )
+            self._host = SF_HOST_DIRETTO
+            self._flow = _LoginFlowState()
+            self.otp_invio_confermato = None
+            await self._async_begin_login_su_host(email, password)
+
+    async def _async_begin_login_su_host(self, email: str, password: str) -> None:
         self._code_verifier, code_challenge = _make_pkce_pair()
         self._oauth_state = _b64url(secrets.token_bytes(16))
 
@@ -325,7 +414,11 @@ class EdistribuzioneAuthClient:
         # infinito su questa catena specifica per via di un parametro
         # ('startURL') che contiene un URL annidato gia' percent-encoded.
         resp = await _get_following_redirects(
-            self._session, OAUTH_AUTHORIZE_URL, params=params, headers=headers
+            self._session,
+            self._su_host(OAUTH_AUTHORIZE_URL),
+            params=params,
+            headers=headers,
+            riscrivi=self._su_host,
         )
         login_page_html = await resp.text()
         # Il parametro 'startURL' della pagina su cui atterriamo contiene un
@@ -347,11 +440,10 @@ class EdistribuzioneAuthClient:
         landing_url = str(resp.url.with_query(None))
         resp.close()
 
-        if _RE_PAGINA_ANTIBOT.search(login_page_html):
+        if _contiene(login_page_html, _MARCATORI_ANTIBOT):
             _LOGGER.warning(
                 "E-Distribuzione ha risposto con la pagina anti-bot Imperva "
-                "(\"Pardon Our Interruption\", HTTP %s su %s) invece che con "
-                "la pagina di login",
+                "(HTTP %s su %s) invece che con la pagina di login",
                 landing_status,
                 landing_url,
             )
@@ -442,16 +534,16 @@ class EdistribuzioneAuthClient:
             **headers,
             "X-SFDC-Page-Scope-Id": str(uuid.uuid4()),
             "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-            "Origin": "https://private.e-distribuzione.it",
+            "Origin": self._origin,
             "Referer": referer,
         }
 
         async with self._session.post(
-            f"{AURA_ENDPOINT}?r=2&other.PED_Login.loginUser=1",
+            f"{self._su_host(AURA_ENDPOINT)}?r=2&other.PED_Login.loginUser=1",
             data=data,
             headers=login_headers,
         ) as resp:
-            raw_text = await resp.text()
+            raw_text = await _leggi_testo(resp)
             try:
                 payload = json.loads(raw_text)
             except json.JSONDecodeError as err:
@@ -485,7 +577,7 @@ class EdistribuzioneAuthClient:
                 raise EdistribuzioneTroppeSessioni(return_value)
             raise EdistribuzioneInvalidCredentials(str(return_value))
 
-        frontdoor_url = return_value[len("OK:") :]
+        frontdoor_url = self._su_host(return_value[len("OK:") :])
 
         # Following this establishes the `sid` session cookie e atterra su
         # una pagina-ponte che fa un redirect via JAVASCRIPT
@@ -493,14 +585,20 @@ class EdistribuzioneAuthClient:
         # browser lo segue automaticamente, noi no. Confermato analizzando
         # l'ordine cronologico reale di una HAR il 20/08/2026: la pagina di
         # frontdoor.jsp NON e' mai il form OTP, e' solo un ponte.
-        resp = await _get_following_redirects(self._session, frontdoor_url, headers=headers)
+        resp = await _get_following_redirects(
+            self._session, frontdoor_url, headers=headers, riscrivi=self._su_host
+        )
         bridge_html = await resp.text()
         resp.close()
+        _verifica_non_bloccato(bridge_html)
 
-        otp_form_url = self._extract_js_redirect_url(bridge_html)
-        resp = await _get_following_redirects(self._session, otp_form_url, headers=headers)
+        otp_form_url = self._su_host(self._extract_js_redirect_url(bridge_html))
+        resp = await _get_following_redirects(
+            self._session, otp_form_url, headers=headers, riscrivi=self._su_host
+        )
         otp_page_html = await resp.text()
         resp.close()
+        _verifica_non_bloccato(otp_page_html)
 
         self._parse_otp_page(otp_page_html)
         await self._async_trigger_otp_send()
@@ -581,9 +679,9 @@ class EdistribuzioneAuthClient:
             "User-Agent": _MOBILE_USER_AGENT,
             "Faces-Request": "partial/ajax",
         }
-        url = self._flow.form_action_url or LOGINFLOW_URL
+        url = self._su_host(self._flow.form_action_url or LOGINFLOW_URL)
         async with self._session.post(url, data=data, headers=headers) as resp:
-            body = await resp.text()
+            body = await _leggi_testo(resp)
 
         if _contiene(body, _MARCATORI_TROPPE_SESSIONI):
             _salva_pagina_debug(body, "otp_send_debug.html")
@@ -623,9 +721,9 @@ class EdistribuzioneAuthClient:
         }
         data = self._dati_form_otp(otp_code=otp_code)
 
-        url = self._flow.form_action_url or LOGINFLOW_URL
+        url = self._su_host(self._flow.form_action_url or LOGINFLOW_URL)
         async with self._session.post(url, data=data, headers=headers) as resp:
-            body = await resp.text()
+            body = await _leggi_testo(resp)
 
         if _contiene(body, _MARCATORI_TROPPE_SESSIONI):
             _salva_pagina_debug(body, "otp_submit_response_debug.html")
@@ -646,13 +744,14 @@ class EdistribuzioneAuthClient:
             )
         next_url = unquote(loc_match.group(1))
         if next_url.startswith("/"):
-            next_url = "https://private.e-distribuzione.it" + next_url
+            next_url = self._origin + next_url
+        next_url = self._su_host(next_url)
 
         # This page normally triggers a JS redirect to eneldist://redirect?code=...
         # We can't follow a custom URL scheme with aiohttp, so scrape the code
         # and state straight out of the returned HTML/JS instead of navigating.
         async with self._session.get(next_url, headers=headers) as resp:
-            consent_html = await resp.text()
+            consent_html = await _leggi_testo(resp)
 
         code_match = re.search(r"[?&]code=([^&'\"]+)", consent_html)
         state_match = re.search(r"[?&]state=([^&'\"]+)", consent_html)
@@ -715,6 +814,7 @@ class EdistribuzioneAuthClient:
             return None
 
         action_url, dati = form
+        action_url = self._su_host(action_url)
         _LOGGER.info(
             "Schermata di consenso OAuth rilevata (prima autorizzazione di "
             "questo account): confermo con %r", dati.get("save")
@@ -722,8 +822,8 @@ class EdistribuzioneAuthClient:
         headers = {
             "User-Agent": _MOBILE_USER_AGENT,
             "Content-Type": "application/x-www-form-urlencoded",
-            "Origin": "https://private.e-distribuzione.it",
-            "Referer": "https://private.e-distribuzione.it/PortaleClienti/",
+            "Origin": self._origin,
+            "Referer": f"{self._origin}/PortaleClienti/",
         }
         # allow_redirects=False: il redirect punta allo schema custom dell'app
         # (eneldist://), che aiohttp non sa seguire - il codice sta nel
@@ -732,7 +832,7 @@ class EdistribuzioneAuthClient:
             action_url, data=dati, headers=headers, allow_redirects=False
         ) as resp:
             location = resp.headers.get("Location")
-            body = await resp.text()
+            body = await _leggi_testo(resp)
         return location or body
 
     @staticmethod
@@ -787,7 +887,9 @@ class EdistribuzioneAuthClient:
             if not action_url:
                 return None
             if action_url.startswith("/"):
-                action_url = "https://private.e-distribuzione.it" + action_url
+                # Metodo statico: costruisce un URL sull'host principale, che
+                # il chiamante riporta sull'host attivo con _su_host.
+                action_url = f"https://{SF_HOST_PRINCIPALE}" + action_url
             return action_url, dati
 
         return None
@@ -802,25 +904,51 @@ class EdistribuzioneAuthClient:
             "client_id": OAUTH_CLIENT_ID,
             "grant_type": "authorization_code",
         }
-        async with self._session.post(OAUTH_TOKEN_URL, data=data) as resp:
-            payload = await resp.json(content_type=None)
+        async with self._session.post(self._su_host(OAUTH_TOKEN_URL), data=data) as resp:
+            payload = json.loads(await _leggi_testo(resp))
         return self._tokens_from_payload(payload)
 
     async def async_refresh_access_token(self, refresh_token: str) -> OAuthTokens:
         """Get a fresh access_token. No Aura/OTP involved - this is the path
-        the integration should use on every normal startup/renewal."""
+        the integration should use on every normal startup/renewal.
+
+        Prova prima l'host principale (cosi' si torna al dominio ufficiale
+        appena Enel toglie il blocco) e ripiega sul diretto se il principale
+        risponde con la pagina antibot.
+        """
+        self._host = SF_HOST_PRINCIPALE
+        try:
+            return await self._async_refresh_su_host(refresh_token)
+        except EdistribuzioneBloccoAntibot:
+            _LOGGER.warning(
+                "Refresh del token bloccato dall'antibot su %s, riprovo via %s",
+                SF_HOST_PRINCIPALE,
+                SF_HOST_DIRETTO,
+            )
+            self._host = SF_HOST_DIRETTO
+            return await self._async_refresh_su_host(refresh_token)
+
+    async def _async_refresh_su_host(self, refresh_token: str) -> OAuthTokens:
         data = {
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
             "client_id": OAUTH_CLIENT_ID,
         }
-        async with self._session.post(OAUTH_TOKEN_URL, data=data) as resp:
+        async with self._session.post(self._su_host(OAUTH_TOKEN_URL), data=data) as resp:
+            # Testo letto sempre, anche con status 200: la pagina "Pardon Our
+            # Interruption" arriva con 200 e va riconosciuta prima di provare
+            # a leggerla come JSON.
+            text = await _leggi_testo(resp)
             if resp.status != 200:
-                text = await resp.text()
                 raise EdistribuzioneAuthError(
                     f"refresh_token exchange failed ({resp.status}): {text[:300]}"
                 )
-            payload = await resp.json(content_type=None)
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError as err:
+            raise EdistribuzioneParsingError(
+                f"Risposta non-JSON dal token endpoint: {text[:200]!r}"
+            ) from err
         # Salesforce doesn't always return a new refresh_token on refresh -
         # keep the old one if a new one isn't present.
         payload.setdefault("refresh_token", refresh_token)
@@ -982,5 +1110,5 @@ class EdistribuzioneAuthClient:
         if form_action:
             action = form_action.group(1)
             self._flow.form_action_url = (
-                action if action.startswith("http") else f"https://private.e-distribuzione.it{action}"
+                self._su_host(action) if action.startswith("http") else f"{self._origin}{action}"
             )

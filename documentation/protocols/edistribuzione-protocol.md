@@ -37,6 +37,21 @@ REDIRECT_URI = eneldist://redirect   (custom scheme dell'app mobile, mai
 Backend dati (MuleSoft): xs-misura-p.de-c1.eu1.cloudhub.io/xs/misure/*
 ```
 
+### Host alternativo senza antibot
+
+La stessa org Salesforce risponde anche su `edistribuzione.my.site.com`, il
+dominio canonico che Salesforce assegna alla community: stessi path, stesso
+client OAuth, stesso login. `private.e-distribuzione.it` è invece dietro
+Imperva (Incapsula), che da ottobre 2026 risponde ai client non-browser con
+la pagina antibot (403 "Incapsula incident ID" o 200 "Pardon Our
+Interruption") sia sull'authorize sia sul token endpoint (issue #8).
+
+`auth.py` prova sempre prima il dominio personalizzato e, se riconosce la
+pagina antibot, ripete login o refresh sull'host diretto, riscrivendo su di
+esso anche gli URL che il server genera (Location, frontdoor, redirect JS,
+action dei form) — altrimenti si tornerebbe sul dominio bloccato al primo
+redirect. Il backend MuleSoft non è coinvolto.
+
 ## Flusso di login (email + password + OTP)
 
 ### 1. `GET {OAUTH_AUTHORIZE_URL}` (con PKCE)

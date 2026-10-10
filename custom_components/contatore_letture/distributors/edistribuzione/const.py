@@ -9,7 +9,24 @@ DOMAIN is NOT here: it's unified at contatore_letture level (see ...const).
 from __future__ import annotations
 
 # --- Salesforce Experience Cloud (login / OAuth2 + PKCE) ---------------------
-SF_BASE = "https://private.e-distribuzione.it/PortaleClienti"
+# La stessa org/community Salesforce (PortaleClienti) risponde su due host:
+# - private.e-distribuzione.it e' il dominio personalizzato del portale,
+#   dietro Imperva (Incapsula). Da ottobre 2026 risponde ai client non-browser
+#   con la pagina antibot (403 "Incapsula incident ID" o "Pardon Our
+#   Interruption"), bloccando sia il login sia il refresh del token (issue #8).
+# - edistribuzione.my.site.com e' il dominio canonico che Salesforce assegna
+#   all'org: stessa pagina di login, stesso client OAuth, senza Imperva
+#   davanti (verificato il 10/10/2026: 200 sulla pagina di login e risposta
+#   JSON di Salesforce dal token endpoint). Trovato da @paki81 per
+#   fabioscarparo/HomeAssistant-EDistribuzione.
+# Il dominio personalizzato resta il PRINCIPALE e si passa al diretto solo
+# quando il principale e' bloccato: cosi' si torna da soli al dominio
+# ufficiale quando Enel toglie il blocco (vedi auth.EdistribuzioneAuthClient).
+SF_HOST_PRINCIPALE = "private.e-distribuzione.it"
+SF_HOST_DIRETTO = "edistribuzione.my.site.com"
+SF_HOSTS = (SF_HOST_PRINCIPALE, SF_HOST_DIRETTO)
+
+SF_BASE = f"https://{SF_HOST_PRINCIPALE}/PortaleClienti"
 
 OAUTH_AUTHORIZE_URL = f"{SF_BASE}/services/oauth2/authorize"
 OAUTH_TOKEN_URL = f"{SF_BASE}/services/oauth2/token"
