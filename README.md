@@ -34,14 +34,20 @@ funzionante su installazioni reali. Dettagli sulle azioni in
 [Azioni](#azioni) più sotto.
 
 > [!NOTE]
-> **Ireti** è nuovo: l'endpoint dei consumi è confermato con dati reali
-> (curva di carico a **15 minuti** — più granulare di tutti gli altri
-> distributori supportati), ma **non ancora testato ufficialmente dentro
-> Home Assistant**. Alcuni dettagli restano da verificare con l'uso reale
-> (unità di misura esatta dei campioni, POD a fasce multiple anziché
-> monorari) — vedi
+> **Ireti** è il più recente: curva di carico a **15 minuti** (più
+> granulare di tutti gli altri distributori supportati), **provata dentro
+> Home Assistant con un POD reale**
+> ([issue #10](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/10)):
+> i totali mensili importati coincidono al kWh con le bollette. Restano da
+> verificare alcuni casi meno comuni (POD a fasce anziché orari, giorni di
+> cambio ora legale) — vedi
 > [documentation/protocols/ireti-protocol.md](documentation/protocols/ireti-protocol.md).
 > Se lo provi e trovi un problema, apri una issue.
+>
+> Se hai usato `recupera_storico` su Ireti prima della v0.8.6 e nella
+> Energy Dashboard vedi salti negativi a metà mese, ripeti l'azione su
+> 1-2 giorni qualsiasi: le somme progressive vengono ricalcolate da zero
+> sull'intera serie e i salti spariscono.
 
 > [!NOTE]
 > **RetiPiù** (Seregno, gruppo A2A) e **Reti Valtellina Valchiavenna**

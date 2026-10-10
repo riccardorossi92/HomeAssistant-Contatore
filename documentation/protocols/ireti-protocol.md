@@ -16,10 +16,17 @@ browser.
 > di misura esiste, risponde, ed è più granulare degli altri distributori
 > supportati: curva a 15 minuti invece che giornaliera/mensile.
 
-**Non ancora testato ufficialmente dentro Home Assistant**: nessuna
-installazione reale lo ha ancora usato in produzione (config flow, import
-automatico, sensori). Alcune ipotesi restano da confermare con l'uso
-reale — vedi [Cosa resta aperto](#cosa-resta-aperto). Se hai una
+**Provato dentro Home Assistant con un POD reale** da
+[issue #10](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/10)
+(IlPazzo90, 10/10/2026, HA 2026.10, integrazione v0.8.5): login,
+scoperta del POD, curva a 15 minuti e `recupera_storico` funzionano, e i
+totali mensili importati coincidono al kWh con le bollette del venditore
+per 5 mesi su 5. La stessa issue ha trovato due bug, corretti nella
+v0.8.6: il 403 del WAF dal secondo login in poi (vedi [Login](#login--verificato-funzionante-31082026))
+e le somme progressive che ripartivano da zero ai confini dei blocchi di
+`recupera_storico` (corretto in `statistics_common.py`, comune a tutti i
+distributori). Alcuni casi meno comuni restano da confermare — vedi
+[Cosa resta aperto](#cosa-resta-aperto). Se hai una
 fornitura Ireti attiva, puoi aiutare — vedi
 [Come contribuire](#come-contribuire) in fondo.
 
@@ -77,6 +84,20 @@ password grant lo rende superfluo.
 > **timeout** — non riceve un 403, la connessione viene semplicemente
 > scartata (comportamento tipico di un WAF). Con quegli header presenti,
 > le stesse chiamate funzionano.
+
+> [!WARNING]
+> **Il token endpoint rifiuta le richieste che portano cookie.** Le
+> chiamate a `/users/*` impostano `JSESSIONID` e il login stesso
+> `KEYCLOAK_LOCALE`: se un login successivo sulla stessa sessione HTTP li
+> rimanda, il WAF risponde **403 con una pagina HTML** ("403 Response
+> Code — Please contact our technical support with Request ID: ...") invece
+> del JSON di Keycloak. Riprodotto con aiohttp puro in
+> [issue #10](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/10):
+> login1 200, login2 403 (con `JSESSIONID` + `KEYCLOAK_LOCALE`), login3
+> 200 dopo aver svuotato il cookie jar; con curl senza cookie sempre 200.
+> Per questo `auth.py` svuota il cookie jar prima di ogni login (dalla
+> v0.8.6), e una risposta non JSON diventa un `IretiAuthError` con lo
+> status HTTP invece di un `JSONDecodeError`.
 
 ## API note — verificate funzionanti
 
@@ -156,10 +177,11 @@ Osservazioni:
   cadeva su un giorno di cambio ora legale, quindi lo splice a 96 non
   serviva. Da verificare il comportamento nei giorni di cambio ora.
 - Valori nell'ordine di `0.01`–`0.03`: sommando i 96 campioni di un
-  giorno si ottiene ~1.9, plausibile come **kWh per intervallo di 15
-  minuti** (giorno a consumo basso/standby) più che come potenza
-  istantanea in kW — ma non ancora confermato incrociando con un totale
-  giornaliero noto.
+  giorno si ottiene ~1.9. L'unità è **kWh per intervallo di 15 minuti**,
+  confermata da
+  [issue #10](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/10):
+  i totali mensili importati coincidono al kWh con le bollette per 5 mesi
+  su 5.
 - `endDate`/`startDate` nella richiesta sono UTC con l'offset già
   applicato (`21:59:59Z` = `23:59:59` ora locale CEST); `loadProfileDate`
   nella risposta invece è locale con offset esplicito (`+0200`).
@@ -263,12 +285,6 @@ potenzialmente sbagliato.
 
 Non blocca l'uso, ma va tenuto d'occhio quando arriva un riscontro reale:
 
-- **Unità di `sampleValues`**: assunta kWh per intervallo di 15 minuti
-  (somma giornaliera ~1.9 nell'unico esempio reale, plausibile per un
-  consumo di base) — non confermata al 100%, potrebbe essere potenza
-  media in kW. Se sbagliata, si corregge in un punto solo
-  (`statistics.py`, moltiplicando per 0.25): l'import è idempotente,
-  ricalcola sempre la somma progressiva da zero.
 - **`podType` diverso da `"orario"`**: mai osservato. Potrebbe cambiare
   la forma di `loadProfiles` (più elementi per giorno, per fascia).
 - **Giorni di cambio ora legale**: il codice del bundle JS ipotizza 92
@@ -279,11 +295,6 @@ Non blocca l'uso, ma va tenuto d'occhio quando arriva un riscontro reale:
   ricavati dal codice del bundle. Il coordinator dipende da `history` solo
   per `podType`, con un ripiego se fallisce (vedi sopra) — `registry` e
   `measures` non sono usati.
-- **Range più corti di un mese** per `measures-loadprofiles`: l'unico
-  esempio reale è un mese intero. Il coordinator li usa comunque
-  (tipicamente un solo giorno, `data - RITARDO_DATI_GIORNI`) partendo dal
-  presupposto ragionevole che l'API accetti range arbitrari (è solo
-  `startDate`/`endDate` ISO) — non ancora verificato.
 - **Ritardo di pubblicazione reale**: `RITARDO_DATI_GIORNI = 1` è una
   scelta di partenza ("il giorno prima"), non misurata — vedi il punto 6
   di `scripts/raccogli_dati_ireti.py`. Il meccanismo di coda lo rende
