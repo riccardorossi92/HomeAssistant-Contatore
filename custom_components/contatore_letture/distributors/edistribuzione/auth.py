@@ -104,6 +104,19 @@ _MARCATORI_OTP_INVIATO = (
 _ETICHETTE_CONSENSO = ("consenti", "allow", "approve", "autorizza", "accetta")
 
 
+# Titoli della pagina standard di Salesforce che impone il cambio della
+# password scaduta: arriva al posto del codice di autorizzazione, dopo che
+# l'OTP e' gia' stato accettato (issue #9, titolo reale
+# "e-distribuzione | Change Password"). Cercati solo nel <title>: un link
+# "cambia password" puo' comparire anche in pagine normali del portale.
+_TITOLI_CAMBIO_PASSWORD = ("change password", "cambia password", "modifica password")
+
+
+def _e_pagina_cambio_password(html: str) -> bool:
+    titolo = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    return bool(titolo) and _contiene(titolo.group(1), _TITOLI_CAMBIO_PASSWORD)
+
+
 def _contiene(html: str, marcatori: tuple[str, ...]) -> bool:
     testo = html.lower()
     return any(marcatore in testo for marcatore in marcatori)
@@ -201,6 +214,16 @@ class EdistribuzioneBloccoAntibot(EdistribuzioneAuthError):
     anche il 403 "Incapsula incident ID". Non e' un cambio di markup ne' un
     problema di credenziali. Arriva al chiamante solo se sono bloccati
     entrambi gli host (vedi const.SF_HOSTS), e va riprovato piu' tardi.
+    """
+
+
+class EdistribuzionePasswordScaduta(EdistribuzioneAuthError):
+    """Il portale chiede di cambiare la password prima di completare il login.
+
+    Credenziali e OTP sono stati accettati, ma Salesforce mostra la pagina
+    "Change Password" invece di rilasciare il codice di autorizzazione
+    (issue #9). Non e' un cambio di markup: va cambiata la password dal sito
+    o dall'app ufficiale, poi rifatta la configurazione con quella nuova.
     """
 
 
@@ -757,6 +780,12 @@ class EdistribuzioneAuthClient:
         # and state straight out of the returned HTML/JS instead of navigating.
         async with self._session.get(next_url, headers=headers) as resp:
             consent_html = await _leggi_testo(resp)
+
+        if _e_pagina_cambio_password(consent_html):
+            raise EdistribuzionePasswordScaduta(
+                "E-Distribuzione chiede di cambiare la password prima di "
+                "completare l'accesso"
+            )
 
         code_match = re.search(r"[?&]code=([^&'\"]+)", consent_html)
         state_match = re.search(r"[?&]state=([^&'\"]+)", consent_html)

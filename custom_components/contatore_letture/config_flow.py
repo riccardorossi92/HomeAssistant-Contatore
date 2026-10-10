@@ -561,6 +561,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             from .distributors.edistribuzione.auth import (
                 EdistribuzioneInvalidOtp,
                 EdistribuzioneParsingError,
+                EdistribuzionePasswordScaduta,
                 EdistribuzioneTroppeSessioni,
             )
 
@@ -576,6 +577,15 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_otp"
             except EdistribuzioneTroppeSessioni:
                 errors["base"] = "troppe_sessioni"
+            except EdistribuzionePasswordScaduta:
+                # Password scaduta: il login non puo' completarsi finche'
+                # non viene cambiata sul sito (issue #9). Abort e non
+                # errore nel form, perche' l'OTP e' gia' stato consumato.
+                _LOGGER.warning(
+                    "Login E-Distribuzione: il portale chiede di cambiare la "
+                    "password prima di completare l'accesso"
+                )
+                return self.async_abort(reason="edistribuzione_password_scaduta")
             except EdistribuzioneParsingError:
                 # A questo punto l'OTP e' gia' stato accettato da Salesforce
                 # (altrimenti avremmo preso EdistribuzioneInvalidOtp sopra):
@@ -1092,6 +1102,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             from .distributors.edistribuzione.auth import (
                 EdistribuzioneInvalidOtp,
                 EdistribuzioneParsingError,
+                EdistribuzionePasswordScaduta,
                 EdistribuzioneTroppeSessioni,
             )
 
@@ -1107,6 +1118,15 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_otp"
             except EdistribuzioneTroppeSessioni:
                 errors["base"] = "troppe_sessioni"
+            except EdistribuzionePasswordScaduta:
+                # Password scaduta: il login non puo' completarsi finche'
+                # non viene cambiata sul sito (issue #9). Abort e non
+                # errore nel form, perche' l'OTP e' gia' stato consumato.
+                _LOGGER.warning(
+                    "Login E-Distribuzione: il portale chiede di cambiare la "
+                    "password prima di completare l'accesso"
+                )
+                return self.async_abort(reason="edistribuzione_password_scaduta")
             except EdistribuzioneParsingError:
                 # Vedi commento in async_step_edistribuzione_otp: l'OTP e'
                 # gia' stato accettato, un retry sullo stesso form non

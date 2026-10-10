@@ -599,6 +599,41 @@ class TestApprovazioneConsenso:
         assert await client._async_approva_consenso("<html>niente</html>") is None
 
 
+class TestPasswordScaduta:
+    """Issue #9: dopo l'OTP il portale mostra "Change Password" invece del
+    codice di autorizzazione."""
+
+    PAGINA_CAMBIO_PASSWORD = (
+        "\r\n<!DOCTYPE HTML>\n<html><head><title>e-distribuzione | Change "
+        "Password</title></head><body><form>...</form></body></html>"
+    )
+
+    async def test_submit_otp_solleva_eccezione_dedicata(self):
+        session = _SessioneACoda([
+            _RispostaFinta(
+                '<meta name="Location" content="/PortaleClienti/ChangePassword">'
+            ),
+            _RispostaFinta(self.PAGINA_CAMBIO_PASSWORD),
+        ])
+        client = auth.EdistribuzioneAuthClient(session)
+        client._parse_otp_page(TestParseOtpPage.HTML_PAGINA_OTP)
+        with pytest.raises(auth.EdistribuzionePasswordScaduta):
+            await client.async_submit_otp("12345")
+
+    def test_riconosciuta_solo_dal_titolo(self):
+        assert auth._e_pagina_cambio_password(self.PAGINA_CAMBIO_PASSWORD)
+        assert not auth._e_pagina_cambio_password(
+            "<html><head><title>Consentire l'accesso?</title></head>"
+            '<body><a href="#">Cambia password</a></body></html>'
+        )
+
+    def test_non_e_un_errore_di_parsing(self):
+        assert issubclass(auth.EdistribuzionePasswordScaduta, auth.EdistribuzioneAuthError)
+        assert not issubclass(
+            auth.EdistribuzionePasswordScaduta, auth.EdistribuzioneParsingError
+        )
+
+
 # ---------------------------------------------------------------------------
 # Gerarchia eccezioni
 # ---------------------------------------------------------------------------

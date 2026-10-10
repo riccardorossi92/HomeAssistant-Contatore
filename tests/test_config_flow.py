@@ -37,6 +37,7 @@ from custom_components.contatore_letture.distributors.edistribuzione.auth import
     EdistribuzioneInvalidCredentials,
     EdistribuzioneInvalidOtp,
     EdistribuzioneParsingError,
+    EdistribuzionePasswordScaduta,
     EdistribuzioneTroppeSessioni,
 )
 from custom_components.contatore_letture.distributors.edistribuzione.const import (
@@ -494,6 +495,21 @@ async def test_edist_avviso_se_invio_otp_non_confermato(
     )
     assert res["step_id"] == "edistribuzione_otp"
     assert "non ha confermato" in res["description_placeholders"]["avviso"]
+
+
+async def test_edist_password_scaduta_abortisce_con_motivo_chiaro(
+    hass, _arera_sconosciuto, edist_mocks
+):
+    """Issue #9: se il portale chiede di cambiare la password, il flusso lo
+    dice invece del generico "completamento dell'accesso fallito"."""
+    edist_mocks.auth.async_submit_otp.side_effect = EdistribuzionePasswordScaduta("x")
+    res = await _fino_a_edist_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"otp": "123456"})
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "edistribuzione_password_scaduta"
 
 
 async def test_edist_otp_parsing_fallito_abortisce(hass, _arera_sconosciuto, edist_mocks):
