@@ -515,7 +515,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     user_input["email"], user_input["password"]
                 )
             except EdistribuzioneInvalidCredentials:
-                errors["base"] = "invalid_auth"
+                errors["base"] = "invalid_auth_email"
             except EdistribuzioneTroppeSessioni:
                 # Credenziali giuste, ma l'account ha troppe sessioni aperte:
                 # nessun OTP viene inviato, quindi non ha senso proseguire
@@ -712,7 +712,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 contesto = await auth.async_login(user_input["email"], user_input["password"])
             except AretiInvalidCredentials:
-                errors["base"] = "invalid_auth"
+                errors["base"] = "invalid_auth_email"
             except AretiParsingError:
                 _LOGGER.exception("Parsing della pagina di login Areti fallito")
                 errors["base"] = "cannot_connect"
@@ -812,7 +812,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 await auth.async_login(user_input["email"], user_input["password"])
             except AretiInvalidCredentials:
-                errors["base"] = "invalid_auth"
+                errors["base"] = "invalid_auth_email"
             except AretiParsingError:
                 _LOGGER.exception("Parsing della pagina di login Areti fallito (reauth)")
                 errors["base"] = "cannot_connect"
@@ -865,7 +865,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 access_token = await auth.async_login(user_input["username"], user_input["password"])
             except IretiInvalidCredentials:
-                errors["base"] = "invalid_auth"
+                errors["base"] = "invalid_auth_username"
             except IretiAuthError:
                 _LOGGER.exception("Login Ireti fallito")
                 errors["base"] = "cannot_connect"
@@ -988,7 +988,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 await auth.async_login(user_input["username"], user_input["password"])
             except IretiInvalidCredentials:
-                errors["base"] = "invalid_auth"
+                errors["base"] = "invalid_auth_username"
             except IretiAuthError:
                 _LOGGER.exception("Login Ireti fallito (reauth)")
                 errors["base"] = "cannot_connect"
@@ -1058,7 +1058,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     user_input["email"], user_input["password"]
                 )
             except EdistribuzioneInvalidCredentials:
-                errors["base"] = "invalid_auth"
+                errors["base"] = "invalid_auth_email"
             except EdistribuzioneTroppeSessioni:
                 _LOGGER.warning(
                     "Login E-Distribuzione rifiutato (reauth): troppe sessioni "

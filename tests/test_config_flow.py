@@ -393,7 +393,7 @@ async def test_edist_credenziali_non_valide(hass, _arera_sconosciuto, edist_mock
         res["flow_id"], {"email": "a@b.it", "password": "x"}
     )
     assert res["type"] == FlowResultType.FORM
-    assert res["errors"] == {"base": "invalid_auth"}
+    assert res["errors"] == {"base": "invalid_auth_email"}
 
 
 async def test_edist_pagina_login_cambiata(hass, _arera_sconosciuto, edist_mocks):
@@ -685,7 +685,7 @@ async def test_ireti_credenziali_non_valide(hass, _arera_sconosciuto, ireti_mock
     )
     assert res["type"] == FlowResultType.FORM
     assert res["step_id"] == "ireti_user"
-    assert res["errors"] == {"base": "invalid_auth"}
+    assert res["errors"] == {"base": "invalid_auth_username"}
 
 
 async def test_ireti_un_solo_pod_crea_entry_subito(hass, _arera_sconosciuto, ireti_mocks):
@@ -782,7 +782,7 @@ async def test_ireti_reauth_credenziali_non_valide(hass, ireti_mocks):
         res["flow_id"], {"username": "u", "password": "sbagliata"}
     )
     assert res["type"] == FlowResultType.FORM
-    assert res["errors"] == {"base": "invalid_auth"}
+    assert res["errors"] == {"base": "invalid_auth_username"}
 
 
 async def test_ireti_opzioni_non_supportate(hass):
