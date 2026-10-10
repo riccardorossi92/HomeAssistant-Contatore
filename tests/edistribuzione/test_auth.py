@@ -147,6 +147,35 @@ class TestBeginLoginSenzaFwuid:
         assert not isinstance(exc_info.value, auth.EdistribuzioneParsingError)
         assert "mario" not in str(exc_info.value)
 
+    async def test_pagina_di_debug_salvata_solo_per_il_blocco_sul_diretto(
+        self, monkeypatch, tmp_path
+    ):
+        """Il blocco sull'host principale e' atteso (si ripiega sul diretto):
+        niente pagina di debug, solo per il fallimento vero."""
+        monkeypatch.chdir(tmp_path)
+        pagina = "<title>Pardon Our Interruption</title>"
+        risposte = {
+            auth.SF_HOST_PRINCIPALE: _RispostaLoginFinta(
+                200, "https://private.e-distribuzione.it/PortaleClienti/x", pagina
+            ),
+            auth.SF_HOST_DIRETTO: _RispostaLoginFinta(
+                200, "https://edistribuzione.my.site.com/PortaleClienti/x", pagina
+            ),
+        }
+        client = auth.EdistribuzioneAuthClient(session=None)
+
+        async def _finto_get(*args, **kwargs):
+            return risposte[client._host]
+
+        salvate = []
+        monkeypatch.setattr(auth, "_get_following_redirects", _finto_get)
+        monkeypatch.setattr(
+            auth, "_salva_pagina_debug", lambda html, nome: salvate.append(client._host)
+        )
+        with pytest.raises(auth.EdistribuzioneBloccoAntibot):
+            await client.async_begin_login("mario@example.com", "pw")
+        assert salvate == [auth.SF_HOST_DIRETTO]
+
 
 # ---------------------------------------------------------------------------
 # _extract_loaded

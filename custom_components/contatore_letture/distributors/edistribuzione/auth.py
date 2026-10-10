@@ -380,8 +380,8 @@ class EdistribuzioneAuthClient:
         except EdistribuzioneBloccoAntibot:
             if self._host == SF_HOST_DIRETTO:
                 raise
-            _LOGGER.warning(
-                "Login bloccato dall'antibot su %s, riprovo via %s",
+            _LOGGER.info(
+                "Login bloccato dall'antibot su %s, uso %s",
                 SF_HOST_PRINCIPALE,
                 SF_HOST_DIRETTO,
             )
@@ -441,13 +441,18 @@ class EdistribuzioneAuthClient:
         resp.close()
 
         if _contiene(login_page_html, _MARCATORI_ANTIBOT):
-            _LOGGER.warning(
-                "E-Distribuzione ha risposto con la pagina anti-bot Imperva "
-                "(HTTP %s su %s) invece che con la pagina di login",
-                landing_status,
-                landing_url,
-            )
-            _salva_pagina_debug(login_page_html, "login_page_debug.html")
+            # Sull'host principale il blocco e' atteso e async_begin_login
+            # ripiega da solo sul diretto: avviso e pagina di debug servono
+            # solo se e' bloccato anche quello, cioe' quando il login
+            # fallisce davvero.
+            if self._host == SF_HOST_DIRETTO:
+                _LOGGER.warning(
+                    "E-Distribuzione ha risposto con la pagina anti-bot Imperva "
+                    "(HTTP %s su %s) invece che con la pagina di login",
+                    landing_status,
+                    landing_url,
+                )
+                _salva_pagina_debug(login_page_html, "login_page_debug.html")
             raise EdistribuzioneBloccoAntibot(
                 f"Richiesta bloccata dalla protezione anti-bot del portale "
                 f"(HTTP {landing_status} su {landing_url})"
@@ -920,8 +925,8 @@ class EdistribuzioneAuthClient:
         try:
             return await self._async_refresh_su_host(refresh_token)
         except EdistribuzioneBloccoAntibot:
-            _LOGGER.warning(
-                "Refresh del token bloccato dall'antibot su %s, riprovo via %s",
+            _LOGGER.info(
+                "Refresh del token bloccato dall'antibot su %s, uso %s",
                 SF_HOST_PRINCIPALE,
                 SF_HOST_DIRETTO,
             )
