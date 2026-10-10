@@ -55,7 +55,13 @@ class _Risposta:
         self._corpo = corpo
 
     async def json(self, content_type=None):
+        if isinstance(self._corpo, str):
+            # Come aiohttp con orjson: il JSONDecodeError è un ValueError.
+            raise ValueError("unexpected character: line 1 column 1 (char 0)")
         return self._corpo
+
+    async def text(self):
+        return self._corpo if isinstance(self._corpo, str) else repr(self._corpo)
 
     async def __aenter__(self):
         return self
@@ -64,14 +70,23 @@ class _Risposta:
         return False
 
 
+class _CookieJar:
+    def __init__(self):
+        self.cookie = {"JSESSIONID": "x", "KEYCLOAK_LOCALE": "it"}
+
+    def clear(self):
+        self.cookie.clear()
+
+
 class _Sessione:
     def __init__(self, status: int, corpo):
         self._status = status
         self._corpo = corpo
         self.richieste: list[dict] = []
+        self.cookie_jar = _CookieJar()
 
     def post(self, url, data=None):
-        self.richieste.append({"url": url, "data": data})
+        self.richieste.append({"url": url, "data": data, "cookie": dict(self.cookie_jar.cookie)})
         return _Risposta(self._status, self._corpo)
 
 
@@ -132,9 +147,29 @@ class TestAsyncLogin:
     @pytest.mark.asyncio
     async def test_errore_di_trasporto_solleva_autherror(self):
         class _SessioneRotta:
+            cookie_jar = _CookieJar()
+
             def post(self, url, data=None):
                 raise aiohttp.ClientConnectionError("connessione rifiutata")
 
         client = auth.IretiAuthClient(_SessioneRotta())
         with pytest.raises(auth.IretiAuthError):
+            await client.async_login("utente", "segreto")
+
+    @pytest.mark.asyncio
+    async def test_login_parte_senza_cookie(self):
+        """Issue #10: con JSESSIONID/KEYCLOAK_LOCALE nella sessione il WAF
+        risponde 403 al secondo login: il POST deve partire senza cookie."""
+        sessione = _Sessione(200, TOKEN_REALE)
+        client = auth.IretiAuthClient(sessione)
+        await client.async_login("utente", "segreto")
+        assert sessione.richieste[0]["cookie"] == {}
+
+    @pytest.mark.asyncio
+    async def test_pagina_html_del_waf_solleva_autherror(self):
+        """Issue #10: un 403 HTML del WAF diventa un IretiAuthError leggibile,
+        non un JSONDecodeError."""
+        sessione = _Sessione(403, "<html>403 Response Code - Request ID: abc</html>")
+        client = auth.IretiAuthClient(sessione)
+        with pytest.raises(auth.IretiAuthError, match="HTTP 403, risposta non JSON"):
             await client.async_login("utente", "segreto")

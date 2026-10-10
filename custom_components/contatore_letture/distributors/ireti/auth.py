@@ -41,7 +41,8 @@ class IretiAuthClient:
 
     Non serve una sessione con cookie jar dedicata (a differenza di areti/
     edistribuzione): è un client OAuth2 diretto, nessun redirect da
-    seguire. La sessione va comunque riusata per le chiamate successive
+    seguire, e anzi il cookie jar va svuotato prima di ogni login (vedi
+    async_login). La sessione va comunque riusata per le chiamate successive
     (api.py) perché porta gli stessi header "da browser" necessari per
     non finire in timeout contro il WAF di /users/* e /readings/*."""
 
@@ -60,9 +61,25 @@ class IretiAuthClient:
             "scope": "openid profile email",
         }
 
+        # Il WAF davanti al token endpoint risponde 403 con una pagina HTML
+        # se la richiesta porta i cookie lasciati dalle chiamate precedenti
+        # sulla stessa sessione (JSESSIONID da /users/*, KEYCLOAK_LOCALE dal
+        # login stesso): il primo login dopo l'avvio passa, tutti i successivi
+        # no. Il login non ha bisogno di nessun cookie, quindi si riparte
+        # sempre da un cookie jar vuoto (issue #10).
+        self._session.cookie_jar.clear()
+
         try:
             async with self._session.post(TOKEN_URL, data=dati) as resp:
-                corpo = await resp.json(content_type=None)
+                try:
+                    corpo = await resp.json(content_type=None)
+                except ValueError:
+                    # Risposta non JSON: tipicamente la pagina HTML del WAF.
+                    testo = await resp.text()
+                    raise IretiAuthError(
+                        f"Login Ireti fallito (HTTP {resp.status}, risposta non JSON): "
+                        f"{testo[:200]!r}"
+                    ) from None
                 if resp.status != 200:
                     errore = corpo.get("error") if isinstance(corpo, dict) else None
                     if errore in ("invalid_grant", "unauthorized_client"):

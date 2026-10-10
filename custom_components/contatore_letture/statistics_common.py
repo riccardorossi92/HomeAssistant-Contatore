@@ -45,9 +45,18 @@ async def leggi_serie_esistente(hass: HomeAssistant, statistic_id: str) -> dict[
 
     Restituisce {inizio_ora_utc: kwh_dell_ora}. Serve per poter reinserire
     dati storici: vedi async_scrivi_serie_oraria.
+
+    Prima di leggere aspetta che il recorder abbia svuotato la coda:
+    async_add_external_statistics accoda la scrittura senza attenderla, e
+    un recupero storico a blocchi chiama async_scrivi_serie_oraria più volte
+    di fila. Senza l'attesa il blocco successivo rilegge una serie parziale
+    e ne ricalcola le somme progressive, che ripartono da quasi zero a ogni
+    confine di blocco (issue #10).
     """
+    recorder = get_instance(hass)
+    await recorder.async_block_till_done()
     inizio_epoca = dt_util.utc_from_timestamp(0)
-    esistenti = await get_instance(hass).async_add_executor_job(
+    esistenti = await recorder.async_add_executor_job(
         statistics_during_period,
         hass,
         inizio_epoca,
