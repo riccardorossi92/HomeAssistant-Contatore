@@ -28,9 +28,9 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | Areti | Email + password | `recupera_storico` |
 | Ireti | Username + password | `recupera_storico` |
 
-Per Duereti/Unareti/E-Distribuzione/Areti: login, lettura dati, import
-nella Energy Dashboard e più POD per configurazione — tutto confermato
-funzionante su installazioni reali. Dettagli sulle azioni in
+Per Duereti/Unareti/E-Distribuzione/Areti/Ireti: login, lettura dati,
+import nella Energy Dashboard e più POD per configurazione — tutto
+confermato funzionante su installazioni reali. Dettagli sulle azioni in
 [Azioni](#azioni) più sotto.
 
 > [!WARNING]
@@ -45,6 +45,13 @@ funzionante su installazioni reali. Dettagli sulle azioni in
 > fallire anche con email e password corrette. Se ti succede, aggiorna
 > all'ultima versione, riprova più tardi e segui l'issue: aggiungi pure
 > lì il messaggio che vedi e le righe di log di `contatore_letture`.
+
+> [!WARNING]
+> **Ireti: se hai importato dati con la v0.8.7 o precedenti**, dopo
+> l'aggiornamento alla v0.8.8 ripeti `recupera_storico` sul periodo già importato.
+> Corregge i salti negativi a metà mese lasciati dai recuperi lunghi e i
+> giorni di cambio ora (ultima domenica di marzo e di ottobre), che prima
+> venivano importati spostati di un'ora o incompleti.
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
