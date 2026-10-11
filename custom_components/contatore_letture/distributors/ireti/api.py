@@ -10,10 +10,11 @@ Stato di conferma per endpoint (importante per chi tocca questo file):
     17/09/2026).
   - measures-loadprofiles: CONFERMATO su dati reali (issue #6, 17/09/2026)
     - la fonte primaria per questa integrazione.
-  - history: forma ricavata dal bundle JS dell'app, MAI vista rispondere
-    con dati reali. async_get_history può fallire o non contenere
-    'podType' - il coordinator deve trattarlo come "meglio informato di
-    niente", non come una fonte affidabile al 100% (vedi coordinator.py).
+  - history: confermato su dati reali (issue #10, 11/10/2026). Il podType
+    non sta al primo livello ma nella lista 'podTypeChange' - lo estrae
+    il coordinator (_pod_type_da_history), con un ripiego se manca.
+  - registry, readings/exabeat/measures: mai confermati (measures ha
+    risposto 404 nella issue #10) e non usati.
 """
 from __future__ import annotations
 
@@ -90,9 +91,8 @@ class IretiApiClient:
 
     async def async_get_history(self, pod: str, customer_tax_code_vat: str,
                                  start_iso: str, end_iso: str) -> dict[str, Any]:
-        """POST /users/exabeat/history - NON confermato su dati reali (vedi
-        docstring del modulo). Ritorna il corpo grezzo: è compito del
-        chiamante decidere cosa fare se 'podType' non c'è."""
+        """POST /users/exabeat/history (vedi docstring del modulo). Ritorna
+        il corpo grezzo: il podType lo estrae il coordinator."""
         return await self._post(
             "/users/exabeat/history",
             {

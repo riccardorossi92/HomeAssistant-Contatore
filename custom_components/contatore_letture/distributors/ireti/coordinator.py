@@ -25,8 +25,9 @@ sezione "Design del coordinator". In sintesi:
     reauth), non un semplice UpdateFailed.
 
   - 'podType' (necessario nel payload di measures-loadprofiles) si legge
-    da /users/exabeat/history, endpoint MAI confermato con dati reali
-    (vedi api.py): se fallisce o non lo contiene, si ricade su "orario"
+    da /users/exabeat/history, dentro 'podTypeChange' (forma confermata
+    su dati reali dalla issue #10, vedi _pod_type_da_history): se la
+    chiamata fallisce o il podType non c'è, si ricade su "orario"
     (l'unico valore osservato finora) con un avviso nei log invece di far
     fallire l'intero ciclo - un'ipotesi sbagliata qui produce nella
     peggiore delle ipotesi un payload che il portale rifiuta con un
@@ -36,7 +37,7 @@ sezione "Design del coordinator". In sintesi:
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -139,13 +140,69 @@ def _giorni_ricevuti(load_profiles: list[dict[str, Any]]) -> set[date]:
 
 def _kwh_del_giorno(load_profiles: list[dict[str, Any]], giorno: date) -> float | None:
     """Somma dei sampleValues del giorno indicato dentro una risposta
-    multi-giorno, o None se quel giorno non c'è."""
-    for elemento in load_profiles:
-        if elemento.get("energyType") == "A1" and _giorno_di(elemento) == giorno:
-            return sum(
-                float(v) for v in (elemento.get("sampleValues") or []) if v not in (None, "")
-            )
-    return None
+    multi-giorno, o None se quel giorno non c'è. Somma tutti gli elementi
+    A1 della data: nel giorno da 25 ore sono due (issue #10)."""
+    elementi = [
+        elemento
+        for elemento in load_profiles
+        if elemento.get("energyType") == "A1" and _giorno_di(elemento) == giorno
+    ]
+    if not elementi:
+        return None
+    return sum(
+        float(v)
+        for elemento in elementi
+        for v in (elemento.get("sampleValues") or [])
+        if v not in (None, "")
+    )
+
+
+def _pod_type_da_history(storia: Any, end_iso: str) -> str | None:
+    """podType dalla risposta di /users/exabeat/history.
+
+    Il portale lo mette dentro 'podTypeChange', una lista di periodi
+    (issue #10):
+
+        "podTypeChange": [{"podType": "orario",
+                           "startDate": "01/05/2025 00:00:00 +0200",
+                           "endDate": "31/12/9999 23:59:59 +0100"}]
+
+    Si prende il periodo che contiene la fine della finestra richiesta;
+    se nessuno la contiene (o le date non si leggono), il periodo che
+    comincia per ultimo. 'podType' al primo livello, ipotizzato dal bundle
+    JS e mai visto, resta come prima scelta."""
+    if not isinstance(storia, dict):
+        return None
+    if storia.get("podType"):
+        return storia["podType"]
+
+    periodi = [
+        periodo
+        for periodo in storia.get("podTypeChange") or []
+        if isinstance(periodo, dict) and periodo.get("podType")
+    ]
+    if not periodi:
+        return None
+
+    def _data(valore: Any) -> datetime | None:
+        try:
+            return datetime.strptime(str(valore), "%d/%m/%Y %H:%M:%S %z")
+        except ValueError:
+            return None
+
+    try:
+        fine_finestra = datetime.strptime(end_iso, "%Y-%m-%dT%H:%M:%S.000Z").replace(tzinfo=UTC)
+    except ValueError:
+        fine_finestra = None
+
+    if fine_finestra is not None:
+        for periodo in periodi:
+            inizio, fine = _data(periodo.get("startDate")), _data(periodo.get("endDate"))
+            if inizio and fine and inizio <= fine_finestra <= fine:
+                return periodo["podType"]
+
+    minimo = datetime.min.replace(tzinfo=UTC)
+    return max(periodi, key=lambda periodo: _data(periodo.get("startDate")) or minimo)["podType"]
 
 
 class IretiCoordinator(DataUpdateCoordinator[dict]):
@@ -201,17 +258,22 @@ class IretiCoordinator(DataUpdateCoordinator[dict]):
         if pod in self._pod_type:
             return self._pod_type[pod]
 
-        pod_type = _POD_TYPE_DI_RIPIEGO
         try:
             storia = await api.async_get_history(pod, tax_code, start_iso, end_iso)
-            pod_type = storia.get("podType") or _POD_TYPE_DI_RIPIEGO
         except IretiApiError as err:
+            motivo = f"errore: {err}"
+            pod_type = None
+        else:
+            motivo = f"podType assente nella risposta: {storia!r}"
+            pod_type = _pod_type_da_history(storia, end_iso)
+
+        if pod_type is None:
+            pod_type = _POD_TYPE_DI_RIPIEGO
             if pod not in self._pod_type_fallback_avvisato:
                 _LOGGER.warning(
-                    "POD %s: /users/exabeat/history non ha risposto correttamente "
-                    "(%s) - uso '%s' come podType di ripiego (unico valore "
-                    "confermato finora). Vedi documentation/protocols/ireti-protocol.md.",
-                    pod, err, _POD_TYPE_DI_RIPIEGO,
+                    "POD %s: podType non ricavato da /users/exabeat/history (%s) - "
+                    "uso '%s' come ripiego. Vedi documentation/protocols/ireti-protocol.md.",
+                    pod, motivo, _POD_TYPE_DI_RIPIEGO,
                 )
                 self._pod_type_fallback_avvisato.add(pod)
 

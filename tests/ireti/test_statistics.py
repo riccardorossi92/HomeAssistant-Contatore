@@ -1,17 +1,17 @@
 """Test della logica di aggregazione oraria (distributors/ireti/statistics.py).
 
-Coperte solo le funzioni pure (sanitize_statistic_id, _ora_da_indice,
-_aggrega_per_ora): il percorso completo async_import_curva_giorni
+Coperte solo le funzioni pure (sanitize_statistic_id, _aggrega_per_ora): il percorso completo async_import_curva_giorni
 richiede il recorder ed è fuori da questi test (stesso approccio di
 tests/pcf_common/test_statistics.py).
 
-Il fuso di riferimento è quello di default di Home Assistant nei test
-(UTC), quindi qui locale == UTC: non serve simulare il cambio ora per
-testare l'aggregazione in sé, solo per il caso "92 campioni" (vedi sotto).
+Il fuso di riferimento è UTC (locale == UTC) per l'aggregazione in sé; i
+giorni di cambio ora usano Europe/Rome con la forma reale delle risposte
+vista nella issue #10.
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from homeassistant.util import dt as dt_util
@@ -55,20 +55,6 @@ def test_statistic_id_dal_pod():
 
 def test_statistic_id_sostituisce_i_caratteri_strani():
     assert st.sanitize_statistic_id("IT-020/E 1") == "contatore_letture:it_020_e_1_energia"
-
-
-# --- _ora_da_indice ----------------------------------------------------------
-
-def test_indice_zero_e_mezzanotte():
-    assert st._ora_da_indice(0) == time(0, 0)
-
-
-def test_indice_due_e_le_00_30():
-    assert st._ora_da_indice(2) == time(0, 30)
-
-
-def test_ultimo_indice_e_le_23_45():
-    assert st._ora_da_indice(95) == time(23, 45)
 
 
 # --- _aggrega_per_ora ---------------------------------------------------
@@ -126,13 +112,68 @@ def test_numero_di_campioni_inatteso_scarta_il_giorno():
     assert risultato == []
 
 
-def test_novantadue_campioni_e_accettato():
-    """Giorno di cambio ora legale (ipotizzato dal bundle JS, non ancora
-    osservato con dati reali) - non deve essere scartato solo perché ha
-    92 campioni invece di 96."""
-    campioni = _giorno_completo(0.1, n=92)
-    risultato = st._aggrega_per_ora([_lp("29/03/2026", campioni)])
-    assert len(risultato) > 0
+@pytest.fixture
+def fuso_roma():
+    dt_util.set_default_time_zone(ZoneInfo("Europe/Rome"))
+
+
+def _ore_utc(risultato) -> dict:
+    return dict(risultato)
+
+
+def test_giorno_da_23_ore(fuso_roma):
+    """29/03/2026 (issue #10): un solo elemento da 92 campioni. L'indice è
+    tempo trascorso dalla mezzanotte: 23 bucket da 4 campioni, nessuna
+    ora doppia alle 03:00 e nessun buco alle 23:00."""
+    campioni = [float(i // 4) for i in range(92)]  # ora trascorsa n -> valore n
+    ore = _ore_utc(st._aggrega_per_ora([_lp("29/03/2026", campioni)]))
+
+    assert len(ore) == 23
+    mezzanotte = datetime(2026, 3, 28, 23, 0, tzinfo=UTC)  # 00:00 CET
+    assert min(ore) == mezzanotte
+    assert ore[mezzanotte] == pytest.approx(0.0)
+    # 03:00 CEST = 01:00Z: seconda ora trascorsa, un'ora sola
+    assert ore[datetime(2026, 3, 29, 1, 0, tzinfo=UTC)] == pytest.approx(4 * 2.0)
+    # 23:00 CEST = 21:00Z: ultima ora del giorno, presente
+    assert ore[datetime(2026, 3, 29, 21, 0, tzinfo=UTC)] == pytest.approx(4 * 22.0)
+
+
+def _elementi_giorno_da_25_ore() -> list[dict]:
+    """26/10/2025 come nella issue #10: 12 campioni (00:00-02:59 CEST) e
+    96 con i primi 8 a null (dalle 02:00 CET). Valore = ora trascorsa."""
+    corto = [float(i // 4) for i in range(12)]
+    lungo = [None] * 8 + [float(3 + (i - 8) // 4) for i in range(8, 96)]
+    return [_lp("26/10/2025", corto), _lp("26/10/2025", lungo)]
+
+
+@pytest.mark.parametrize("inverti", [False, True])
+def test_giorno_da_25_ore_unisce_i_due_elementi(fuso_roma, inverti):
+    """Il portale non garantisce l'ordine: il risultato non deve cambiare."""
+    elementi = _elementi_giorno_da_25_ore()
+    if inverti:
+        elementi.reverse()
+    ore = _ore_utc(st._aggrega_per_ora(elementi))
+
+    assert len(ore) == 25
+    inizio = datetime(2025, 10, 25, 22, 0, tzinfo=UTC)  # 00:00 CEST
+    for n in range(25):
+        assert ore[inizio + timedelta(hours=n)] == pytest.approx(4.0 * n), n
+
+
+def test_giorno_da_25_ore_con_un_solo_elemento_e_scartato(fuso_roma):
+    """Senza l'elemento da 12 i campioni non tornano (96 su 100): meglio
+    scartare il giorno che importarlo spostato."""
+    _, lungo = _elementi_giorno_da_25_ore()
+    assert st._aggrega_per_ora([lungo]) == []
+
+
+def test_elemento_r1_accanto_ad_a1_non_cambia_il_giorno():
+    """Ogni giorno arriva anche un elemento R1 (reattiva, issue #10)."""
+    risultato = st._aggrega_per_ora(
+        [_lp("01/08/2026", _giorno_completo(0.1)), _lp("01/08/2026", _giorno_completo(5.0), "R1")]
+    )
+    assert len(risultato) == 24
+    assert all(v == pytest.approx(0.4) for _, v in risultato)
 
 
 def test_loadprofile_senza_data_valida_viene_scartato():

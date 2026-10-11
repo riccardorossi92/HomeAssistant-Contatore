@@ -13,42 +13,40 @@ il 17/09/2026 (issue #6, russomichele):
       "sampleValues": [0.023, 0.022, ... 96 valori totali]
     }
 
-sampleValues: un valore ogni 15 minuti, indice 0 = 00:00-00:15 locale,
-indice 95 = 23:45-00:00. Si assume siano kWh per intervallo (somma
-giornaliera ~1.9 nell'esempio reale, plausibile per un consumo di base -
-NON confermato al 100%, potrebbe trattarsi di potenza media in kW: se
-emerge il contrario, l'unico punto da correggere è qui, moltiplicando per
-0.25 - l'import è idempotente, ricalcola sempre la somma progressiva da
-zero, quindi correggerlo in futuro non lascia dati incoerenti indietro).
+sampleValues: un valore ogni 15 minuti in kWh per intervallo, a partire
+dalla mezzanotte locale - unità confermata dalla issue #10 (totali mensili
+importati uguali al kWh alle bollette per 5 mesi su 5).
 
-energyType: solo "A1" osservato finora (energia attiva). Si importano
-SOLO gli elementi con energyType "A1": un POD "fasce"/"mono orario" (mai
-visto, solo ipotizzato dal bundle JS) potrebbe restituire più elementi
-per giorno con energyType diversi per fascia, nel qual caso filtrare solo
-"A1" sotto-conterebbe il consumo invece di sommare valori eterogenei per
-errore - preferibile importare un sottoinsieme sicuramente corretto che
-sommare alla cieca. Vedi "Ipotesi da verificare" in
+energyType: si importano SOLO gli elementi "A1" (energia attiva). Ogni
+giorno arriva anche un elemento "R1" (reattiva, issue #10), che va
+scartato; un POD "fasce"/"mono orario" (mai visto) potrebbe inoltre
+restituire più elementi per giorno con energyType diversi per fascia:
+meglio importare un sottoinsieme sicuramente corretto che sommare valori
+eterogenei. Vedi "Cosa resta aperto" in
 documentation/protocols/ireti-protocol.md.
 
-Fuso orario: a differenza di Areti, 'loadProfileDate' porta un offset UTC
-esplicito (qui "+0200") - ma non ci si affida a quell'offset per ogni
-singolo campione (un giorno di cambio ora avrebbe un solo offset in testa
-per tutta la giornata, sbagliato per la parte di giorno dopo il cambio):
-si segue lo stesso approccio di Areti, si ricostruisce l'ora locale a
-partire dall'indice (quarto d'ora) e si converte in UTC con
-dt_util.as_utc, lasciando che sia il database dei fusi orari di Home
-Assistant a gestire il cambio ora.
+Fuso orario e cambio ora - verificati su dati reali (issue #10):
 
-NON VERIFICATO: comportamento nei giorni di cambio ora legale (92
-campioni invece di 96, secondo il codice del bundle JS - la cattura
-reale disponibile, agosto 2026, non ne conteneva nessuno). Stesso identico
-avvertimento del modulo equivalente di Areti.
+- l'indice è il tempo TRASCORSO dalla mezzanotte locale, non l'ora sul
+  quadrante: il campione i inizia a mezzanotte (convertita in UTC) +
+  i x 15 minuti. Nel giorno da 23 ore (29/03/2026) arriva un solo
+  elemento da 92 campioni; ricostruire l'ora locale dall'indice
+  spostava tutto di un'ora dalle 03:00 in poi;
+- nel giorno da 25 ore (26/10/2025) arrivano DUE elementi A1 con la
+  stessa loadProfileDate: uno da 12 campioni (00:00-02:59 ora legale) e
+  uno da 96 con i primi 8 a null (dalle 02:00 ora solare in poi). Uniti
+  - prima quello senza null in testa, poi l'altro privato dei null
+  iniziali - danno i 100 campioni della giornata.
+
+Il numero di campioni atteso per un giorno (92/96/100) si ricava dal
+database dei fusi di Home Assistant; un giorno che non torna viene
+scartato con un avviso invece di importare dati disallineati.
 """
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -65,30 +63,55 @@ _LOGGER = logging.getLogger(__name__)
 # Solo l'energia attiva è consumo importabile con fiducia - vedi docstring.
 _ENERGY_TYPE_ATTIVA = "A1"
 
-_MINUTI_PER_CAMPIONE = 15
-_CAMPIONI_ATTESI = (92, 96)  # 96 normale, 92 nel giorno di cambio ora legale
+_DURATA_CAMPIONE = timedelta(minutes=15)
 
 
-def _ora_da_indice(indice: int) -> time:
-    """Indice di campione (0-95, quarti d'ora dalla mezzanotte) -> ora
-    locale del suo inizio, es. indice 2 -> 00:30:00."""
-    minuti_totali = indice * _MINUTI_PER_CAMPIONE
-    return time(hour=(minuti_totali // 60) % 24, minute=minuti_totali % 60)
+def _mezzanotte_utc(giorno: date) -> datetime:
+    return dt_util.as_utc(
+        datetime.combine(giorno, time.min).replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+    )
+
+
+def _campioni_attesi(giorno: date) -> int:
+    """Quarti d'ora nella giornata locale: 96, 92 o 100 nei giorni di
+    cambio ora."""
+    durata = _mezzanotte_utc(giorno + timedelta(days=1)) - _mezzanotte_utc(giorno)
+    return durata // _DURATA_CAMPIONE
+
+
+def _unisci_elementi_del_giorno(elementi: list[list[Any]]) -> list[Any]:
+    """Più elementi A1 con la stessa data (giorno da 25 ore, vedi
+    docstring) -> un'unica sequenza di campioni in ordine di tempo.
+
+    Il portale non li manda in ordine: va prima quello che non comincia
+    con null, poi gli altri privati dei null iniziali (la parte di giorno
+    già coperta dal primo). Con un solo elemento i null restano dove sono:
+    sono buchi del dato, non sovrapposizioni."""
+    if len(elementi) == 1:
+        return elementi[0]
+    ordinati = sorted(elementi, key=lambda campioni: bool(campioni) and campioni[0] is None)
+    uniti = list(ordinati[0])
+    for campioni in ordinati[1:]:
+        indice = 0
+        while indice < len(campioni) and campioni[indice] is None:
+            indice += 1
+        uniti.extend(campioni[indice:])
+    return uniti
 
 
 def _aggrega_per_ora(load_profiles: list[dict[str, Any]]) -> list[tuple[datetime, float]]:
-    """Aggrega i campioni a 15 minuti (locali) di più giorni in bucket orari (UTC).
+    """Aggrega i campioni a 15 minuti di più giorni in bucket orari (UTC).
 
     Elementi con campi mancanti/non parsabili, o con energyType diverso da
     "A1", vengono scartati con un log invece di far fallire l'intero
     import: un giorno corrotto o con un tipo inatteso non deve perdere il
     resto della finestra richiesta."""
-    bucket: dict[datetime, float] = defaultdict(float)
+    per_giorno: dict[date, list[list[Any]]] = defaultdict(list)
 
     for elemento in load_profiles:
         energy_type = elemento.get("energyType")
         if energy_type != _ENERGY_TYPE_ATTIVA:
-            _LOGGER.info(
+            _LOGGER.debug(
                 "loadProfile con energyType %r (atteso %r) scartato: %r",
                 energy_type, _ENERGY_TYPE_ATTIVA, elemento.get("loadProfileDate"),
             )
@@ -96,19 +119,26 @@ def _aggrega_per_ora(load_profiles: list[dict[str, Any]]) -> list[tuple[datetime
 
         try:
             giorno = datetime.strptime(elemento["loadProfileDate"][:10], "%d/%m/%Y").date()
-            campioni = elemento["sampleValues"]
+            campioni = list(elemento["sampleValues"])
         except (KeyError, TypeError, ValueError) as exc:
             _LOGGER.warning("loadProfile non valido, scartato: %r (%s)", elemento, exc)
             continue
+        per_giorno[giorno].append(campioni)
 
-        if len(campioni) not in _CAMPIONI_ATTESI:
+    bucket: dict[datetime, float] = defaultdict(float)
+    for giorno in sorted(per_giorno):
+        elementi = per_giorno[giorno]
+        campioni = _unisci_elementi_del_giorno(elementi)
+        attesi = _campioni_attesi(giorno)
+        if len(campioni) != attesi:
             _LOGGER.warning(
-                "loadProfile del %s ha %d campioni (attesi %s) - schema cambiato "
-                "rispetto a quello confermato il 17/09/2026? Giorno scartato.",
-                giorno, len(campioni), _CAMPIONI_ATTESI,
+                "loadProfile del %s: %d campioni in %d elementi A1 (attesi %d) - "
+                "schema cambiato rispetto a quello confermato? Giorno scartato.",
+                giorno, len(campioni), len(elementi), attesi,
             )
             continue
 
+        mezzanotte = _mezzanotte_utc(giorno)
         for indice, valore in enumerate(campioni):
             if valore is None:
                 continue
@@ -116,12 +146,8 @@ def _aggrega_per_ora(load_profiles: list[dict[str, Any]]) -> list[tuple[datetime
                 valore_kwh = float(valore)
             except (TypeError, ValueError):
                 continue
-            locale = datetime.combine(giorno, _ora_da_indice(indice)).replace(
-                tzinfo=dt_util.DEFAULT_TIME_ZONE
-            )
-            ts_utc = dt_util.as_utc(locale)
-            inizio_ora = ts_utc.replace(minute=0, second=0, microsecond=0)
-            bucket[inizio_ora] += valore_kwh
+            inizio = mezzanotte + indice * _DURATA_CAMPIONE
+            bucket[inizio.replace(minute=0, second=0, microsecond=0)] += valore_kwh
 
     return sorted(bucket.items())
 

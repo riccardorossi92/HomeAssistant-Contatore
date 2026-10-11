@@ -28,6 +28,20 @@ from custom_components.contatore_letture.distributors.ireti.const import (
 )
 
 POD = "IT020E00000000001"
+
+# Risposta reale di /users/exabeat/history (issue #10, 11/10/2026).
+HISTORY_REALE = {
+    "customerPodActive": True,
+    "customerPodStartDate": "01/05/2025 00:00:00 +0200",
+    "customerPodEndDate": "31/12/9999 23:59:59 +0100",
+    "podTypeChange": [
+        {"podType": "orario", "startDate": "01/05/2025 00:00:00 +0200",
+         "endDate": "31/12/9999 23:59:59 +0100"}
+    ],
+    "podProductionNodes": [],
+    "reponseCode": "0",
+    "responseMessage": "OK",
+}
 DATA_DA = date(2026, 7, 1)
 DATA_A = date(2026, 7, 31)
 
@@ -108,6 +122,46 @@ class TestPodType:
         pod_type = await coordinator._async_pod_type(api, POD, "CF1", "start", "end")
 
         assert pod_type == "fasce"
+
+    async def test_legge_podtype_da_podtypechange(self, hass, coordinator):
+        """Forma reale della risposta di history (issue #10)."""
+        api = Mock()
+        api.async_get_history = AsyncMock(return_value=HISTORY_REALE)
+
+        pod_type = await coordinator._async_pod_type(
+            api, POD, "CF1", "2026-10-08T22:00:00.000Z", "2026-10-09T21:59:59.000Z"
+        )
+
+        assert pod_type == "orario"
+
+    async def test_podtypechange_sceglie_il_periodo_della_finestra(self, hass, coordinator):
+        api = Mock()
+        api.async_get_history = AsyncMock(
+            return_value={
+                "podTypeChange": [
+                    {"podType": "fasce", "startDate": "01/01/2020 00:00:00 +0100",
+                     "endDate": "30/04/2025 23:59:59 +0200"},
+                    {"podType": "orario", "startDate": "01/05/2025 00:00:00 +0200",
+                     "endDate": "31/12/9999 23:59:59 +0100"},
+                ]
+            }
+        )
+
+        pod_type = await coordinator._async_pod_type(
+            api, POD, "CF1", "2025-02-28T23:00:00.000Z", "2025-03-31T21:59:59.000Z"
+        )
+
+        assert pod_type == "fasce"
+
+    async def test_podtype_assente_avvisa_e_usa_il_ripiego(self, hass, coordinator, caplog):
+        """Una risposta 200 senza podType non deve passare in silenzio."""
+        api = Mock()
+        api.async_get_history = AsyncMock(return_value={"customerPodActive": True})
+
+        pod_type = await coordinator._async_pod_type(api, POD, "CF1", "start", "end")
+
+        assert pod_type == "orario"
+        assert "podType non ricavato" in caplog.text
 
     async def test_podtype_e_tenuto_in_cache(self, hass, coordinator):
         api = Mock()
@@ -270,3 +324,26 @@ class TestRecuperaStorico:
         await coordinator.async_recupera_storico(DATA_DA, DATA_A)
 
         _import_statistiche.assert_awaited()
+
+
+def test_kwh_del_giorno_somma_entrambi_gli_elementi_del_giorno_da_25_ore():
+    """26/10/2025 (issue #10): due elementi A1 con la stessa data; il
+    totale deve includere anche quello da 12 campioni."""
+    from custom_components.contatore_letture.distributors.ireti.coordinator import (
+        _kwh_del_giorno,
+    )
+
+    def _lp(campioni, energy_type="A1"):
+        return {
+            "loadProfileDate": "26/10/2025 00:00:00 +0200",
+            "energyType": energy_type,
+            "sampleValues": campioni,
+        }
+
+    load_profiles = [
+        _lp([0.5] * 96, "R1"),
+        _lp([None] * 8 + [0.25] * 88),
+        _lp([1.0] * 12),
+    ]
+
+    assert _kwh_del_giorno(load_profiles, date(2025, 10, 26)) == pytest.approx(12 + 22)
