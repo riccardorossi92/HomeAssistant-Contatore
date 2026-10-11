@@ -88,7 +88,13 @@ CHIAVI_DA_OSCURARE = {
     "access_token", "refresh_token", "id_token", "token", "password",
     "keycloakuserid", "keycloakuser", "username", "idconsumer", "sessionstate",
     "serialnumber",
+    # UUID dell'utente e del POD nell'elenco POD (issue #10).
+    "consumer", "company", "idpod",
 }
+
+# Codice POD italiano (es. IT020E00012345): mascherato ovunque compaia,
+# anche sotto chiavi generiche come 'code' (issue #10).
+_RE_POD = re.compile(r"\bIT\d{3}E\w+", re.IGNORECASE)
 
 
 def _oscura_valore(chiave: str, valore: Any) -> Any:
@@ -117,7 +123,7 @@ def anonimizza(dato: Any, campioni_lista: int = 3) -> Any:
         for chiave, valore in dato.items():
             if chiave.lower().replace("_", "") in CHIAVI_DA_OSCURARE:
                 pulito[chiave] = _oscura_valore(chiave, valore)
-            elif "pod" in chiave.lower() and isinstance(valore, str) and valore:
+            elif ("pod" in chiave.lower() or chiave.lower() == "code") and isinstance(valore, str) and valore:
                 pulito[chiave] = _maschera_pod(valore)
             else:
                 pulito[chiave] = anonimizza(valore, campioni_lista)
@@ -127,6 +133,8 @@ def anonimizza(dato: Any, campioni_lista: int = 3) -> Any:
         if len(dato) > campioni_lista:
             troncata.append(f"<...altri {len(dato) - campioni_lista} elementi omessi...>")
         return troncata
+    if isinstance(dato, str):
+        return _RE_POD.sub(lambda m: _maschera_pod(m.group(0)), dato)
     return dato
 
 
@@ -313,7 +321,9 @@ def main() -> None:
         if isinstance(pods, dict):
             for voce in (pods.get("entityModel") or []):
                 if isinstance(voce, dict):
-                    for chiave in ("pod", "podCode", "codicePod", "idPod", "name"):
+                    # Il codice POD sta in 'code' (issue #10, come nel
+                    # config flow); 'idPod' è un UUID interno, non un POD.
+                    for chiave in ("code", "pod", "podCode", "codicePod"):
                         if voce.get(chiave):
                             pod_utente.append(str(voce[chiave]))
                             break
