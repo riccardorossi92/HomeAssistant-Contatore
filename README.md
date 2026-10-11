@@ -43,7 +43,7 @@ funzionante su installazioni reali. Dettagli sulle azioni in
 > [documentation/protocols/ireti-protocol.md](documentation/protocols/ireti-protocol.md).
 > Se lo provi e trovi un problema, apri una issue.
 >
-> Se hai importato dati Ireti prima della v0.8.6, dopo l'aggiornamento
+> Se hai importato dati Ireti con la v0.8.7 o precedenti, dopo l'aggiornamento
 > ripeti `recupera_storico` sul periodo già importato. Corregge i salti
 > negativi a metà mese lasciati dai recuperi lunghi e i giorni di cambio
 > ora (ultima domenica di marzo e di ottobre), che prima venivano

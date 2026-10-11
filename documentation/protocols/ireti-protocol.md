@@ -149,7 +149,7 @@ sta dentro `podTypeChange`, una lista di periodi.
 ```
 
 `reponseCode` è scritto così dal portale. `podProductionNodes` è vuoto
-per un POD senza produzione. Fino alla v0.8.6 il coordinator cercava
+per un POD senza produzione. Fino alla v0.8.7 compresa il coordinator cercava
 `podType` al primo livello, non lo trovava e ricadeva su `"orario"`
 senza avvisare: funzionava solo perché il POD era davvero orario.
 
@@ -207,7 +207,7 @@ Osservazioni:
     `loadProfileDate` (`26/10/2025 00:00:00 +0200`). Uno ha 12 campioni
     senza `null` (00:00-02:59 ora legale), l'altro 96 con i primi 8 a
     `null` (dalle 02:00 ora solare in poi): 12 + 88 = 100 campioni.
-  Fino alla v0.8.6 l'integrazione ricostruiva l'ora locale dall'indice:
+  Fino alla v0.8.7 compresa l'integrazione ricostruiva l'ora locale dall'indice:
   il 29/03 la curva era anticipata di un'ora dalle 03:00, il 26/10
   l'elemento da 12 veniva scartato (4,28 kWh persi su 23,31). Ora il
   campione *i* inizia a mezzanotte locale (in UTC) + *i* × 15 minuti,
