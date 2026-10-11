@@ -11,6 +11,7 @@ comporre ed eseguire le chiamate.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from typing import Any
@@ -205,4 +206,44 @@ class AretiApiClient:
 
         if not misure:
             return None
+        _log_riepilogo_misure(pod, mese_anno, misure)
         return misure[0]
+
+
+def _log_riepilogo_misure(pod: str, mese_anno: str, misure: list[Any]) -> None:
+    """Riepilogo a livello debug di cosa ha restituito getMisurazioni:
+    quanti campioni a 15 minuti, primo/ultimo giorno coperto, totale kWh
+    della curva e, per confronto, il totale e la data di fine lettura che
+    Areti riporta in esitoPosizioneBP. Serve a distinguere, quando un
+    mese risulta importato a metà, se è Areti a restituire una curva parziale o se la perdiamo noi
+    (vedi statistics.py) - senza riversare nei log centinaia di campioni."""
+    if not _LOGGER.isEnabledFor(logging.DEBUG):
+        return
+    primo = misure[0] if isinstance(misure[0], dict) else {}
+    curva = primo.get("elementiCurve") or []
+    giorni = sorted({c.get("Data") for c in curva if isinstance(c, dict) and c.get("Data")})
+    totale_kwh = 0.0
+    for c in curva:
+        with contextlib.suppress(KeyError, TypeError, ValueError):
+            totale_kwh += float(c["Value"])
+    posizione = primo.get("esitoPosizioneBP") or {}
+    if not isinstance(posizione, dict):
+        posizione = {}
+    _LOGGER.debug(
+        "getMisurazioni POD %s, mese %s: %d elementi in misureByBP, %d campioni "
+        "in elementiCurve su %d giorni (%s - %s), totale curva %.3f kWh, "
+        "%d elementiAggregati, esitoPosizioneBP Tot_Active_EN=%s "
+        "DataLettFineM=%s, chiavi: %s",
+        pod,
+        mese_anno,
+        len(misure),
+        len(curva),
+        len(giorni),
+        giorni[0] if giorni else "-",
+        giorni[-1] if giorni else "-",
+        totale_kwh,
+        len(primo.get("elementiAggregati") or []),
+        str(posizione.get("Tot_Active_EN", "-")).strip(),
+        posizione.get("DataLettFineM", "-"),
+        sorted(primo),
+    )

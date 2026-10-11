@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
 import sys
 import types
 from pathlib import Path
@@ -283,6 +284,21 @@ class TestAsyncGetMisurazioni:
         assert len(dettaglio["elementiCurve"]) == 4
         assert dettaglio["elementiCurve"][0]["Value"] == "0.034"
         assert dettaglio["esitoPosizioneBP"]["Tot_Active_EN"] == "999.000000000000 "
+
+    @pytest.mark.asyncio
+    async def test_riepilogo_debug_della_curva(self, caplog):
+        """Riga di debug usata per capire se un mese importato a metà è una
+        curva parziale lato Areti: copertura, totale curva e totale portale."""
+        client, sessione = _client([(200, _involucro_aura(PAYLOAD_MISURAZIONI_REALE))])
+        with caplog.at_level(logging.DEBUG):
+            await client.async_get_misurazioni(
+                "IT001E12345678", "1200000000", "AAABBB00A00A000A", "082026"
+            )
+        riepilogo = [r.getMessage() for r in caplog.records if "getMisurazioni POD" in r.getMessage()]
+        assert len(riepilogo) == 1
+        assert "4 campioni in elementiCurve su 1 giorni (2026-08-01 - 2026-08-01)" in riepilogo[0]
+        assert "totale curva 0.104 kWh" in riepilogo[0]
+        assert "Tot_Active_EN=999.000000000000 DataLettFineM=20260831" in riepilogo[0]
 
     @pytest.mark.asyncio
     async def test_manda_inputparamsjson_corretto(self):
