@@ -46,31 +46,6 @@ funzionante su installazioni reali. Dettagli sulle azioni in
 > all'ultima versione, riprova più tardi e segui l'issue: aggiungi pure
 > lì il messaggio che vedi e le righe di log di `contatore_letture`.
 
-> [!NOTE]
-> **Ireti** è il più recente: curva di carico a **15 minuti** (più
-> granulare di tutti gli altri distributori supportati), **provata dentro
-> Home Assistant con un POD reale**
-> ([issue #10](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/10)):
-> i totali mensili importati coincidono al kWh con le bollette. Resta da
-> verificare il caso dei POD a fasce anziché orari — vedi
-> [documentation/protocols/ireti-protocol.md](documentation/protocols/ireti-protocol.md).
-> Se lo provi e trovi un problema, apri una issue.
->
-> Se hai importato dati Ireti con la v0.8.7 o precedenti, dopo l'aggiornamento
-> ripeti `recupera_storico` sul periodo già importato. Corregge i salti
-> negativi a metà mese lasciati dai recuperi lunghi e i giorni di cambio
-> ora (ultima domenica di marzo e di ottobre), che prima venivano
-> importati spostati di un'ora o incompleti.
-
-> [!NOTE]
-> **RetiPiù** (Seregno, gruppo A2A) e **Reti Valtellina Valchiavenna**
-> (Sondrio, Tirano, Sernio, Valdisotto — gruppo Acinque) sono nuovi: usano
-> lo stesso Portale Clienti Finali e le stesse API di Duereti/Unareti
-> (verificato sui rispettivi manuali API ufficiali), quindi riusano lo
-> stesso codice già collaudato — ma **non sono ancora stati provati con
-> credenziali reali**. Se hai un'utenza e lo provi, apri una issue con
-> l'esito.
-
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
 uno di quelli supportati, o si ferma con un messaggio chiaro altrimenti.

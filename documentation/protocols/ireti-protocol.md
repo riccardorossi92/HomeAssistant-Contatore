@@ -30,6 +30,12 @@ distributori). Alcuni casi meno comuni restano da confermare — vedi
 fornitura Ireti attiva, puoi aiutare — vedi
 [Come contribuire](#come-contribuire) in fondo.
 
+> **Se hai importato dati Ireti con la v0.8.7 o precedenti**, dopo
+> l'aggiornamento ripeti `recupera_storico` sul periodo già importato.
+> Corregge i salti negativi a metà mese lasciati dai recuperi lunghi e i
+> giorni di cambio ora (ultima domenica di marzo e di ottobre), che prima
+> venivano importati spostati di un'ora o incompleti.
+
 __Le informazioni qui sotto vengono dall'analisi del traffico del portale
 (cattura HAR) e da test diretti contro le API in produzione, non da
 documentazione ufficiale (che non esiste pubblicamente).__
