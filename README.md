@@ -33,6 +33,19 @@ nella Energy Dashboard e più POD per configurazione — tutto confermato
 funzionante su installazioni reali. Dettagli sulle azioni in
 [Azioni](#azioni) più sotto.
 
+> [!WARNING]
+> **E-Distribuzione: accesso instabile da ottobre 2026**
+> ([issue #11](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/11)).
+> Dall'8 ottobre il portale E-Distribuzione è protetto da un sistema
+> anti-bot che blocca le richieste non provenienti da un browser:
+> l'integrazione ripiega da sola su un indirizzo alternativo del portale,
+> ma in alcuni casi il login viene comunque rifiutato, a volte con un
+> "Errore Tecnico" che compare anche sul sito ufficiale. La prima
+> configurazione e il reinserimento delle credenziali possono quindi
+> fallire anche con email e password corrette. Se ti succede, aggiorna
+> all'ultima versione, riprova più tardi e segui l'issue: aggiungi pure
+> lì il messaggio che vedi e le righe di log di `contatore_letture`.
+
 > [!NOTE]
 > **Ireti** è il più recente: curva di carico a **15 minuti** (più
 > granulare di tutti gli altri distributori supportati), **provata dentro
