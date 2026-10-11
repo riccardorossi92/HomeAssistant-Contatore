@@ -280,7 +280,10 @@ prima si poteva chiedere il singolo giorno; RetiPiù e Reti Valtellina
 Valchiavenna usano lo stesso codice, quindi lo stesso modello). L'integrazione tiene, per ogni POD, il **mese che sta
 aspettando**, e **una volta al giorno** controlla se è disponibile: se sì
 lo importa e passa al successivo, se no riprova al giro dopo — senza mai
-abbandonare un mese in attesa. Un POD nuovo parte dal mese corrente:
+abbandonare un mese in attesa. Per **Areti**, che completa i mesi chiusi
+qualche giorno alla volta, si passa al mese successivo solo quando quello
+in attesa è arrivato completo: fino ad allora la parte disponibile viene
+importata e riaggiornata ogni giorno. Un POD nuovo parte dal mese corrente:
 niente backfill automatico.
 
 **E-Distribuzione** invece pubblica giorno per giorno: **ogni sera dopo le

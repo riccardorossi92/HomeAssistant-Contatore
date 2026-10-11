@@ -331,9 +331,24 @@ poterne perdere uno per sempre:
    nel frattempo ha comunque il servizio condiviso `recupera_storico`
    (funziona indipendentemente dallo stato del cursore).
 4. **Disponibile** → importa (statistics per `elementiCurve`), e avanza
-   `mese_da_importare` al mese successivo. Torna al punto 2 - quando il
+   `mese_da_importare` al mese successivo **solo se la curva copre il
+   mese fino all'ultimo quarto d'ora** (ultimo giorno, 23:45). Altrimenti
+   il mese parziale viene reimportato a ogni ciclo finché non è completo
+   (aggiunto l'11/10/2026, vedi sotto). Torna al punto 2 - quando il
    cursore raggiunge il mese in corso, lo riprova come qualunque altro
    mese, senza bisogno di un caso speciale "mese in corso" vs "chiuso".
+
+   **Pubblicazione progressiva (osservata l'11/10/2026).** Un mese chiuso
+   non arriva tutto in una volta: il 10/10/2026 `getMisurazioni` per
+   settembre restituiva la curva solo fino al 20/09, il giorno dopo
+   2880 campioni su 30 giorni (375,079 kWh, uguale al totale mostrato dal
+   portale). Avanzare il cursore alla prima risposta non vuota avrebbe
+   lasciato un buco mai ricoperto. Valvola di sicurezza: se un mese è
+   ancora parziale quando è già iniziato il secondo mese successivo (es.
+   settembre il 1° novembre) il cursore avanza comunque, con un warning,
+   per non bloccare per sempre i mesi seguenti su un giorno mai
+   pubblicato; i giorni mancanti restano recuperabili con
+   `recupera_storico`.
 5. **Primo avvio**: nessun backfill storico. Il cursore parte dal mese
    in cui l'integrazione viene configurata (come i PCF: "al primo avvio
    non si richiedono dati storici").

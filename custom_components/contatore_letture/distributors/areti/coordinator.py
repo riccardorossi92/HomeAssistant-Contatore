@@ -16,9 +16,16 @@ giorno precedente rispetto a oggi" degli altri distributori:
     dimenticato): un mese mai pubblicato blocca il cursore di quel POD
     finché non arriva. Chi vuole sbloccarsi nel frattempo ha comunque
     l'azione condivisa contatore_letture.recupera_storico;
-  - disponibile -> importa (statistics.py) e avanza il cursore al mese
-    successivo. Quando raggiunge il mese in corso lo riprova come
-    qualunque altro mese, nessun caso speciale.
+  - disponibile -> importa (statistics.py) quello che c'è, ma avanza il
+    cursore al mese successivo solo se la curva copre il mese fino
+    all'ultimo quarto d'ora: Areti completa un mese chiuso
+    progressivamente (osservato l'11/10/2026: il 10/10 settembre arrivava
+    solo fino al 20, il giorno dopo era completo), e avanzare su una
+    curva parziale lascerebbe un buco che nessun ciclo successivo
+    ricoprirebbe. Un mese parziale viene quindi reimportato a ogni ciclo
+    finché non è completo - con un'unica eccezione, vedi
+    _mese_da_considerare_chiuso. Quando il cursore raggiunge il mese in
+    corso lo riprova come qualunque altro mese, nessun caso speciale.
   - primo avvio (o POD aggiunto in seguito): nessun backfill, il cursore
     parte dal mese corrente.
 
@@ -68,6 +75,35 @@ def _mese_successivo(mese_anno: str) -> str:
     if mese == 12:
         return f"01{anno + 1}"
     return f"{mese + 1:02d}{anno}"
+
+
+def _ultimo_giorno_del_mese(mese_anno: str) -> date:
+    """'MMYYYY' -> data dell'ultimo giorno di quel mese."""
+    successivo = _mese_successivo(mese_anno)
+    return date(int(successivo[2:]), int(successivo[:2]), 1) - timedelta(days=1)
+
+
+def _curva_copre_il_mese(curva: list[dict], mese_anno: str) -> bool:
+    """True se elementiCurve arriva fino all'ultimo quarto d'ora del mese
+    (ultimo giorno, 23:45): la curva di un mese completo, non quella che
+    Areti restituisce mentre lo sta ancora pubblicando."""
+    ultimo_giorno = _ultimo_giorno_del_mese(mese_anno).isoformat()
+    return any(
+        c.get("Data") == ultimo_giorno and c.get("Ora") == "23:45:00"
+        for c in curva
+        if isinstance(c, dict)
+    )
+
+
+def _mese_da_considerare_chiuso(mese_anno: str, oggi: date) -> bool:
+    """Valvola di sicurezza per un mese che resta parziale: se è finito da
+    più di un mese intero (oggi è già nel secondo mese successivo), si
+    smette di aspettarlo e il cursore avanza comunque - altrimenti un
+    singolo giorno mai pubblicato (es. un guasto del contatore)
+    bloccherebbe per sempre anche tutti i mesi seguenti. I giorni mancanti
+    restano recuperabili a mano con recupera_storico."""
+    secondo_successivo = _mese_successivo(_mese_successivo(mese_anno))
+    return oggi >= date(int(secondo_successivo[2:]), int(secondo_successivo[:2]), 1)
 
 
 def _mesi_nel_periodo(data_da: date, data_a: date) -> list[str]:
@@ -212,7 +248,24 @@ class AretiCoordinator(DataUpdateCoordinator[dict]):
                     float(c["Value"]) for c in curva if c.get("Value") not in (None, "")
                 )
                 mese_importato = mese_richiesto
-                self._scrivi_cursore(pod, _mese_successivo(mese_richiesto))
+                if _curva_copre_il_mese(curva, mese_richiesto):
+                    self._scrivi_cursore(pod, _mese_successivo(mese_richiesto))
+                elif _mese_da_considerare_chiuso(mese_richiesto, dt_util.now().date()):
+                    _LOGGER.warning(
+                        "POD %s: il mese %s è ancora incompleto su Areti a più di un "
+                        "mese dalla sua fine, si passa comunque al successivo. I giorni "
+                        "mancanti si possono recuperare con l'azione recupera_storico",
+                        pod,
+                        mese_richiesto,
+                    )
+                    self._scrivi_cursore(pod, _mese_successivo(mese_richiesto))
+                else:
+                    _LOGGER.debug(
+                        "POD %s: mese %s importato ma ancora incompleto su Areti, "
+                        "riprovo al prossimo ciclo",
+                        pod,
+                        mese_richiesto,
+                    )
 
             ultima_data_disponibile = await async_get_ultima_data_disponibile(self.hass, pod)
             by_pod[pod] = {
