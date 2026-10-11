@@ -116,15 +116,42 @@ di cui sopra.
 | Endpoint | Metodo | Payload | Cosa restituisce |
 |---|---|---|---|
 | `/readings/exabeat/measures-loadprofiles` | POST | vedi sotto | **CONFERMATO con dati reali** — `loadProfiles[]`, curva a 15 min |
-| `/users/exabeat/history` | POST | `{customerTaxCodeVat, pod, startDate, endDate}` | `customerPodActive` (bool), `podType` (`orario` / `fasce` / `mono orario`) — non ancora confermato con dati reali |
+| `/users/exabeat/history` | POST | `{customerTaxCodeVat, pod, startDate, endDate}` | **CONFERMATO** ([issue #10](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/10)) — vedi sotto |
 | `/users/exabeat/registry` | POST | idem | anagrafica tecnica del POD — non ancora confermato |
-| `/readings/exabeat/measures` | POST | `{customerTaxCodeVat, pod, startDate, endDate}` | letture periodiche per fascia (`energyActiveF1/F2/F3`, ecc.) — non ancora confermato |
+| `/readings/exabeat/measures` | POST | `{customerTaxCodeVat, pod, startDate, endDate}` | risponde **404** ([issue #10](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/10)); nel bundle: letture periodiche per fascia (`energyActiveF1/F2/F3`, ecc.) |
 | `/readings/exabeat/can-request-verify` | POST | `{...}` | se è possibile richiedere una verifica misuratore — non ancora confermato |
 | `/readings/selfreading/save`, `/readings/selfreading/checkotp` | POST | — | autolettura (con OTP) — non serve per l'integrazione |
 
 Gli endpoint non confermati restano ricavati dal codice del bundle
 (vedi cronologia del file); non sono indovinati, ma non hanno ancora
 una risposta reale a fronte.
+
+### `history` — confermato con dati reali (11/10/2026)
+
+Da [issue #10](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/10), POD BTA5 con contatore quarto-orario. Risponde 200, ma il
+`podType` **non sta al primo livello** (come faceva pensare il bundle):
+sta dentro `podTypeChange`, una lista di periodi.
+
+```json
+{
+  "customerPodActive": true,
+  "customerPodStartDate": "...",
+  "customerPodEndDate": "...",
+  "podTypeChange": [
+    {"podType": "orario",
+     "startDate": "01/05/2025 00:00:00 +0200",
+     "endDate": "31/12/9999 23:59:59 +0100"}
+  ],
+  "podProductionNodes": [],
+  "reponseCode": "...",
+  "responseMessage": "..."
+}
+```
+
+`reponseCode` è scritto così dal portale. `podProductionNodes` è vuoto
+per un POD senza produzione. Fino alla v0.8.6 il coordinator cercava
+`podType` al primo livello, non lo trovava e ricadeva su `"orario"`
+senza avvisare: funzionava solo perché il POD era davvero orario.
 
 ### `measures-loadprofiles` — confermato con dati reali (17/09/2026)
 
@@ -172,10 +199,24 @@ Risposta (un mese, un `loadProfiles[]` per giorno):
 
 Osservazioni:
 
-- **96 `sampleValues` per giorno** (15 minuti l'uno) nel report reale —
-  non 92 come ipotizzato dal solo codice del bundle: la cattura non
-  cadeva su un giorno di cambio ora legale, quindi lo splice a 96 non
-  serviva. Da verificare il comportamento nei giorni di cambio ora.
+- **96 `sampleValues` per giorno** (15 minuti l'uno), contati dalla
+  mezzanotte locale come **tempo trascorso**, non come ora sul quadrante.
+- **Giorni di cambio ora** (confermati da [issue #10](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/10)):
+  - *29/03/2026, 23 ore*: un solo elemento A1 da **92** campioni.
+  - *26/10/2025, 25 ore*: **due** elementi A1 con la stessa
+    `loadProfileDate` (`26/10/2025 00:00:00 +0200`). Uno ha 12 campioni
+    senza `null` (00:00-02:59 ora legale), l'altro 96 con i primi 8 a
+    `null` (dalle 02:00 ora solare in poi): 12 + 88 = 100 campioni.
+  Fino alla v0.8.6 l'integrazione ricostruiva l'ora locale dall'indice:
+  il 29/03 la curva era anticipata di un'ora dalle 03:00, il 26/10
+  l'elemento da 12 veniva scartato (4,28 kWh persi su 23,31). Ora il
+  campione *i* inizia a mezzanotte locale (in UTC) + *i* × 15 minuti,
+  gli elementi della stessa data vengono uniti (prima quello senza
+  `null` in testa) e il totale deve tornare con la durata del giorno.
+  L'ordine dei due elementi non è garantito: il portale non manda le
+  `loadProfiles` in ordine di data.
+- Accanto a ogni elemento A1 arriva un elemento **R1** (energia
+  reattiva) con lo stesso numero di campioni: viene scartato.
 - Valori nell'ordine di `0.01`–`0.03`: sommando i 96 campioni di un
   giorno si ottiene ~1.9. L'unità è **kWh per intervallo di 15 minuti**,
   confermata da
@@ -248,10 +289,10 @@ riprovati ai cicli successivi, **abbandonati con un avviso nei log** dopo
 `ABBANDONO_CODA_DOPO_GIORNI` giorni — non più silenziosamente).
 
 `RITARDO_DATI_GIORNI = 1` ("il giorno prima") è un punto di partenza, non
-un valore misurato: a differenza di E-Distribuzione (dati reali su quando
-il giorno prima diventa disponibile), per Ireti non abbiamo ancora nessuna
-osservazione — vedi il punto 6 di `scripts/raccogli_dati_ireti.py`,
-aggiunto apposta per misurarlo su un account reale. Nessun
+un valore misurato. Prima osservazione ([issue #10](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/10)): sabato 11/10/2026 alle
+9 c'erano i dati fino al 09/10 compreso, il 10/10 no, quindi D-2 al
+mattino. Non sappiamo ancora a che ora esce D-1; nel frattempo il giorno
+non disponibile resta in coda e viene riprovato ai cicli successivi. Nessun
 `ora_richiesta` configurabile per lo stesso motivo (non c'è ancora una
 base per calibrarlo): si prova a ogni ciclo, senza aspettare un'ora
 precisa del giorno.
@@ -265,10 +306,11 @@ rifà il password-grant ad ogni ciclo. Credenziali non valide sollevano
 semplice `UpdateFailed`.
 
 **`podType` con ripiego.** Necessario nel payload di
-`measures-loadprofiles`, si legge da `/users/exabeat/history` —
-endpoint **mai confermato con dati reali** (vedi sopra). Se fallisce o
-non lo contiene, si ricade su `"orario"` (l'unico valore osservato
-finora) con un avviso nei log una tantum per POD, invece di far fallire
+`measures-loadprofiles`, si legge da `podTypeChange` nella risposta di
+`/users/exabeat/history` (vedi sopra), scegliendo il periodo che contiene
+la fine della finestra richiesta. Se la chiamata fallisce o il podType
+non c'è, si ricade su `"orario"` (l'unico valore osservato finora) con
+un avviso nei log una tantum per POD, invece di far fallire
 l'intero ciclo: un'ipotesi sbagliata qui produce nella peggiore delle
 ipotesi un payload che il portale rifiuta esplicitamente
 (`IretiApiError` → `UpdateFailed`), non un dato silenziosamente sbagliato.
@@ -287,18 +329,14 @@ Non blocca l'uso, ma va tenuto d'occhio quando arriva un riscontro reale:
 
 - **`podType` diverso da `"orario"`**: mai osservato. Potrebbe cambiare
   la forma di `loadProfiles` (più elementi per giorno, per fascia).
-- **Giorni di cambio ora legale**: il codice del bundle JS ipotizza 92
-  campioni invece di 96 (vs 96 confermati su un giorno normale) — mai
-  verificato con un giorno di cambio ora reale.
-- **`/users/exabeat/history`, `/users/exabeat/registry`,
-  `/readings/exabeat/measures`**: mai confermati con dati reali, solo
-  ricavati dal codice del bundle. Il coordinator dipende da `history` solo
-  per `podType`, con un ripiego se fallisce (vedi sopra) — `registry` e
-  `measures` non sono usati.
-- **Ritardo di pubblicazione reale**: `RITARDO_DATI_GIORNI = 1` è una
-  scelta di partenza ("il giorno prima"), non misurata — vedi il punto 6
-  di `scripts/raccogli_dati_ireti.py`. Il meccanismo di coda lo rende
-  comunque robusto anche se sbagliato (vedi "Design del coordinator").
+- **Giorno da 25 ore**: la forma è nota (26/10/2025), ma non sappiamo
+  se l'ordine e la divisione dei due elementi siano sempre gli stessi. Da
+  ricontrollare dopo il 25/10/2026.
+- **`/users/exabeat/registry`**: mai confermato (non usato).
+  `/readings/exabeat/measures` risponde 404.
+- **Ritardo di pubblicazione**: dati fino a D-2 il mattino, ora di
+  uscita di D-1 ancora da misurare. Il meccanismo di coda rende comunque
+  robusto `RITARDO_DATI_GIORNI = 1` (vedi "Design del coordinator").
 - **POD di produzione** (`operation: "IMMISSIONE"` invece di
   `"PRELIEVO"`): non supportato, mai testato.
 
@@ -312,7 +350,11 @@ a mano.
 
 Se hai una **fornitura Ireti attiva e almeno un POD associato**, c'è uno
 script che fa tutto da solo (corretto il 18/09/2026 — vedi
-[nota sul fix](#nota-il-fix-dello-script-18092026)):
+[nota sul fix](#nota-il-fix-dello-script-18092026) — e di nuovo l'11/10/2026:
+prima prendeva come POD l'UUID `idPod` invece del codice in `code`, quindi
+tutte le chiamate di misura andavano a vuoto, e lasciava in chiaro nel
+report il codice POD e gli UUID di consumer e company,
+[issue #10](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/10)):
 
 ```bash
 pip install requests
