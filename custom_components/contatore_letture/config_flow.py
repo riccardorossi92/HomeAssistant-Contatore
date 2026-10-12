@@ -1386,6 +1386,7 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ):
         """Carica un export CSV della curva dal portale E-Distribuzione."""
+        from .distributors.edistribuzione.const import URL_CURVE_DI_CARICO
         from .distributors.edistribuzione.csv_curve import CsvCurveError
 
         errors: dict[str, str] = {}
@@ -1427,6 +1428,7 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
             description_placeholders={
                 "pod": self.config_entry.data[CONF_PODS][0],
                 "dettaglio": dettaglio,
+                "url_curve": URL_CURVE_DI_CARICO,
             },
         )
 

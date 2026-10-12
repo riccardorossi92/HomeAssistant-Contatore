@@ -149,3 +149,6 @@ SCARICAMENTO_AUTOMATICO_DISPONIBILE = False
 
 # Il CSV del portale e' in ora italiana, qualunque sia il fuso di Home Assistant.
 FUSO_PORTALE = "Europe/Rome"
+
+# Pagina del portale da cui si esporta il CSV, mostrata nel form di caricamento.
+URL_CURVE_DI_CARICO = "https://private.e-distribuzione.it/PortaleClienti/s/curvedicarico"

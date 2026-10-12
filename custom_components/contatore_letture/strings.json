@@ -231,7 +231,7 @@
       },
       "edistribuzione_importa_file": {
         "title": "Carica la curva di carico",
-        "description": "Carica il file CSV della curva di carico del POD {pod}, scaricato dal sito E-Distribuzione: accedi e apri la pagina [Curve di carico](https://private.e-distribuzione.it/PortaleClienti/s/curvedicarico), scegli il periodo ed esporta il file. Puoi scaricare fino a 6 mesi per volta, negli ultimi 18 mesi, fino al giorno prima di oggi.\n\nI giorni già importati vengono sovrascritti: puoi ricaricare lo stesso periodo senza creare doppioni.",
+        "description": "Carica il file CSV della curva di carico del POD {pod}, scaricato dal sito E-Distribuzione: accedi e apri la pagina [Curve di carico]({url_curve}), scegli il periodo ed esporta il file. Puoi scaricare fino a 6 mesi per volta, negli ultimi 18 mesi, fino al giorno prima di oggi.\n\nI giorni già importati vengono sovrascritti: puoi ricaricare lo stesso periodo senza creare doppioni.",
         "data": {
           "file": "File CSV"
         }
