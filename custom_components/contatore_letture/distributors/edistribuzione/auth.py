@@ -102,6 +102,23 @@ _MARCATORI_OTP_INVIATO = (
     "nuovo codice",
 )
 
+# Testo della schermata INIZIALE del login flow ("Per completare l'accesso e'
+# necessario generare un codice di verifica (OTP)", pulsante "Invia Codice
+# OTP"). Se torna come risposta al submit, il portale non e' avanzato e il
+# codice non e' partito: visto il 12/10/2026 su un login rifatto ~2 minuti
+# dopo il precedente, mentre un secondo submit ~30 s dopo ha funzionato.
+_MARCATORI_SCHERMATA_GENERA_OTP = (
+    "necessario generare un codice",
+    "invia codice otp",
+)
+_ATTESA_RIPROVA_INVIO_OTP_S = 5
+
+# Il token endpoint di Salesforce sceglie il formato dall'Accept: con l'Accept
+# di un browser (che include application/xml) risponde in XML. aiohttp manda
+# */* e riceveva JSON per caso; un client che imita un browser (curl_cffi,
+# verificato il 12/10/2026) no. Esplicito, cosi' non dipende dal client.
+_HEADERS_TOKEN = {"Accept": "application/json"}
+
 
 # Etichette del pulsante che APPROVA sulla schermata di consenso OAuth.
 # Sulla pagina reale (catturata il 13/09/2026, issue #2) i due pulsanti
@@ -406,6 +423,7 @@ class EdistribuzioneAuthClient:
         # invece di lasciarlo aspettare un OTP che non arrivera' mai
         # (issue #2).
         self.otp_invio_confermato: bool | None = None
+        self._ultima_risposta_e_schermata_iniziale = False
 
     @property
     def _origin(self) -> str:
@@ -707,6 +725,17 @@ class EdistribuzioneAuthClient:
         pensare dal solo nome del campo OTP_Input).
         """
         await self._async_post_form_otp(self._dati_form_otp())
+        if self.otp_invio_confermato is False and self._ultima_risposta_e_schermata_iniziale:
+            # Il portale ha ripresentato la schermata "genera OTP" senza
+            # avanzare: un solo nuovo tentativo dopo una breve pausa, con i
+            # ViewState aggiornati dalla risposta appena ricevuta.
+            _LOGGER.info(
+                "Il portale non ha avviato l'invio dell'OTP (schermata iniziale "
+                "ripresentata): riprovo tra %s s",
+                _ATTESA_RIPROVA_INVIO_OTP_S,
+            )
+            await asyncio.sleep(_ATTESA_RIPROVA_INVIO_OTP_S)
+            await self._async_post_form_otp(self._dati_form_otp())
 
     async def async_resend_otp(self) -> bool:
         """Fa rimandare un OTP nuovo DENTRO la sessione di login gia' avviata.
@@ -783,6 +812,11 @@ class EdistribuzioneAuthClient:
             raise EdistribuzioneTroppeSessioni(body[:500])
 
         self.otp_invio_confermato = _contiene(body, _MARCATORI_OTP_INVIATO)
+        self._ultima_risposta_e_schermata_iniziale = (
+            not self.otp_invio_confermato
+            and _contiene(body, _MARCATORI_SCHERMATA_GENERA_OTP)
+            and "OTP_Input" not in body
+        )
         if not self.otp_invio_confermato:
             # Non fatale di proposito: la pagina potrebbe confermare l'invio
             # con parole che non conosciamo ancora, e abortire qui romperebbe
@@ -1005,7 +1039,9 @@ class EdistribuzioneAuthClient:
             "client_id": OAUTH_CLIENT_ID,
             "grant_type": "authorization_code",
         }
-        async with self._session.post(self._su_host(OAUTH_TOKEN_URL), data=data) as resp:
+        async with self._session.post(
+            self._su_host(OAUTH_TOKEN_URL), data=data, headers=_HEADERS_TOKEN
+        ) as resp:
             payload = json.loads(await _leggi_testo(resp))
         return self._tokens_from_payload(payload)
 
@@ -1035,7 +1071,9 @@ class EdistribuzioneAuthClient:
             "refresh_token": refresh_token,
             "client_id": OAUTH_CLIENT_ID,
         }
-        async with self._session.post(self._su_host(OAUTH_TOKEN_URL), data=data) as resp:
+        async with self._session.post(
+            self._su_host(OAUTH_TOKEN_URL), data=data, headers=_HEADERS_TOKEN
+        ) as resp:
             # Testo letto sempre, anche con status 200: la pagina "Pardon Our
             # Interruption" arriva con 200 e va riconosciuta prima di provare
             # a leggerla come JSON.

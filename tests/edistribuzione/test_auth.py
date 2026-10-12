@@ -528,6 +528,18 @@ PAGINA_OTP_CON_CONFERMA = (
 )
 
 
+class _SessioneACodaOtp:
+    """Restituisce le pagine in ordine, una per ogni submit del form OTP."""
+
+    def __init__(self, pagine: list[str]) -> None:
+        self._pagine = list(pagine)
+        self.chiamate = 0
+
+    def post(self, url, data=None, headers=None):
+        self.chiamate += 1
+        return _RispostaFinta(self._pagine.pop(0))
+
+
 def _client_su_form_otp(body: str):
     session = _SessioneFinta(body)
     client = auth.EdistribuzioneAuthClient(session)
@@ -589,6 +601,39 @@ class TestInvioOtp:
             ]
             == "true"
         )
+
+    async def test_schermata_iniziale_ripresentata_riprova_una_volta(
+        self, monkeypatch, tmp_path
+    ):
+        """Visto il 12/10/2026: al primo submit il portale ha ripresentato la
+        schermata "genera OTP" senza spedire il codice; un secondo submit
+        poco dopo e' andato a buon fine."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(auth, "_ATTESA_RIPROVA_INVIO_OTP_S", 0)
+        schermata_iniziale = (
+            "<html><body><p>Per completare l'accesso è necessario generare un "
+            "codice di verifica (OTP)</p><input type=\"button\" "
+            'value="Invia Codice OTP" />' + TestParseOtpPage.HTML_PAGINA_OTP
+            + "</body></html>"
+        ).replace("OTP_Input", "Campo_Assente")
+        session = _SessioneACodaOtp([schermata_iniziale, PAGINA_OTP_CON_CONFERMA])
+        client = auth.EdistribuzioneAuthClient(session)
+        client._parse_otp_page(TestParseOtpPage.HTML_PAGINA_OTP)
+        await client._async_trigger_otp_send()
+        assert session.chiamate == 2
+        assert client.otp_invio_confermato is True
+
+    async def test_conferma_mancante_su_altra_pagina_non_riprova(
+        self, monkeypatch, tmp_path
+    ):
+        """Senza la schermata iniziale riconoscibile niente secondo submit:
+        un invio a vuoto potrebbe far partire un codice in piu'."""
+        monkeypatch.chdir(tmp_path)
+        session = _SessioneACodaOtp([TestParseOtpPage.HTML_PAGINA_OTP])
+        client = auth.EdistribuzioneAuthClient(session)
+        client._parse_otp_page(TestParseOtpPage.HTML_PAGINA_OTP)
+        await client._async_trigger_otp_send()
+        assert session.chiamate == 1
 
     async def test_resend_otp_prima_del_login_e_un_errore(self):
         client = auth.EdistribuzioneAuthClient(session=None)
@@ -812,6 +857,7 @@ class _SessioneTokenPerHost:
 
     def post(self, url, data=None, headers=None, allow_redirects=None):
         self.url_chiamati.append(url)
+        self.ultimi_headers = headers
         for host, risposta in self._risposte.items():
             if url.startswith(f"https://{host}/"):
                 return risposta
@@ -931,6 +977,16 @@ class TestRefreshConRipiego:
         client._host = auth.SF_HOST_DIRETTO
         await client.async_refresh_access_token("RT")
         assert session.url_chiamati[0].startswith("https://private.e-distribuzione.it/")
+
+    async def test_refresh_chiede_esplicitamente_json(self):
+        """Con l'Accept di un browser il token endpoint risponde in XML
+        (verificato il 12/10/2026 con curl_cffi): va chiesto JSON."""
+        session = _SessioneTokenPerHost({
+            auth.SF_HOST_PRINCIPALE: _RispostaToken(TOKEN_OK),
+        })
+        client = auth.EdistribuzioneAuthClient(session)
+        await client.async_refresh_access_token("RT")
+        assert session.ultimi_headers == {"Accept": "application/json"}
 
     async def test_refresh_token_vecchio_mantenuto_se_non_ne_arriva_uno_nuovo(self):
         session = _SessioneTokenPerHost({
