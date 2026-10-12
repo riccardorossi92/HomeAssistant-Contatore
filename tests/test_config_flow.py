@@ -32,6 +32,9 @@ from custom_components.contatore_letture.distributors.edistribuzione import (
 from custom_components.contatore_letture.distributors.edistribuzione import (
     auth as edist_auth,
 )
+from custom_components.contatore_letture.distributors.edistribuzione import (
+    const as edist_const,
+)
 from custom_components.contatore_letture.distributors.edistribuzione.auth import (
     EdistribuzioneBloccoAntibot,
     EdistribuzioneErroreTecnico,
@@ -360,6 +363,10 @@ def edist_mocks(monkeypatch):
     monkeypatch.setattr(edist_api, "EdistribuzioneApiClient", Mock(return_value=api))
     monkeypatch.setattr(cf, "async_create_clientsession", lambda *a, **k: Mock())
     monkeypatch.setattr(cf, "async_get_clientsession", lambda *a, **k: Mock())
+    # Lo scaricamento automatico e' disattivato nel wizard da ottobre 2026
+    # (antibot, issue #11): questi test coprono il ramo login -> OTP -> POD,
+    # che torna in uso appena lo si riattiva.
+    monkeypatch.setattr(edist_const, "SCARICAMENTO_AUTOMATICO_DISPONIBILE", True)
     return SimpleNamespace(auth=auth, api=api)
 
 
@@ -374,8 +381,11 @@ async def _fino_a_edist_user(hass):
     res = await hass.config_entries.flow.async_configure(
         res["flow_id"], {"distributor": "edistribuzione"}
     )
-    # distributor_info -> submit
-    return await hass.config_entries.flow.async_configure(res["flow_id"], {})
+    # edistribuzione_modalita (al posto di distributor_info) -> automatica
+    assert res["step_id"] == "edistribuzione_modalita"
+    return await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"modalita": "automatica"}
+    )
 
 
 @pytest.fixture

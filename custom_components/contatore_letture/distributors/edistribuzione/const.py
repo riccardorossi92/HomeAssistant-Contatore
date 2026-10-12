@@ -133,3 +133,19 @@ ORA_MINIMA_RICHIESTA = 19
 # inizio non puo' essere anteriore a 18 mesi fa.
 MAX_MESI_PER_RICHIESTA = 6
 MAX_MESI_STORICO = 18
+
+# Modalita' della config entry. "automatica" e' quella storica (login +
+# OTP, download giornaliero via API); "manuale" non ha credenziali: l'utente
+# scarica la curva dal portale e la carica dalle opzioni (csv_curve.py).
+# Le entry create prima della v0.9.0 non hanno la chiave: sono automatiche.
+CONF_MODALITA = "modalita"
+MODALITA_AUTOMATICA = "automatica"
+MODALITA_MANUALE = "manuale"
+
+# Da ottobre 2026 il login automatico e' bloccato dall'antibot del portale
+# (issue #11): nel wizard la modalita' automatica resta visibile ma non
+# selezionabile. Rimettere True quando torna a funzionare.
+SCARICAMENTO_AUTOMATICO_DISPONIBILE = False
+
+# Il CSV del portale e' in ora italiana, qualunque sia il fuso di Home Assistant.
+FUSO_PORTALE = "Europe/Rome"

@@ -18,6 +18,7 @@ nostri 3 distributori invece che a centinaia.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -50,6 +51,10 @@ from .distributors.pcf_common.const import (
 from .istat_comuni import async_get_comuni_tree
 
 _LOGGER = logging.getLogger(__name__)
+
+# Codice POD elettrico: IT + codice distributore a 3 cifre + E + 8 caratteri
+# (es. IT001E12345678, dove 001 e' E-Distribuzione).
+_RE_POD = re.compile(r"^IT\d{3}E[0-9A-Z]{8}$")
 
 STEP_POD_SCHEMA = vol.Schema(
     {
@@ -105,6 +110,24 @@ def _etichetta_pod(pod_info: dict) -> str:
         f"({pod_info.get('PointOfMeasureProvince', '')})"
     ).strip()
     return f"{pod_info['IdPod']} - {indirizzo}"
+
+
+def _schema_file_csv() -> vol.Schema:
+    return vol.Schema({
+        vol.Required("file"): selector.FileSelector(
+            selector.FileSelectorConfig(accept=".csv,text/csv")
+        )
+    })
+
+
+def _leggi_file_caricato(hass, file_id: str) -> bytes:
+    """Contenuto di un file caricato con il FileSelector. Va eseguita in un
+    executor: process_uploaded_file fa I/O sincrono e poi cancella il file
+    temporaneo all'uscita dal blocco."""
+    from homeassistant.components.file_upload import process_uploaded_file
+
+    with process_uploaded_file(hass, file_id) as percorso:
+        return percorso.read_bytes()
 
 
 class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -290,6 +313,10 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_distributor_info(self, user_input: dict[str, Any] | None = None):
         info = DISTRIBUTOR_REGISTRY[self._distributor_key]
+        if info["kind"] == "edistribuzione":
+            # Al posto dell'elenco dei requisiti, la scelta tra caricamento
+            # manuale e scaricamento automatico: i requisiti cambiano.
+            return await self.async_step_edistribuzione_modalita()
 
         if user_input is not None:
             if info["kind"] == "pcf":
@@ -481,6 +508,92 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if getattr(self._edistribuzione_auth, "otp_invio_confermato", None) is False:
             return AVVISO_OTP_INVIO_NON_CONFERMATO
         return AVVISO_OTP_SOLO_DA_QUI
+
+    async def async_step_edistribuzione_modalita(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Caricamento manuale dei CSV del portale o scaricamento automatico.
+
+        Finche' SCARICAMENTO_AUTOMATICO_DISPONIBILE e' False l'automatico
+        resta nell'elenco, con il motivo, ma sceglierlo da' errore: i
+        selettori di Home Assistant non hanno opzioni disattivate."""
+        from .distributors.edistribuzione.const import (
+            CONF_MODALITA,
+            MODALITA_AUTOMATICA,
+            MODALITA_MANUALE,
+            SCARICAMENTO_AUTOMATICO_DISPONIBILE,
+        )
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if user_input[CONF_MODALITA] == MODALITA_MANUALE:
+                return await self.async_step_edistribuzione_manuale_pod()
+            if SCARICAMENTO_AUTOMATICO_DISPONIBILE:
+                return await self.async_step_edistribuzione_user()
+            errors[CONF_MODALITA] = "automatico_non_disponibile"
+
+        etichetta_automatico = "Scaricamento automatico"
+        if not SCARICAMENTO_AUTOMATICO_DISPONIBILE:
+            etichetta_automatico += " (non disponibile: problemi da ottobre 2026)"
+        return self.async_show_form(
+            step_id="edistribuzione_modalita",
+            data_schema=vol.Schema({
+                vol.Required(
+                    CONF_MODALITA,
+                    default=(
+                        MODALITA_AUTOMATICA
+                        if SCARICAMENTO_AUTOMATICO_DISPONIBILE
+                        else MODALITA_MANUALE
+                    ),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[
+                            {"value": MODALITA_MANUALE, "label": "Caricamento manuale curve"},
+                            {"value": MODALITA_AUTOMATICA, "label": etichetta_automatico},
+                        ],
+                        mode=selector.SelectSelectorMode.LIST,
+                    )
+                )
+            }),
+            errors=errors,
+        )
+
+    async def async_step_edistribuzione_manuale_pod(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Modalita' manuale: basta il POD, i dati arrivano dai file caricati."""
+        from .distributors.edistribuzione.const import (
+            CONF_MODALITA,
+            CONF_PODS,
+            MODALITA_MANUALE,
+        )
+
+        errors: dict[str, str] = {}
+        conflitto: str | None = None
+        if user_input is not None:
+            pod = user_input["pod"].strip().upper().replace(" ", "")
+            conflitto = pod_gia_configurato(self.hass, pod)
+            if not _RE_POD.match(pod):
+                errors["pod"] = "pod_formato_non_valido"
+            elif conflitto:
+                errors["pod"] = "pod_duplicato"
+            else:
+                return self.async_create_entry(
+                    title=f"E-Distribuzione {pod} (caricamento manuale)",
+                    data={
+                        "distributor": "edistribuzione",
+                        "comune": self._comune_name,
+                        CONF_MODALITA: MODALITA_MANUALE,
+                        CONF_PODS: [pod],
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="edistribuzione_manuale_pod",
+            data_schema=vol.Schema({vol.Required("pod"): str}),
+            errors=errors,
+            description_placeholders={"pod_conflitto": conflitto or ""},
+        )
 
     async def async_step_edistribuzione_user(self, user_input: dict[str, Any] | None = None):
         errors: dict[str, str] = {}
@@ -1244,6 +1357,12 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
                 menu_options=["aggiungi_pod", "rimuovi_pod"],
             )
         if kind == "edistribuzione":
+            from .distributors.edistribuzione.manuale import e_manuale
+
+            if e_manuale(self.config_entry):
+                # Nessun POD da aggiungere ne' orario: l'unica cosa da fare
+                # su una entry manuale e' caricare un file.
+                return await self.async_step_edistribuzione_importa_file()
             return self.async_show_menu(
                 step_id="init",
                 menu_options=[
@@ -1262,6 +1381,54 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
                 menu_options=["areti_aggiungi_pod", "areti_rimuovi_pod"],
             )
         return self.async_abort(reason="options_not_supported")
+
+    async def async_step_edistribuzione_importa_file(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Carica un export CSV della curva dal portale E-Distribuzione."""
+        from .distributors.edistribuzione.csv_curve import CsvCurveError
+
+        errors: dict[str, str] = {}
+        dettaglio = ""
+        if user_input is not None:
+            manuale = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+            if manuale is None:
+                return self.async_abort(reason="voce_non_caricata")
+            try:
+                contenuto = await self.hass.async_add_executor_job(
+                    _leggi_file_caricato, self.hass, user_input["file"]
+                )
+                curva = await manuale.async_importa_csv(contenuto)
+            except CsvCurveError as err:
+                errors["file"] = "csv_non_valido"
+                dettaglio = str(err)
+            except ValueError:
+                # Da process_uploaded_file: file scaduto o caricamento non finito.
+                errors["file"] = "file_non_disponibile"
+            except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                _LOGGER.exception("Import del CSV E-Distribuzione fallito")
+                errors["file"] = "import_fallito"
+            else:
+                return self.async_abort(
+                    reason="csv_importato",
+                    description_placeholders={
+                        "giorni": str(len(curva.giorni)),
+                        "data_da": curva.giorni[0].strftime("%d/%m/%Y"),
+                        "data_a": curva.giorni[-1].strftime("%d/%m/%Y"),
+                        "kwh": f"{curva.kwh_totali:.3f}".replace(".", ","),
+                        "pod": manuale.pods[0],
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="edistribuzione_importa_file",
+            data_schema=_schema_file_csv(),
+            errors=errors,
+            description_placeholders={
+                "pod": self.config_entry.data[CONF_PODS][0],
+                "dettaglio": dettaglio,
+            },
+        )
 
     async def async_step_orario(self, user_input: dict[str, Any] | None = None):
         if user_input is not None:

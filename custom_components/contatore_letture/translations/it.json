@@ -3,24 +3,34 @@
     "step": {
       "user": {
         "title": "Individua il distributore - Regione",
-        "data": { "regione": "Regione" }
+        "data": {
+          "regione": "Regione"
+        }
       },
       "provincia": {
         "title": "Individua il distributore - Provincia",
-        "data": { "provincia": "Provincia" }
+        "data": {
+          "provincia": "Provincia"
+        }
       },
       "comune": {
         "title": "Individua il distributore - Comune",
-        "data": { "comune": "Comune di fornitura" }
+        "data": {
+          "comune": "Comune di fornitura"
+        }
       },
       "choose_distributor": {
         "title": "Più distributori trovati",
-        "data": { "distributor": "Seleziona il distributore" }
+        "data": {
+          "distributor": "Seleziona il distributore"
+        }
       },
       "manual_select": {
         "title": "Selezione manuale del distributore",
         "description": "{description}",
-        "data": { "distributor": "Distributore" }
+        "data": {
+          "distributor": "Distributore"
+        }
       },
       "distributor_info": {
         "title": "Distributore individuato: {distributor}",
@@ -62,7 +72,9 @@
       "edistribuzione_pod": {
         "title": "E-Distribuzione - Seleziona POD",
         "description": "Puoi selezionare più di un POD se vuoi monitorarne diversi con questa stessa configurazione.",
-        "data": { "pods": "POD" }
+        "data": {
+          "pods": "POD"
+        }
       },
       "reauth_confirm": {
         "title": "{distributor} - Aggiorna credenziali",
@@ -123,7 +135,9 @@
       "ireti_pod": {
         "title": "Ireti - Seleziona POD",
         "description": "Puoi selezionare più di un POD se vuoi monitorarne diversi con questa stessa configurazione.",
-        "data": { "pods": "POD" }
+        "data": {
+          "pods": "POD"
+        }
       },
       "ireti_reauth_user": {
         "title": "Ireti - Accedi di nuovo",
@@ -131,6 +145,20 @@
         "data": {
           "username": "Username",
           "password": "Password"
+        }
+      },
+      "edistribuzione_modalita": {
+        "title": "Distributore individuato: E-Distribuzione",
+        "description": "Scegli come importare i consumi del tuo POD.\n\n**Caricamento manuale curve**: scarichi la curva di carico dal sito E-Distribuzione (file CSV) e la carichi in Home Assistant dalle opzioni dell'integrazione, ogni volta che vuoi aggiornare i dati. Serve solo il codice POD, nessuna credenziale.\n\n**Scaricamento automatico**: l'integrazione accede con email, password e codice OTP e scarica i dati ogni giorno. Da ottobre 2026 E-Distribuzione blocca questo accesso con un sistema anti-bot, quindi per ora non è disponibile.",
+        "data": {
+          "modalita": "Modalità"
+        }
+      },
+      "edistribuzione_manuale_pod": {
+        "title": "E-Distribuzione - Caricamento manuale",
+        "description": "Inserisci il codice POD (inizia con IT e lo trovi in bolletta). Dopo aver creato la configurazione, apri **Configura** per caricare il file della curva di carico scaricato dal sito E-Distribuzione.",
+        "data": {
+          "pod": "POD"
         }
       }
     },
@@ -147,7 +175,9 @@
       "bloccato_antibot": "E-Distribuzione ha bloccato la richiesta con la sua protezione anti-bot prima ancora di mostrare il login, sia sul sito principale sia sull'indirizzo alternativo. Non dipende dalle credenziali: riprova più tardi. Se il blocco persiste per giorni, apri una issue.",
       "errore_tecnico_portale": "E-Distribuzione ha rifiutato l'accesso con un generico \"Errore Tecnico\". È un problema del portale, non dell'integrazione né delle credenziali inserite qui: lo stesso errore compare anche accedendo dal sito ufficiale. Riprova più tardi; se persiste anche sul sito, contatta l'assistenza di E-Distribuzione.",
       "troppe_sessioni": "E-Distribuzione ha rifiutato l'accesso perché l'account ha troppe sessioni aperte contemporaneamente. Esci dall'app ufficiale e dal sito, attendi qualche minuto e riprova: in questo stato nessun codice OTP viene inviato.",
-      "nessun_pod_selezionato": "Seleziona almeno un POD"
+      "nessun_pod_selezionato": "Seleziona almeno un POD",
+      "automatico_non_disponibile": "Lo scaricamento automatico non è disponibile da ottobre 2026: E-Distribuzione blocca l'accesso con un sistema anti-bot. Scegli il caricamento manuale.",
+      "pod_formato_non_valido": "Codice POD non valido: deve avere la forma IT001E12345678 (IT, 3 cifre, E, 8 caratteri)."
     },
     "abort": {
       "reauth_successful": "Credenziali aggiornate con successo",
@@ -223,6 +253,13 @@
         "data": {
           "pods_da_rimuovere": "POD da rimuovere"
         }
+      },
+      "edistribuzione_importa_file": {
+        "title": "Carica la curva di carico",
+        "description": "Carica il file CSV della curva di carico del POD {pod}, scaricato dal sito E-Distribuzione: accedi e apri la pagina [Curve di carico](https://private.e-distribuzione.it/PortaleClienti/s/curvedicarico), scegli il periodo ed esporta il file. Puoi scaricare fino a 6 mesi per volta, negli ultimi 18 mesi, fino al giorno prima di oggi.\n\nI giorni già importati vengono sovrascritti: puoi ricaricare lo stesso periodo senza creare doppioni.",
+        "data": {
+          "file": "File CSV"
+        }
       }
     },
     "error": {
@@ -230,7 +267,10 @@
       "non_puoi_rimuoverli_tutti": "Non puoi rimuovere tutti i POD da qui: rimuovi direttamente l'integrazione se vuoi svuotarla del tutto",
       "pod_non_valido": "POD o dato fiscale non riconosciuti dal distributore. Controlla il codice POD (inizia con IT e lo trovi in bolletta) e il codice fiscale o la partita IVA dell'intestatario della fornitura.",
       "areti_pod_non_valido": "POD non riconosciuto su questo account Areti. Controlla il codice (inizia con IT e lo trovi in bolletta) e che sia associato all'account con cui hai fatto accesso.",
-      "cannot_connect": "Impossibile contattare le API del distributore"
+      "cannot_connect": "Impossibile contattare le API del distributore",
+      "csv_non_valido": "File non riconosciuto: {dettaglio}.",
+      "import_fallito": "Import non riuscito per un errore imprevisto: controlla i log di Home Assistant.",
+      "file_non_disponibile": "Il file caricato non è più disponibile: caricalo di nuovo."
     },
     "abort": {
       "nessun_pod": "Non ci sono POD configurati da rimuovere",
@@ -239,7 +279,9 @@
       "nessun_pod_da_aggiungere": "Tutti i POD del tuo account sono già configurati qui",
       "edistribuzione_refresh_failed": "Non è stato possibile rinnovare l'accesso a E-Distribuzione. Riprova più tardi; se il problema persiste potrebbe servire un nuovo login (rimuovi e riconfigura l'integrazione).",
       "edistribuzione_supplies_failed": "Errore imprevisto nel recupero dei POD dall'account. Riprova più tardi.",
-      "areti_login_failed": "Non è stato possibile accedere ad Areti con le credenziali salvate. Riprova più tardi; se il problema persiste potrebbe servire un nuovo login (rimuovi e riconfigura l'integrazione)."
+      "areti_login_failed": "Non è stato possibile accedere ad Areti con le credenziali salvate. Riprova più tardi; se il problema persiste potrebbe servire un nuovo login (rimuovi e riconfigura l'integrazione).",
+      "csv_importato": "Import completato per il POD {pod}: {giorni} giorni, dal {data_da} al {data_a}, per {kwh} kWh. I dati sono visibili nella Energy Dashboard.",
+      "voce_non_caricata": "La configurazione non è caricata: riavviala e riprova."
     }
   }
 }

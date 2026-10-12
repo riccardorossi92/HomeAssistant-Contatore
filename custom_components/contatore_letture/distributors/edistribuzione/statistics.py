@@ -173,6 +173,19 @@ async def async_import_curva_giornaliera(
     )
 
 
+async def async_import_ore(hass: HomeAssistant, pod: str, ore: dict[datetime, float]) -> date | None:
+    """Importa kWh gia' aggregati per ora (inizio ora in UTC) nella stessa
+    serie di async_import_curva_giornaliera: usata dal caricamento manuale
+    del CSV (csv_curve.py), cosi' file e download automatico finiscono
+    nella stessa statistica e un periodo ricaricato sovrascrive quello
+    precedente invece di duplicarlo."""
+    if not ore:
+        return None
+    return await async_scrivi_serie_oraria(
+        hass, pod, sanitize_statistic_id(pod), f"E-Distribuzione {pod}", ore
+    )
+
+
 async def async_get_ultima_data_disponibile(hass: HomeAssistant, pod: str) -> date | None:
     """Ultima data (locale) effettivamente presente nelle external
     statistics per il POD, o None se non c'è ancora nessun dato importato."""

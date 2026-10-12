@@ -273,6 +273,42 @@ metodo>` (varia per endpoint).
   impianto di produzione (`HasPlant: true` in `getSupplies`) potrebbe
   restituire un valore diverso (es. `"PROD"`) non ancora gestito.
 
+## Caricamento manuale del CSV (dalla v0.9.0)
+
+Alternativa al login automatico, bloccato dall'antibot da ottobre 2026
+(issue #11): l'utente esporta la curva dal portale, pagina
+[Curve di carico](https://private.e-distribuzione.it/PortaleClienti/s/curvedicarico),
+e la carica dalle opzioni di una config entry in modalità `manuale`
+(`data["modalita"] == "manuale"`, solo `pods`, nessun token). Parser in
+`distributors/edistribuzione/csv_curve.py`, entry in `manuale.py`.
+
+Formato, da un export reale di agosto 2026 (`ExportData_agosto.csv`):
+
+```
+Giorno;00:00-00:15;00:15-00:30;...;23:45-00:00
+"01/08/2026";"0,359";"0,358";...;"0,02";
+```
+
+- separatore `;`, valori tra virgolette con la virgola decimale, data
+  GG/MM/AAAA, `;` finale su ogni riga, fine riga LF, nessun BOM;
+- 96 colonne di quarti d'ora in ora italiana; il POD non è nel file;
+- valori in **kWh per quarto d'ora**: il 01/08/2026 coincide con la
+  risposta API dello stesso giorno (0,359 il primo valore, 0,020
+  l'ultimo), già verificata contro le letture ufficiali; totale di agosto
+  347,271 kWh;
+- dal portale si possono scaricare fino a 6 mesi per volta, negli ultimi
+  18 mesi, fino a ieri (il giorno in corso compare con le celle vuote).
+
+I dati vanno nella stessa statistica del download automatico
+(`async_import_ore` in `statistics.py`): un periodo ricaricato sovrascrive
+quello precedente.
+
+**Giorni del cambio ora ancora da verificare** su un export reale. Con 96
+colonne fisse il giorno da 23 ore ha 4 quarti d'ora inesistenti: il parser
+accetta sia le colonne 02:00-03:00 vuote sia gli ultimi 4 valori vuoti. Il
+giorno da 25 ore ne ha 4 in più senza colonna: viene importato sull'ora
+indicata dalla colonna e segnalato nei log, perché un'ora può mancare.
+
 ## Limitazioni note / domande ancora aperte
 
 - **Ritardo di pubblicazione dati**: non documentato ufficialmente.

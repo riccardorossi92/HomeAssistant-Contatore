@@ -2,6 +2,7 @@
   "domain": "contatore_letture",
   "name": "Contatore Letture",
   "after_dependencies": [
+    "file_upload",
     "recorder"
   ],
   "codeowners": [

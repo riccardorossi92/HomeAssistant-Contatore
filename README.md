@@ -24,7 +24,7 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | Unareti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
 | RetiPiù | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
 | Reti Valtellina Valchiavenna | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
-| E-Distribuzione | Email + password + OTP | `recupera_storico` |
+| E-Distribuzione | Solo POD (caricamento manuale del CSV) | `recupera_storico` (solo configurazioni automatiche esistenti) |
 | Areti | Email + password | `recupera_storico` |
 | Ireti | Username + password | `recupera_storico` |
 
@@ -34,17 +34,17 @@ confermato funzionante su installazioni reali. Dettagli sulle azioni in
 [Azioni](#azioni) più sotto.
 
 > [!WARNING]
-> **E-Distribuzione: accesso instabile da ottobre 2026**
+> **E-Distribuzione: per ora solo caricamento manuale**
 > ([issue #11](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/11)).
-> Dall'8 ottobre il portale E-Distribuzione è protetto da un sistema
-> anti-bot che blocca le richieste non provenienti da un browser:
-> l'integrazione ripiega da sola su un indirizzo alternativo del portale,
-> ma in alcuni casi il login viene comunque rifiutato, a volte con un
-> "Errore Tecnico" che compare anche sul sito ufficiale. La prima
-> configurazione e il reinserimento delle credenziali possono quindi
-> fallire anche con email e password corrette. Se ti succede, aggiorna
-> all'ultima versione, riprova più tardi e segui l'issue: aggiungi pure
-> lì il messaggio che vedi e le righe di log di `contatore_letture`.
+> Da ottobre 2026 il portale E-Distribuzione blocca con un sistema
+> anti-bot l'accesso automatico dell'integrazione, quindi nella
+> configurazione lo scaricamento automatico non è selezionabile. Al suo
+> posto c'è il **caricamento manuale**: basta il codice POD, poi scarichi
+> la curva di carico dal sito, alla pagina
+> [Curve di carico](https://private.e-distribuzione.it/PortaleClienti/s/curvedicarico),
+> e la carichi da **Configura** sulla voce dell'integrazione. Fino a 6 mesi
+> per file, negli ultimi 18 mesi; ricaricare lo stesso periodo non crea
+> doppioni. Le configurazioni automatiche già esistenti restano come sono.
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
@@ -199,13 +199,29 @@ può velocizzarlo né bypassarlo.
 </details>
 
 <details>
-<summary><b>E-Distribuzione (email + password + OTP)</b></summary>
+<summary><b>E-Distribuzione (caricamento manuale del CSV)</b></summary>
 
-Nessuna richiesta di abilitazione preventiva: ti servono solo le stesse
-credenziali dell'app/area clienti ufficiale E-Distribuzione (email,
-password, e il codice OTP che ricevi via email o SMS al momento
-dell'accesso — te lo chiede direttamente il wizard di configurazione). Se
-il tuo account ha più POD associati, potrai selezionarne più di uno.
+Dopo aver scelto il comune, il wizard chiede la modalità: scegli
+**Caricamento manuale curve** e inserisci il codice POD (lo trovi in
+bolletta). Non servono credenziali.
+
+Per importare i dati:
+1. accedi al sito E-Distribuzione e apri la pagina
+   [Curve di carico](https://private.e-distribuzione.it/PortaleClienti/s/curvedicarico);
+2. scegli il periodo (fino a 6 mesi per volta, negli ultimi 18 mesi, fino a
+   ieri) ed esporta il file CSV;
+3. in Home Assistant apri **Impostazioni → Dispositivi e servizi →
+   Contatore Letture**, premi **Configura** sulla voce del POD e carica il
+   file.
+
+Ripeti dal punto 1 quando vuoi aggiornare i dati: i giorni già importati
+vengono sovrascritti, senza doppioni.
+
+Lo **scaricamento automatico** (email, password e codice OTP, con download
+giornaliero) resta nel wizard ma non è selezionabile finché E-Distribuzione
+blocca l'accesso con il sistema anti-bot. Le configurazioni automatiche
+create prima continuano a funzionare come prima, finché il portale le
+accetta.
 
 </details>
 

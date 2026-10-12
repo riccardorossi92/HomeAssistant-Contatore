@@ -28,6 +28,7 @@ from .const import CONF_CLIENT_ID, CONF_PODS, CONF_SECRET_ID, DOMAIN
 from .distributors import DISTRIBUTOR_REGISTRY
 from .distributors.areti.coordinator import AretiCoordinator
 from .distributors.edistribuzione.coordinator import EdistribuzioneCoordinator
+from .distributors.edistribuzione.manuale import EdistribuzioneManuale, e_manuale
 from .distributors.ireti.coordinator import IretiCoordinator
 from .distributors.pcf_common.coordinator import PcfCoordinator
 
@@ -212,6 +213,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         return True
 
+    if info["kind"] == "edistribuzione" and e_manuale(entry):
+        # Caricamento manuale: niente login, coordinator ne' sensori. Serve
+        # solo a ritrovare il POD quando dalle opzioni si carica un file.
+        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = EdistribuzioneManuale(hass, entry)
+        return True
+
     if info["kind"] == "edistribuzione":
         coordinator = modulo.create_coordinator(hass, entry)
         hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
@@ -273,9 +280,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Scarica la config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if not unload_ok:
-        return False
+    if not isinstance(hass.data.get(DOMAIN, {}).get(entry.entry_id), EdistribuzioneManuale):
+        # Le entry manuali non hanno piattaforme da scaricare.
+        unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+        if not unload_ok:
+            return False
 
     hass.data[DOMAIN].pop(entry.entry_id, None)
 
@@ -285,9 +294,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     areti_rimasti = any(isinstance(c, AretiCoordinator) for c in rimanenti)
     ireti_rimasti = any(isinstance(c, IretiCoordinator) for c in rimanenti)
 
-    if not pcf_rimasti:
+    # has_service: le entry E-Distribuzione manuali non registrano azioni,
+    # quindi possono essere le uniche caricate senza che esistano.
+    if not pcf_rimasti and hass.services.has_service(DOMAIN, SERVICE_RECUPERA_TICKET):
         hass.services.async_remove(DOMAIN, SERVICE_RECUPERA_TICKET)
-    if not pcf_rimasti and not edistribuzione_rimasti and not areti_rimasti and not ireti_rimasti:
+    if (
+        not pcf_rimasti
+        and not edistribuzione_rimasti
+        and not areti_rimasti
+        and not ireti_rimasti
+        and hass.services.has_service(DOMAIN, SERVICE_RECUPERA_STORICO)
+    ):
         hass.services.async_remove(DOMAIN, SERVICE_RECUPERA_STORICO)
 
     return True
