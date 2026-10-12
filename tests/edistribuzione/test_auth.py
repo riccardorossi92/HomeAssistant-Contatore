@@ -17,6 +17,7 @@ import json
 import sys
 import types
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
@@ -1003,7 +1004,7 @@ class TestRefreshConRipiego:
         client = auth.EdistribuzioneAuthClient(session)
         client._host = auth.SF_HOST_DIRETTO
         await client.async_refresh_access_token("RT")
-        assert not any("my.site.com" in url for url in session.url_chiamati)
+        assert {urlparse(url).hostname for url in session.url_chiamati} == {SF_HOST_TOKEN}
 
     def test_app_bloccata_e_sottoclasse_di_auth_error(self):
         assert issubclass(auth.EdistribuzioneAppBloccata, auth.EdistribuzioneAuthError)
