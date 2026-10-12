@@ -53,9 +53,9 @@ recupera_storico:
     coda per ore). Il recupero dello storico non è automatico: sei tu a
     decidere quando e quanto recuperare. Per Duereti/Unareti/RetiPiù/RE.V.V. le API
     accettano al massimo 6 mesi per richiesta (limite documentato); per
-    E-Distribuzione è un limite di cortesia auto-imposto, non un vincolo
-    noto delle loro API (confermato funzionante fino a 181 giorni in
-    un'unica risposta). Per Areti, che non ha una vera API a intervallo di
+    E-Distribuzione il limite è lo stesso, 6 mesi per richiesta, e la data
+    di inizio non può essere anteriore a 18 mesi fa (Condizioni Generali
+    dei servizi E-Distribuzione). Per Areti, che non ha una vera API a intervallo di
     date, l'intervallo scelto viene convertito nei mesi solari che
     attraversa e per ciascuno si importa il mese intero (non solo i
     giorni richiesti).

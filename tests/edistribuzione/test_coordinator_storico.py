@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from freezegun import freeze_time
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.contatore_letture.distributors.edistribuzione.api import (
     EdistribuzioneApiError,
@@ -135,3 +135,49 @@ async def test_fallimento_parziale_resta_un_successo(
         await coordinator.async_recupera_storico(DATA_DA, DATA_A)
 
     _import_statistiche.assert_awaited_once()
+
+
+# Limiti delle Condizioni Generali E-Distribuzione: "max 18 mesi; 6 mesi
+# per volta" (vedi const.MAX_MESI_PER_RICHIESTA / MAX_MESI_STORICO).
+
+
+async def test_sei_mesi_esatti_sono_accettati(
+    hass, make_edist_coordinator, _senza_token, _import_statistiche
+):
+    """1 febbraio - 31 luglio (181 giorni) e' il range reale confermato il
+    20/08/2026: deve restare accettato."""
+    coordinator = make_edist_coordinator(pods=[POD_A])
+    data_da, data_a = date(2026, 2, 1), date(2026, 7, 31)
+    coordinator._api.async_get_daily_load_profile = AsyncMock(
+        return_value=_curva([data_da, data_a])
+    )
+
+    with freeze_time(OGGI):
+        await coordinator.async_recupera_storico(data_da, data_a)
+
+    _import_statistiche.assert_awaited_once()
+
+
+async def test_oltre_sei_mesi_per_richiesta_viene_rifiutato(
+    hass, make_edist_coordinator, _senza_token, _import_statistiche
+):
+    coordinator = make_edist_coordinator(pods=[POD_A])
+    coordinator._api.async_get_daily_load_profile = AsyncMock()
+
+    with freeze_time(OGGI), pytest.raises(ServiceValidationError, match="6 mesi"):
+        await coordinator.async_recupera_storico(date(2026, 1, 31), date(2026, 7, 31))
+
+    coordinator._api.async_get_daily_load_profile.assert_not_awaited()
+
+
+async def test_inizio_oltre_diciotto_mesi_fa_viene_rifiutato(
+    hass, make_edist_coordinator, _senza_token, _import_statistiche
+):
+    """Con oggi 15/09/2026 il primo giorno disponibile e' il 15/03/2025."""
+    coordinator = make_edist_coordinator(pods=[POD_A])
+    coordinator._api.async_get_daily_load_profile = AsyncMock()
+
+    with freeze_time(OGGI), pytest.raises(ServiceValidationError, match="18 mesi"):
+        await coordinator.async_recupera_storico(date(2025, 3, 14), date(2025, 6, 30))
+
+    coordinator._api.async_get_daily_load_profile.assert_not_awaited()

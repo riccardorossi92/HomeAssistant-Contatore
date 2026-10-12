@@ -45,13 +45,25 @@ from .const import (
     CONF_REFRESH_TOKEN,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     MAX_GIORNI_IN_CODA,
-    MAX_GIORNI_RECUPERO_STORICO,
+    MAX_MESI_PER_RICHIESTA,
+    MAX_MESI_STORICO,
     ORA_MINIMA_RICHIESTA,
     RITARDO_DATI_GIORNI,
 )
 from .statistics import async_get_ultima_data_disponibile, async_import_curva_giornaliera
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _stesso_giorno_mesi_prima(giorno: date, mesi: int) -> date:
+    """Lo stesso giorno del mese, `mesi` mesi prima (ripiegando sull'ultimo
+    giorno del mese se quello di partenza non esiste, es. 31 -> 30)."""
+    indice = giorno.year * 12 + giorno.month - 1 - mesi
+    anno, mese = divmod(indice, 12)
+    mese += 1
+    successivo = date(anno + (mese == 12), mese % 12 + 1, 1)
+    ultimo_del_mese = (successivo - timedelta(days=1)).day
+    return date(anno, mese, min(giorno.day, ultimo_del_mese))
 
 
 def _giorni_nel_periodo(data_da: date, data_a: date) -> list[date]:
@@ -319,8 +331,8 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         arretrati = sorted(date.fromisoformat(g) for g in coda if date.fromisoformat(g) < atteso)
         if arretrati:
             # Una sola richiesta dal più vecchio arretrato al giorno atteso.
-            # Il limite di 150 giorni tiene l'intervallo entro
-            # MAX_GIORNI_RECUPERO_STORICO; in pratica non si attiva quasi
+            # Il limite di 150 giorni tiene l'intervallo entro i 6 mesi per
+            # richiesta (MAX_MESI_PER_RICHIESTA); in pratica non si attiva quasi
             # mai, perché la coda tiene al massimo MAX_GIORNI_IN_CODA giorni.
             return max(arretrati[0], atteso - timedelta(days=150)), atteso
 
@@ -441,14 +453,22 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 f"con certezza per E-Distribuzione), quindi al massimo fino al {ultimo_utile}."
             )
 
-        giorni_totali = (data_a - data_da).days + 1
-        if giorni_totali > MAX_GIORNI_RECUPERO_STORICO:
+        # Limiti delle Condizioni Generali di E-Distribuzione: "max 18
+        # mesi; 6 mesi per volta" (vedi const.py).
+        primo_utile = _stesso_giorno_mesi_prima(dt_util.now().date(), MAX_MESI_STORICO)
+        if data_da < primo_utile:
             raise ServiceValidationError(
-                f"Intervallo di {giorni_totali} giorni troppo ampio per una singola "
-                f"richiesta (limite di cortesia: {MAX_GIORNI_RECUPERO_STORICO} giorni, "
-                "~6 mesi - non è un vincolo noto delle API E-Distribuzione, solo una "
-                "cautela: il range più lungo testato finora è di 181 giorni). Ripeti "
-                "l'azione su periodi più corti."
+                f"La data di inizio ({data_da}) è troppo vecchia: E-Distribuzione "
+                f"rende disponibili al massimo gli ultimi {MAX_MESI_STORICO} mesi, "
+                f"quindi non prima del {primo_utile}."
+            )
+        inizio_minimo = _stesso_giorno_mesi_prima(data_a, MAX_MESI_PER_RICHIESTA) + timedelta(days=1)
+        if data_da < inizio_minimo:
+            raise ServiceValidationError(
+                f"Il periodo richiesto supera il limite di {MAX_MESI_PER_RICHIESTA} mesi "
+                f"per richiesta di E-Distribuzione: con fine al {data_a} l'inizio può "
+                f"essere al massimo il {inizio_minimo}. Ripeti l'azione su periodi "
+                "consecutivi più corti."
             )
 
         await self._async_ensure_token()

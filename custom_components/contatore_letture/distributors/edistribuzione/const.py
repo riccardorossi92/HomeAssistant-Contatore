@@ -124,12 +124,12 @@ MAX_GIORNI_IN_CODA = 30
 # Modificabile (anche anticipandolo) dalle opzioni dell'integrazione.
 ORA_MINIMA_RICHIESTA = 19
 
-# Limite di cortesia auto-imposto per l'azione recupera_storico (non è un
-# vincolo noto delle API E-Distribuzione, a differenza del limite di 6 mesi
-# per richiesta di Duereti/Unareti, che è documentato nel loro manuale PCF):
-# async_get_daily_load_profile supporta un intervallo multi-giorno in
-# un'unica chiamata (confermato il 20/08/2026 fino a 181 giorni), quindi
-# non è più un limite anti-spam come nella prima versione - resta solo per
-# evitare che un errore di battitura nella data richieda anni di dati per
-# sbaglio in una singola risposta.
-MAX_GIORNI_RECUPERO_STORICO = 190  # ~6 mesi, stesso ordine di grandezza di pcf_common
+# Limiti dell'azione recupera_storico, dalle Condizioni Generali dei servizi
+# di E-Distribuzione (servizio "Curve di carico" dell'app e "Le mie misure"
+# del portale): curva consultabile "per il periodo scelto (max 18 mesi;
+# 6 mesi per volta)". async_get_daily_load_profile accetta l'intervallo in
+# un'unica chiamata (confermato il 20/08/2026 su 181 giorni, 1 febbraio -
+# 31 luglio), quindi una richiesta copre al massimo 6 mesi e la data di
+# inizio non puo' essere anteriore a 18 mesi fa.
+MAX_MESI_PER_RICHIESTA = 6
+MAX_MESI_STORICO = 18
