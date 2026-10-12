@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import importlib.util
 import json as json_lib
 import logging
@@ -140,7 +141,7 @@ class CurlCffiSession:
         for c in cookies or []:
             self._s.cookies.set(c["name"], c["value"], domain=c["domain"], path=c.get("path", "/"))
 
-    async def __aenter__(self) -> "CurlCffiSession":
+    async def __aenter__(self) -> CurlCffiSession:
         return self
 
     async def __aexit__(self, *exc) -> None:
@@ -344,10 +345,8 @@ async def _cookie_da_browser(headed: bool, attesa_s: int) -> tuple[list[dict], s
             await asyncio.sleep(1)
         if not superato:
             print(f"  dopo {attesa_s}s il browser vede ancora la pagina antibot (o una pagina inattesa)")
-        try:
+        with contextlib.suppress(Exception):
             print(f"  pagina finale: {page.url} - titolo {await page.title()!r}")
-        except Exception:  # noqa: BLE001
-            pass
 
         cookies = await ctx.cookies()
         ua = await page.evaluate("navigator.userAgent")

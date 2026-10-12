@@ -928,61 +928,91 @@ class TestSuHost:
         )
 
 
+SF_HOST_TOKEN = "edistribuzione.my.salesforce.com"
+
+APP_BLOCCATA = (
+    '{"error":"app_blocked","error_description":'
+    '"this app is blocked by Transaction Security"}'
+)
+
+
 class TestRefreshConRipiego:
-    async def test_principale_libero_nessun_ripiego(self):
+    """Refresh: prima l'host Salesforce diretto (my.salesforce.com, senza
+    Imperva), poi il portale. my.site.com non si usa piu' (app_blocked)."""
+
+    async def test_host_diretto_libero_nessun_ripiego(self):
         session = _SessioneTokenPerHost({
-            auth.SF_HOST_PRINCIPALE: _RispostaToken(TOKEN_OK),
+            SF_HOST_TOKEN: _RispostaToken(TOKEN_OK),
         })
         client = auth.EdistribuzioneAuthClient(session)
         tokens = await client.async_refresh_access_token("RT")
         assert tokens.access_token == "AT"
-        assert len(session.url_chiamati) == 1
+        assert session.url_chiamati == [
+            "https://edistribuzione.my.salesforce.com/services/oauth2/token"
+        ]
 
-    async def test_principale_bloccato_ripiega_sul_diretto(self):
+    async def test_host_diretto_app_bloccata_ripiega_sul_portale(self):
         session = _SessioneTokenPerHost({
-            auth.SF_HOST_PRINCIPALE: _RispostaToken(PAGINA_ANTIBOT, status=403),
-            auth.SF_HOST_DIRETTO: _RispostaToken(TOKEN_OK),
+            SF_HOST_TOKEN: _RispostaToken(APP_BLOCCATA, status=400),
+            auth.SF_HOST_PRINCIPALE: _RispostaToken(TOKEN_OK),
         })
         client = auth.EdistribuzioneAuthClient(session)
         tokens = await client.async_refresh_access_token("RT")
         assert tokens.refresh_token == "RT2"
         assert session.url_chiamati[1].startswith(
-            "https://edistribuzione.my.site.com/PortaleClienti/services/oauth2/token"
+            "https://private.e-distribuzione.it/PortaleClienti/services/oauth2/token"
         )
 
-    async def test_blocco_con_status_200_riconosciuto(self):
+    async def test_host_diretto_antibot_ripiega_sul_portale(self):
         session = _SessioneTokenPerHost({
-            auth.SF_HOST_PRINCIPALE: _RispostaToken(
-                "<title>Pardon Our Interruption</title>"
-            ),
-            auth.SF_HOST_DIRETTO: _RispostaToken(TOKEN_OK),
+            SF_HOST_TOKEN: _RispostaToken("<title>Pardon Our Interruption</title>"),
+            auth.SF_HOST_PRINCIPALE: _RispostaToken(TOKEN_OK),
         })
         client = auth.EdistribuzioneAuthClient(session)
         assert (await client.async_refresh_access_token("RT")).access_token == "AT"
 
-    async def test_entrambi_bloccati_solleva_blocco_antibot(self):
+    async def test_entrambi_falliti_propaga_l_errore_dell_host_diretto(self):
+        """Il portale fallisce quasi sempre per Imperva: l'errore utile da
+        mostrare e' quello dell'host diretto (qui app_blocked)."""
         session = _SessioneTokenPerHost({
+            SF_HOST_TOKEN: _RispostaToken(APP_BLOCCATA, status=400),
             auth.SF_HOST_PRINCIPALE: _RispostaToken(PAGINA_ANTIBOT, status=403),
-            auth.SF_HOST_DIRETTO: _RispostaToken(PAGINA_ANTIBOT, status=403),
         })
         client = auth.EdistribuzioneAuthClient(session)
-        with pytest.raises(auth.EdistribuzioneBloccoAntibot):
+        with pytest.raises(auth.EdistribuzioneAppBloccata, match="Transaction Security"):
             await client.async_refresh_access_token("RT")
 
-    async def test_ogni_refresh_riparte_dal_principale(self):
+    async def test_token_revocato_sull_host_diretto_non_ripiega(self):
+        """Un refresh_token non valido e' non valido ovunque: niente secondo
+        tentativo sul portale, l'errore arriva subito al coordinator."""
         session = _SessioneTokenPerHost({
-            auth.SF_HOST_PRINCIPALE: _RispostaToken(TOKEN_OK),
+            SF_HOST_TOKEN: _RispostaToken(
+                '{"error":"invalid_grant","error_description":"expired access/refresh token"}',
+                status=400,
+            ),
+        })
+        client = auth.EdistribuzioneAuthClient(session)
+        with pytest.raises(auth.EdistribuzioneAuthError, match="invalid_grant"):
+            await client.async_refresh_access_token("RT")
+        assert len(session.url_chiamati) == 1
+
+    async def test_my_site_com_mai_usato_per_il_refresh(self):
+        session = _SessioneTokenPerHost({
+            SF_HOST_TOKEN: _RispostaToken(TOKEN_OK),
         })
         client = auth.EdistribuzioneAuthClient(session)
         client._host = auth.SF_HOST_DIRETTO
         await client.async_refresh_access_token("RT")
-        assert session.url_chiamati[0].startswith("https://private.e-distribuzione.it/")
+        assert not any("my.site.com" in url for url in session.url_chiamati)
+
+    def test_app_bloccata_e_sottoclasse_di_auth_error(self):
+        assert issubclass(auth.EdistribuzioneAppBloccata, auth.EdistribuzioneAuthError)
 
     async def test_refresh_chiede_esplicitamente_json(self):
         """Con l'Accept di un browser il token endpoint risponde in XML
         (verificato il 12/10/2026 con curl_cffi): va chiesto JSON."""
         session = _SessioneTokenPerHost({
-            auth.SF_HOST_PRINCIPALE: _RispostaToken(TOKEN_OK),
+            SF_HOST_TOKEN: _RispostaToken(TOKEN_OK),
         })
         client = auth.EdistribuzioneAuthClient(session)
         await client.async_refresh_access_token("RT")
@@ -990,7 +1020,7 @@ class TestRefreshConRipiego:
 
     async def test_refresh_token_vecchio_mantenuto_se_non_ne_arriva_uno_nuovo(self):
         session = _SessioneTokenPerHost({
-            auth.SF_HOST_PRINCIPALE: _RispostaToken('{"access_token": "AT"}'),
+            SF_HOST_TOKEN: _RispostaToken('{"access_token": "AT"}'),
         })
         client = auth.EdistribuzioneAuthClient(session)
         assert (await client.async_refresh_access_token("RT")).refresh_token == "RT"

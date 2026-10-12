@@ -45,6 +45,7 @@ from .const import (
     OAUTH_REDIRECT_URI,
     OAUTH_SCOPE,
     OAUTH_TOKEN_URL,
+    OAUTH_TOKEN_URL_DIRETTO,
     SF_HOST_DIRETTO,
     SF_HOST_PRINCIPALE,
     SF_HOSTS,
@@ -285,6 +286,28 @@ class EdistribuzionePasswordScaduta(EdistribuzioneAuthError):
     (issue #9). Non e' un cambio di markup: va cambiata la password dal sito
     o dall'app ufficiale, poi rifatta la configurazione con quella nuova.
     """
+
+
+class EdistribuzioneAppBloccata(EdistribuzioneAuthError):
+    """Salesforce rifiuta il client OAuth dell'app con "app_blocked" (policy
+    di Transaction Security configurata da E-Distribuzione).
+
+    Visto il 12/10/2026 sul refresh verso edistribuzione.my.site.com. Non e'
+    un token scaduto ne' un blocco antibot: e' un rifiuto deliberato lato
+    server, e riprovare non serve.
+    """
+
+
+def _verifica_app_non_bloccata(testo: str) -> None:
+    """Alza EdistribuzioneAppBloccata se la risposta OAuth e' "app_blocked"."""
+    try:
+        payload = json.loads(testo)
+    except json.JSONDecodeError:
+        return
+    if isinstance(payload, dict) and payload.get("error") == "app_blocked":
+        raise EdistribuzioneAppBloccata(
+            payload.get("error_description") or "app_blocked"
+        )
 
 
 def _verifica_non_bloccato(testo: str) -> None:
@@ -1049,35 +1072,43 @@ class EdistribuzioneAuthClient:
         """Get a fresh access_token. No Aura/OTP involved - this is the path
         the integration should use on every normal startup/renewal.
 
-        Prova prima l'host principale (cosi' si torna al dominio ufficiale
-        appena Enel toglie il blocco) e ripiega sul diretto se il principale
-        risponde con la pagina antibot.
+        Prova prima l'host Salesforce diretto dell'org
+        (edistribuzione.my.salesforce.com, senza Imperva: verificato il
+        12/10/2026), poi il dominio del portale. Il dominio della community
+        (edistribuzione.my.site.com) non viene piu' usato per il refresh: li'
+        E-Distribuzione blocca il client con "app_blocked".
+
+        Se falliscono entrambi si propaga l'errore del primo tentativo, che e'
+        quello significativo (un token revocato o un app_blocked sull'host
+        diretto); quello del portale e' quasi sempre il blocco antibot.
         """
         self._host = SF_HOST_PRINCIPALE
         try:
-            return await self._async_refresh_su_host(refresh_token)
-        except EdistribuzioneBloccoAntibot:
-            _LOGGER.info(
-                "Refresh del token bloccato dall'antibot su %s, uso %s",
+            return await self._async_refresh_su_url(refresh_token, OAUTH_TOKEN_URL_DIRETTO)
+        except (EdistribuzioneBloccoAntibot, EdistribuzioneAppBloccata) as err_diretto:
+            _LOGGER.warning(
+                "Refresh del token rifiutato su %s (%s), riprovo su %s",
+                OAUTH_TOKEN_URL_DIRETTO,
+                err_diretto,
                 SF_HOST_PRINCIPALE,
-                SF_HOST_DIRETTO,
             )
-            self._host = SF_HOST_DIRETTO
-            return await self._async_refresh_su_host(refresh_token)
+            try:
+                return await self._async_refresh_su_url(refresh_token, OAUTH_TOKEN_URL)
+            except EdistribuzioneAuthError:
+                raise err_diretto from None
 
-    async def _async_refresh_su_host(self, refresh_token: str) -> OAuthTokens:
+    async def _async_refresh_su_url(self, refresh_token: str, url: str) -> OAuthTokens:
         data = {
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
             "client_id": OAUTH_CLIENT_ID,
         }
-        async with self._session.post(
-            self._su_host(OAUTH_TOKEN_URL), data=data, headers=_HEADERS_TOKEN
-        ) as resp:
+        async with self._session.post(url, data=data, headers=_HEADERS_TOKEN) as resp:
             # Testo letto sempre, anche con status 200: la pagina "Pardon Our
             # Interruption" arriva con 200 e va riconosciuta prima di provare
             # a leggerla come JSON.
             text = await _leggi_testo(resp)
+            _verifica_app_non_bloccata(text)
             if resp.status != 200:
                 raise EdistribuzioneAuthError(
                     f"refresh_token exchange failed ({resp.status}): {text[:300]}"

@@ -28,6 +28,16 @@ SF_HOSTS = (SF_HOST_PRINCIPALE, SF_HOST_DIRETTO)
 
 SF_BASE = f"https://{SF_HOST_PRINCIPALE}/PortaleClienti"
 
+# Host Salesforce diretto dell'org (l'instance_url restituito dal login), usato
+# per il refresh del token. Verificato il 12/10/2026: qui il refresh risponde
+# con un JSON valido senza Imperva davanti, e l'access_token ottenuto e'
+# accettato dalle API misure (getSupplies). Sullo stesso refresh,
+# edistribuzione.my.site.com risponde invece "app_blocked: this app is blocked
+# by Transaction Security" (policy configurata da E-Distribuzione) e
+# private.e-distribuzione.it con la pagina antibot di Imperva.
+SF_HOST_TOKEN = "edistribuzione.my.salesforce.com"
+OAUTH_TOKEN_URL_DIRETTO = f"https://{SF_HOST_TOKEN}/services/oauth2/token"
+
 OAUTH_AUTHORIZE_URL = f"{SF_BASE}/services/oauth2/authorize"
 OAUTH_TOKEN_URL = f"{SF_BASE}/services/oauth2/token"
 OAUTH_USERINFO_URL = f"{SF_BASE}/services/oauth2/userinfo"
