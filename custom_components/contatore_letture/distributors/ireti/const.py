@@ -87,7 +87,7 @@ RITARDO_DATI_GIORNI = 1
 
 CONF_GIORNI_DA_RIPROVARE = "giorni_da_riprovare"
 
-# Nessun CONF_ORA_RICHIESTA/ORA_MINIMA_RICHIESTA qui (a differenza di
+# Nessun CONF_ORARIO_RICHIESTA/orario_casuale qui (a differenza di
 # edistribuzione): quelli sono calibrati su un orario di pubblicazione
 # osservato ("i dati del giorno prima sono già disponibili alle 18:00");
 # per Ireti non abbiamo ancora nessuna osservazione simile, quindi non

@@ -79,9 +79,9 @@ punti dell'orchestratore condiviso.
 `distributors/<nome>/`, sullo stesso modello di `distributors/edistribuzione/`):
 - `const.py` — costanti di protocollo, endpoint, e se serve import
   automatico giornaliero: `CONF_DATA_INSTALLAZIONE`,
-  `CONF_GIORNI_DA_RIPROVARE`, `CONF_ORA_RICHIESTA`,
+  `CONF_GIORNI_DA_RIPROVARE`, `CONF_ORARIO_RICHIESTA`,
   `RITARDO_DATI_GIORNI`, `ABBANDONO_CODA_DOPO_GIORNI`, `MAX_GIORNI_IN_CODA`,
-  `ORA_MINIMA_RICHIESTA` (stessi nomi di `edistribuzione/const.py`, per
+  `orario_casuale()` (stessi nomi di `edistribuzione/const.py`, per
   coerenza — anche se duplicati invece che condivisi, per scelta
   esplicita: vedi `documentation/architecture.md`).
 - `auth.py` (se il login richiede più di semplici credenziali statiche —

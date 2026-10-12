@@ -302,9 +302,11 @@ in attesa è arrivato completo: fino ad allora la parte disponibile viene
 importata e riaggiornata ogni giorno. Un POD nuovo parte dal mese corrente:
 niente backfill automatico.
 
-**E-Distribuzione** invece pubblica giorno per giorno: **ogni sera dopo le
-19:00** (orario configurabile dalle opzioni) viene richiesto il giorno
-precedente; se non è ancora pubblicato finisce in una coda e viene
+**E-Distribuzione** invece pubblica giorno per giorno: **ogni pomeriggio/sera,
+a un orario scelto a caso tra le 16:00 e le 20:00** al momento della
+configurazione (diverso per ogni installazione, modificabile dalle
+opzioni: un orario impostato a mano sostituisce quello casuale) viene
+richiesto il giorno precedente; se non è ancora pubblicato finisce in una coda e viene
 riprovato nei giorni successivi, così non si creano buchi.
 
 **Ireti** pubblica una curva a **15 minuti** (non oraria/giornaliera come

@@ -30,6 +30,7 @@ from homeassistant.helpers.aiohttp_client import (
     async_get_clientsession,
 )
 from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
+from homeassistant.util import dt as dt_util
 
 from .arera_lookup import AreraLookupError, async_query_distributore
 from .const import (
@@ -39,7 +40,12 @@ from .const import (
     DOMAIN,
 )
 from .distributors import DISTRIBUTOR_REGISTRY, PIVA_TO_KEY
-from .distributors.edistribuzione.const import CONF_ORA_RICHIESTA, ORA_MINIMA_RICHIESTA
+from .distributors.edistribuzione.const import (
+    CONF_ORA_RICHIESTA,
+    CONF_ORARIO_RICHIESTA,
+    orario_casuale,
+    orario_da_opzioni,
+)
 from .distributors.pcf_common.config_flow_helpers import pod_gia_configurato
 from .distributors.pcf_common.const import (
     CONF_PENDING_DATA_A,
@@ -759,6 +765,9 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_PODS: pods,
                     CONF_REFRESH_TOKEN: self._edistribuzione_refresh_token,
                 },
+                # Orario casuale per installazione (vedi orario_casuale):
+                # modificabile dalle opzioni.
+                options={CONF_ORARIO_RICHIESTA: orario_casuale()},
             )
 
         if not self._edistribuzione_pods:
@@ -1434,23 +1443,32 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_orario(self, user_input: dict[str, Any] | None = None):
         if user_input is not None:
-            ora = int(user_input[CONF_ORA_RICHIESTA])
-            return self.async_create_entry(
-                title="", data={**self.config_entry.options, CONF_ORA_RICHIESTA: ora}
-            )
+            orario = dt_util.parse_time(user_input[CONF_ORARIO_RICHIESTA])
+            opzioni = {
+                k: v for k, v in self.config_entry.options.items() if k != CONF_ORA_RICHIESTA
+            }
+            opzioni[CONF_ORARIO_RICHIESTA] = orario.strftime("%H:%M")
+            return self.async_create_entry(title="", data=opzioni)
 
-        attuale = self.config_entry.options.get(CONF_ORA_RICHIESTA, ORA_MINIMA_RICHIESTA)
+        attuale = self._orario_attuale()
         return self.async_show_form(
             step_id="orario",
             data_schema=vol.Schema({
-                vol.Required(CONF_ORA_RICHIESTA, default=attuale): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=0, max=23, step=1, mode=selector.NumberSelectorMode.BOX
-                    )
-                )
+                vol.Required(
+                    CONF_ORARIO_RICHIESTA, default=f"{attuale}:00"
+                ): selector.TimeSelector()
             }),
-            description_placeholders={"ora_attuale": str(attuale)},
+            description_placeholders={"orario_attuale": attuale},
         )
+
+    def _orario_attuale(self) -> str:
+        """Orario "HH:MM" salvato nelle opzioni, anche nel vecchio formato
+        a sola ora; il coordinator ne salva sempre uno all'avvio, quindi
+        il ripiego casuale serve solo per una entry mai avviata."""
+        orario = orario_da_opzioni(self.config_entry.options)
+        if orario is not None:
+            return orario.strftime("%H:%M")
+        return orario_casuale()
 
     async def async_step_aggiungi_pod(self, user_input: dict[str, Any] | None = None):
         pods = list(self.config_entry.data.get(CONF_PODS, []))

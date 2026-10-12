@@ -46,6 +46,7 @@ from custom_components.contatore_letture.distributors.edistribuzione.auth import
 )
 from custom_components.contatore_letture.distributors.edistribuzione.const import (
     CONF_ORA_RICHIESTA,
+    CONF_ORARIO_RICHIESTA,
     CONF_REFRESH_TOKEN,
 )
 from custom_components.contatore_letture.distributors.ireti import api as ireti_api
@@ -302,10 +303,26 @@ async def test_opzioni_orario_salva_valore(hass):
         res["flow_id"], {"next_step_id": "orario"}
     )
     res = await hass.config_entries.options.async_configure(
-        res["flow_id"], {CONF_ORA_RICHIESTA: 21}
+        res["flow_id"], {CONF_ORARIO_RICHIESTA: "21:35:00"}
     )
     assert res["type"] == FlowResultType.CREATE_ENTRY
-    assert entry.options[CONF_ORA_RICHIESTA] == 21
+    assert entry.options[CONF_ORARIO_RICHIESTA] == "21:35"
+
+
+async def test_opzioni_orario_sostituisce_il_vecchio_formato(hass):
+    """Una entry con la sola ora (formato precedente) la vede come orario
+    attuale, e al salvataggio passa al formato HH:MM."""
+    entry = _entry_edist(hass)
+    hass.config_entries.async_update_entry(entry, options={CONF_ORA_RICHIESTA: 21})
+    res = await hass.config_entries.options.async_init(entry.entry_id)
+    res = await hass.config_entries.options.async_configure(
+        res["flow_id"], {"next_step_id": "orario"}
+    )
+    assert res["description_placeholders"] == {"orario_attuale": "21:00"}
+    res = await hass.config_entries.options.async_configure(
+        res["flow_id"], {CONF_ORARIO_RICHIESTA: "17:05:00"}
+    )
+    assert entry.options == {CONF_ORARIO_RICHIESTA: "17:05"}
 
 
 async def test_opzioni_rimuovi_pod_non_tutti(hass):
@@ -563,6 +580,7 @@ async def test_edist_un_solo_pod_crea_entry_subito(hass, _arera_sconosciuto, edi
     assert res["data"]["distributor"] == "edistribuzione"
     assert res["data"][CONF_PODS] == ["IT001E00000009"]
     assert res["data"][CONF_REFRESH_TOKEN] == "ref-nuovo"
+    assert "16:00" <= res["options"][CONF_ORARIO_RICHIESTA] <= "20:00"
 
 
 async def test_edist_nessun_pod_sull_account_abortisce(hass, _arera_sconosciuto, edist_mocks):

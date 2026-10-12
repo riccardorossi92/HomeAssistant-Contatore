@@ -235,9 +235,9 @@
       },
       "orario": {
         "title": "Orario della richiesta giornaliera",
-        "description": "A partire da che ora chiedere al distributore i dati del giorno precedente. Attualmente: {ora_attuale}:00.\n\nL'orario in cui i dati vengono pubblicati non è documentato e può variare: se noti che spesso non vengono restituiti dati, prova a spostarlo più avanti. Un giorno non ottenuto non viene comunque perso, finisce nella coda dei giorni da riprovare.",
+        "description": "A partire da che orario chiedere al distributore i dati del giorno precedente. Attualmente: {orario_attuale}.\n\nL'orario iniziale è stato scelto a caso tra le 16:00 e le 20:00, così le installazioni non interrogano il distributore tutte nello stesso momento; quello impostato qui lo sostituisce. La richiesta parte al primo aggiornamento (uno all'ora) dopo questo orario.\n\nL'orario in cui i dati vengono pubblicati non è documentato e può variare: se noti che spesso non vengono restituiti dati, prova a spostarlo più avanti. Un giorno non ottenuto non viene comunque perso, finisce nella coda dei giorni da riprovare.",
         "data": {
-          "ora_richiesta": "Ora (0-23)"
+          "orario_richiesta": "Orario"
         }
       },
       "areti_aggiungi_pod": {

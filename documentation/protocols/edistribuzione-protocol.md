@@ -327,6 +327,11 @@ somma dei valori del file.
   (stesso comportamento noto di Duereti/Unareti), ma su un numero di
   osservazioni molto minore. Il coordinator usa una coda di retry che
   rende il meccanismo robusto indipendentemente dal ritardo reale.
+  L'orario della richiesta giornaliera è scelto a caso per installazione
+  tra le 16:00 e le 20:00 (`orario_casuale()` in `const.py`), così le
+  installazioni non interrogano il portale tutte insieme; le 16 sono un
+  anticipo sulle 18:00 osservate, non ancora verificato. Un orario
+  impostato a mano dalle opzioni vince su quello casuale.
 - **Refresh token nel tempo**: un primo test a poche ore di distanza dal
   login originale ha confermato che funziona e che il token non ruota ad
   ogni uso. Non ancora testato su settimane/mesi.

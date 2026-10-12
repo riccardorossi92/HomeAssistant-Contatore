@@ -299,7 +299,7 @@ un valore misurato. Prima osservazione ([issue #10](https://github.com/riccardor
 9 c'erano i dati fino al 09/10 compreso, il 10/10 no, quindi D-2 al
 mattino. Non sappiamo ancora a che ora esce D-1; nel frattempo il giorno
 non disponibile resta in coda e viene riprovato ai cicli successivi. Nessun
-`ora_richiesta` configurabile per lo stesso motivo (non c'è ancora una
+`orario_richiesta` configurabile per lo stesso motivo (non c'è ancora una
 base per calibrarlo): si prova a ogni ciclo, senza aspettare un'ora
 precisa del giorno.
 

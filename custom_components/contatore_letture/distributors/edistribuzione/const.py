@@ -8,6 +8,11 @@ DOMAIN is NOT here: it's unified at contatore_letture level (see ...const).
 """
 from __future__ import annotations
 
+import random
+from collections.abc import Mapping
+from datetime import time
+from typing import Any
+
 # --- Salesforce Experience Cloud (login / OAuth2 + PKCE) ---------------------
 # La stessa org/community Salesforce (PortaleClienti) risponde su due host:
 # - private.e-distribuzione.it e' il dominio personalizzato del portale,
@@ -109,6 +114,12 @@ RITARDO_DATI_GIORNI = 1
 
 CONF_DATA_INSTALLAZIONE = "data_installazione"
 CONF_GIORNI_DA_RIPROVARE = "giorni_da_riprovare"
+# Orario "HH:MM" (locale) da cui chiedere il giorno precedente, nelle
+# opzioni della entry. CONF_ORA_RICHIESTA e' il formato precedente (solo
+# l'ora, intero 0-23, impostato a mano dalle opzioni): ancora letto per le
+# entry che l'hanno, e sostituito da CONF_ORARIO_RICHIESTA al primo
+# salvataggio delle opzioni.
+CONF_ORARIO_RICHIESTA = "orario_richiesta"
 CONF_ORA_RICHIESTA = "ora_richiesta"
 
 # Vedi la nota estesa in pcf_common/const.py: un giorno resta in coda e viene
@@ -126,13 +137,41 @@ ABBANDONO_CODA_DOPO_GIORNI = 7
 # giorni in un colpo solo.
 MAX_GIORNI_IN_CODA = 30
 
-# Stesso default di Duereti (dove è stato osservato che i dati del giorno
-# prima spesso non ci sono ancora alle 10 del mattino ma ci sono la
-# sera). Per E-Distribuzione confermato coerente il 21/08/2026: il dato
-# del giorno prima risulta disponibile già alle 18:00 - le 19:00 di
-# default restano quindi una scelta prudente con margine, non stretta.
-# Modificabile (anche anticipandolo) dalle opzioni dell'integrazione.
-ORA_MINIMA_RICHIESTA = 19
+# Orario di default scelto a caso, una volta per installazione, tra le 16:00
+# e le 20:00 (minuti compresi): cosi' le installazioni non chiedono tutte
+# i dati nello stesso momento. Il dato del giorno prima e' risultato
+# disponibile gia' alle 18:00 (21/08/2026); le 16 sono un anticipo non
+# ancora verificato, coperto comunque dalla coda: se il giorno non c'e'
+# ancora, viene riprovato ai cicli successivi. Un orario impostato a mano
+# dalle opzioni sostituisce quello casuale.
+ORARIO_CASUALE_DA_MINUTI = 16 * 60
+ORARIO_CASUALE_A_MINUTI = 20 * 60
+
+
+def orario_casuale() -> str:
+    """Orario "HH:MM" casuale tra ORARIO_CASUALE_DA_MINUTI e
+    ORARIO_CASUALE_A_MINUTI, estremi compresi."""
+    minuti = random.randint(ORARIO_CASUALE_DA_MINUTI, ORARIO_CASUALE_A_MINUTI)
+    return f"{minuti // 60:02d}:{minuti % 60:02d}"
+
+
+def orario_da_opzioni(opzioni: Mapping[str, Any]) -> time | None:
+    """Orario salvato nelle opzioni (CONF_ORARIO_RICHIESTA, o il vecchio
+    CONF_ORA_RICHIESTA a sola ora); None se assente o non valido."""
+    valore = opzioni.get(CONF_ORARIO_RICHIESTA)
+    if valore is not None:
+        try:
+            return time.fromisoformat(str(valore)).replace(second=0, microsecond=0)
+        except ValueError:
+            return None
+    valore = opzioni.get(CONF_ORA_RICHIESTA)
+    if valore is None:
+        return None
+    try:
+        ora = int(float(valore))
+    except (TypeError, ValueError):
+        return None
+    return time(ora) if 0 <= ora <= 23 else None
 
 # Limiti dell'azione recupera_storico, dalle Condizioni Generali dei servizi
 # di E-Distribuzione (servizio "Curve di carico" dell'app e "Le mie misure"

@@ -40,7 +40,7 @@ CONF_MESE_DA_IMPORTARE = "mese_da_importare"
 # Un ciclo al volta: la granularità dei dati è mensile, controllare più
 # spesso non avrebbe senso (scelta esplicita, non un default preso a caso -
 # vedi "Design del coordinator" in areti-protocol.md). A differenza di
-# pcf_common/edistribuzione non c'è un orario configurabile "ora_richiesta":
+# pcf_common/edistribuzione non c'è un orario configurabile "orario_richiesta":
 # non sappiamo a che ora del giorno Areti pubblica un mese appena chiuso
 # (sappiamo solo che agosto era già disponibile il 4 settembre), quindi non
 # c'è ancora una base per renderlo configurabile.

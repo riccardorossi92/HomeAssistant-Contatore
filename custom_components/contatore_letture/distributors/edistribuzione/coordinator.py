@@ -24,7 +24,7 @@ recupera lo storico per TUTTI i POD della entry.
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -41,14 +41,16 @@ from .const import (
     CONF_DATA_INSTALLAZIONE,
     CONF_GIORNI_DA_RIPROVARE,
     CONF_ORA_RICHIESTA,
+    CONF_ORARIO_RICHIESTA,
     CONF_PODS,
     CONF_REFRESH_TOKEN,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     MAX_GIORNI_IN_CODA,
     MAX_MESI_PER_RICHIESTA,
     MAX_MESI_STORICO,
-    ORA_MINIMA_RICHIESTA,
     RITARDO_DATI_GIORNI,
+    orario_casuale,
+    orario_da_opzioni,
 )
 from .statistics import async_get_ultima_data_disponibile, async_import_curva_giornaliera
 
@@ -121,6 +123,8 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         session = async_get_clientsession(hass)
         self._auth = EdistribuzioneAuthClient(session)
         self._api = EdistribuzioneApiClient(session, access_token="")
+        self._orario_ripiego: time | None = None
+        self._assicura_orario_richiesta()
 
     async def _async_ensure_token(self) -> None:
         refresh_token = self.entry.data[CONF_REFRESH_TOKEN]
@@ -145,30 +149,41 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
     # condiviso: vedi la nota in const.py su RITARDO_DATI_GIORNI)
     # ------------------------------------------------------------------
 
+    def _assicura_orario_richiesta(self) -> None:
+        """Entry senza orario (create prima dell'orario casuale, o in un
+        modo che non lo imposta): ne sceglie uno casuale e lo salva nelle
+        opzioni, cosi' resta lo stesso ai riavvii. Un orario impostato a
+        mano (anche nel vecchio formato CONF_ORA_RICHIESTA) non si tocca."""
+        opzioni = self.entry.options
+        if CONF_ORARIO_RICHIESTA in opzioni or CONF_ORA_RICHIESTA in opzioni:
+            return
+        orario = orario_casuale()
+        self.hass.config_entries.async_update_entry(
+            self.entry, options={**opzioni, CONF_ORARIO_RICHIESTA: orario}
+        )
+        _LOGGER.info("Orario della richiesta giornaliera scelto a caso: %s", orario)
+
     @property
-    def _ora_richiesta(self) -> int:
-        """Ora (locale) a partire dalla quale chiedere la curva del giorno
+    def _orario_richiesta(self) -> time:
+        """Orario (locale) a partire dal quale chiedere la curva del giorno
         prima. Configurabile dalle opzioni: non sappiamo ancora quando
         E-Distribuzione pubblica i dati (vedi nota in const.py), quindi se
-        capitano richieste spesso vuote conviene spostarla più avanti."""
-        valore = self.entry.options.get(CONF_ORA_RICHIESTA)
-        if valore is None:
-            return ORA_MINIMA_RICHIESTA
-        try:
-            ora = int(float(valore))
-        except (TypeError, ValueError):
+        capitano richieste spesso vuote conviene spostarlo più avanti."""
+        orario = orario_da_opzioni(self.entry.options)
+        if orario is not None:
+            return orario
+        # Valore rovinato: uno casuale per questo avvio, senza salvarlo,
+        # per non sovrascrivere quello che c'e' nelle opzioni.
+        if self._orario_ripiego is None:
+            self._orario_ripiego = dt_util.parse_time(orario_casuale())
             _LOGGER.warning(
-                "Ora richiesta non valida nelle opzioni (%r): uso le %d:00",
-                valore,
-                ORA_MINIMA_RICHIESTA,
+                "Orario richiesta non valido nelle opzioni (%r): uso le %s",
+                self.entry.options.get(
+                    CONF_ORARIO_RICHIESTA, self.entry.options.get(CONF_ORA_RICHIESTA)
+                ),
+                self._orario_ripiego.strftime("%H:%M"),
             )
-            return ORA_MINIMA_RICHIESTA
-        if not 0 <= ora <= 23:
-            _LOGGER.warning(
-                "Ora richiesta fuori intervallo (%r): uso le %d:00", valore, ORA_MINIMA_RICHIESTA
-            )
-            return ORA_MINIMA_RICHIESTA
-        return ora
+        return self._orario_ripiego
 
     def _leggi_code(self) -> dict[str, dict[str, date]]:
         """Code dei giorni da riprovare, UNA PER POD:
@@ -315,15 +330,15 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
             )
             _LOGGER.info(
                 "Primo avvio: richiedo la curva del %s per verificare POD e token. "
-                "Da domani le richieste partiranno dopo le %d:00 (modificabile dalle "
+                "Da domani le richieste partiranno dopo le %s (modificabile dalle "
                 "opzioni); per lo storico usa l'azione contatore_letture.recupera_storico.",
                 atteso,
-                self._ora_richiesta,
+                self._orario_richiesta.strftime("%H:%M"),
             )
             return atteso, atteso
 
         adesso = dt_util.now()
-        if adesso.hour < self._ora_richiesta:
+        if adesso.time() < self._orario_richiesta:
             return None
 
         code = self._leggi_code()
