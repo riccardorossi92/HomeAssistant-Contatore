@@ -296,8 +296,9 @@ Giorno;00:00-00:15;00:15-00:30;...;23:45-00:00
   risposta API dello stesso giorno (0,359 il primo valore, 0,020
   l'ultimo), già verificata contro le letture ufficiali; totale di agosto
   347,271 kWh;
-- dal portale si possono scaricare fino a 6 mesi per volta, negli ultimi
-  18 mesi, fino a ieri (il giorno in corso compare con le celle vuote).
+- il portale esporta un mese per file, negli ultimi 18 mesi, fino a ieri
+  (il giorno in corso compare con le celle vuote). Il parser non ha limiti
+  sul numero di giorni.
 
 I dati vanno nella stessa statistica del download automatico
 (`async_import_ore` in `statistics.py`): un periodo ricaricato sovrascrive

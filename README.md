@@ -42,8 +42,8 @@ confermato funzionante su installazioni reali. Dettagli sulle azioni in
 > posto c'è il **caricamento manuale**: basta il codice POD, poi scarichi
 > la curva di carico dal sito, alla pagina
 > [Curve di carico](https://private.e-distribuzione.it/PortaleClienti/s/curvedicarico),
-> e la carichi da **Configura** sulla voce dell'integrazione. Fino a 6 mesi
-> per file, negli ultimi 18 mesi; ricaricare lo stesso periodo non crea
+> e la carichi da **Configura** sulla voce dell'integrazione. Un mese per
+> file, negli ultimi 18 mesi; ricaricare lo stesso periodo non crea
 > doppioni. Le configurazioni automatiche già esistenti restano come sono.
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
@@ -208,11 +208,11 @@ bolletta). Non servono credenziali.
 Per importare i dati:
 1. accedi al sito E-Distribuzione e apri la pagina
    [Curve di carico](https://private.e-distribuzione.it/PortaleClienti/s/curvedicarico);
-2. scegli il periodo (fino a 6 mesi per volta, negli ultimi 18 mesi, fino a
-   ieri) ed esporta il file CSV;
+2. scegli il mese (uno per file, negli ultimi 18 mesi, fino a ieri) ed
+   esporta il file CSV;
 3. in Home Assistant apri **Impostazioni → Dispositivi e servizi →
    Contatore Letture**, premi **Configura** sulla voce del POD e carica il
-   file.
+   file. Per più mesi ripeti con un file alla volta.
 
 Ripeti dal punto 1 quando vuoi aggiornare i dati: i giorni già importati
 vengono sovrascritti, senza doppioni.
