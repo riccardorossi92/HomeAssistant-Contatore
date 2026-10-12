@@ -304,11 +304,18 @@ I dati vanno nella stessa statistica del download automatico
 (`async_import_ore` in `statistics.py`): un periodo ricaricato sovrascrive
 quello precedente.
 
-**Giorni del cambio ora ancora da verificare** su un export reale. Con 96
-colonne fisse il giorno da 23 ore ha 4 quarti d'ora inesistenti: il parser
-accetta sia le colonne 02:00-03:00 vuote sia gli ultimi 4 valori vuoti. Il
-giorno da 25 ore ne ha 4 in più senza colonna: viene importato sull'ora
-indicata dalla colonna e segnalato nei log, perché un'ora può mancare.
+**Giorni del cambio ora**, verificati su export reali di marzo 2026 e
+ottobre 2025. Le colonne sono sempre l'ora dell'orologio:
+- **23 ore** (29/03/2026): una riga, con `"0"` nelle colonne 02:00-03:00
+  che quel giorno non esistono. Vengono ignorate.
+- **25 ore** (26/10/2025): **due righe con la stessa data**. La prima ha i
+  valori 00:00-03:00 in ora legale e poi zeri; la seconda zeri fino alle
+  02:00 e poi i valori 02:00-24:00 in ora solare. Si prendono 12 quarti
+  d'ora dalla prima e 88 dalla seconda: 100 in tutto, nessuna ora persa.
+
+Su marzo 2026 (743 ore, 5,537 kWh), ottobre 2025 (745 ore, 36,563 kWh) e
+agosto 2026 (744 ore, 347,271 kWh) il totale importato coincide con la
+somma dei valori del file.
 
 ## Limitazioni note / domande ancora aperte
 

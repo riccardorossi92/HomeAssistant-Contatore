@@ -85,30 +85,53 @@ def test_celle_vuote_saltate_e_giorno_vuoto_ignorato():
     assert len(curva.ore) == 12
 
 
-@pytest.mark.parametrize(
-    "valori",
-    [
-        ["0,1"] * 8 + [None] * 4 + ["0,1"] * 84,  # colonne 02:00-03:00 vuote
-        ["0,1"] * 92 + [None] * 4,  # 92 valori in sequenza
-    ],
-    ids=["colonne-inesistenti-vuote", "ultime-colonne-vuote"],
-)
-def test_cambio_ora_legale_23_ore(valori):
+def test_cambio_ora_legale_23_ore():
+    """Formato reale del 29/03/2026: una riga, "0" nelle colonne 02:00-03:00
+    che quel giorno non esistono."""
+    valori = ["0,1"] * 8 + ["0"] * 4 + ["0,1"] * 84
     curva = cc.leggi_csv_curva(_csv(_riga("29/03/2026", valori)), FUSO)
+
     assert len(curva.ore) == 23
     assert curva.kwh_totali == pytest.approx(9.2)
-    # Dopo le 02:00 CET si passa alle 03:00 CEST: in UTC le ore restano consecutive.
-    assert list(curva.ore)[:3] == [
-        datetime(2026, 3, 28, 23, tzinfo=UTC),
-        datetime(2026, 3, 29, 0, tzinfo=UTC),
-        datetime(2026, 3, 29, 1, tzinfo=UTC),
+    assert curva.avvisi == []
+    # 00:00 e 01:00 in ora solare (+01), poi direttamente le 03:00 in ora
+    # legale (+02): in UTC le ore restano consecutive.
+    assert [o.astimezone(FUSO).strftime("%H%z") for o in list(curva.ore)[:3]] == [
+        "00+0100",
+        "01+0100",
+        "03+0200",
     ]
 
 
-def test_ritorno_ora_solare_segnalato():
-    curva = cc.leggi_csv_curva(_csv(_riga("25/10/2026", ["0,1"] * 96)), FUSO)
+def test_cambio_ora_legale_valori_nelle_colonne_inesistenti_segnalati():
+    valori = ["0,1"] * 96
+    curva = cc.leggi_csv_curva(_csv(_riga("29/03/2026", valori)), FUSO)
+    assert curva.kwh_totali == pytest.approx(9.2)
+    assert any("inesistenti" in a for a in curva.avvisi)
+
+
+def test_ritorno_ora_solare_25_ore_su_due_righe():
+    """Formato reale del 26/10/2025: due righe con la stessa data, la prima
+    con 00:00-03:00 in ora legale e poi zeri, la seconda con zeri fino alle
+    02:00 e poi 02:00-24:00 in ora solare."""
+    legale = ["0,1"] * 8 + ["0,2"] * 4 + ["0"] * 84
+    solare = ["0"] * 8 + ["0,3"] * 4 + ["0,1"] * 84
+    curva = cc.leggi_csv_curva(
+        _csv(_riga("26/10/2025", legale), _riga("26/10/2025", solare)), FUSO
+    )
+
+    assert curva.giorni == [date(2025, 10, 26)]
+    assert len(curva.ore) == 25
+    assert curva.avvisi == []
+    ore = [(o.astimezone(FUSO).strftime("%H%z"), round(k, 3)) for o, k in curva.ore.items()]
+    assert ore[2:4] == [("02+0200", 0.8), ("02+0100", 1.2)]
+    assert curva.kwh_totali == pytest.approx(0.8 + 0.8 + 1.2 + 84 * 0.1)
+
+
+def test_ritorno_ora_solare_su_una_riga_segnalato():
+    curva = cc.leggi_csv_curva(_csv(_riga("26/10/2025", ["0,1"] * 96)), FUSO)
     assert len(curva.ore) == 24
-    assert any("25/10/2026" in a for a in curva.avvisi)
+    assert any("26/10/2025" in a for a in curva.avvisi)
 
 
 def test_bom_e_codifica_windows():

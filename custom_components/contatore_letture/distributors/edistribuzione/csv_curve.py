@@ -20,10 +20,14 @@ Formato, da un export reale di agosto 2026 (ExportData_agosto.csv):
   carica.
 
 Le celle vuote (es. il giorno in corso, non ancora pubblicato) vengono
-saltate. I giorni del cambio ora NON sono ancora verificati su un export
-reale: con 96 colonne fisse, il giorno da 23 ore ha 4 quarti d'ora che non
-esistono (02:00-03:00) e quello da 25 ore uno in piu' che non ha colonna.
-Vedi _slot_del_giorno per come vengono trattati.
+saltate. I giorni del cambio ora, da export reali di marzo 2026 e ottobre
+2025, usano l'ora dell'orologio indicata dalle colonne:
+- giorno da 23 ore (29/03/2026): una riga, con "0" nelle colonne
+  02:00-03:00 che quel giorno non esistono;
+- giorno da 25 ore (26/10/2025): DUE righe con la stessa data. La prima ha
+  i valori 00:00-03:00 in ora legale e poi zeri, la seconda zeri fino alle
+  02:00 e poi i valori 02:00-24:00 in ora solare: 12 + 88 = 100 quarti
+  d'ora.
 """
 from __future__ import annotations
 
@@ -69,61 +73,76 @@ def _numero(cella: str) -> float:
     return float(cella.strip().replace(".", "").replace(",", ".")) if "," in cella else float(cella)
 
 
+def _istante_utc(giorno: date, colonna: int, fuso: ZoneInfo, fold: int = 0) -> datetime:
+    """Inizio in UTC del quarto d'ora della colonna (0 = 00:00-00:15),
+    letto come ora dell'orologio italiana. fold=1 sceglie la seconda
+    occorrenza delle 02:00-03:00 nel giorno da 25 ore."""
+    ora, minuti = divmod(colonna * 15, 60)
+    locale = datetime(giorno.year, giorno.month, giorno.day, ora, minuti, tzinfo=fuso, fold=fold)
+    return locale.astimezone(UTC)
+
+
+def _quarti_reali(giorno: date, fuso: ZoneInfo) -> int:
+    inizio = datetime(giorno.year, giorno.month, giorno.day, tzinfo=fuso)
+    domani = giorno + timedelta(days=1)
+    fine = datetime(domani.year, domani.month, domani.day, tzinfo=fuso)
+    return int((fine.astimezone(UTC) - inizio.astimezone(UTC)) / timedelta(minutes=15))
+
+
+# Colonne 02:00-02:45: inesistenti a marzo, doppie a ottobre.
+_COLONNE_CAMBIO_ORA = range(8, 12)
+
+
 def _slot_del_giorno(
-    giorno: date, valori: list[float | None], fuso: ZoneInfo, avvisi: list[str]
+    giorno: date, righe: list[list[float | None]], fuso: ZoneInfo, avvisi: list[str]
 ) -> list[tuple[datetime, float]]:
-    """(inizio quarto d'ora in UTC, kWh) per i valori di un giorno.
+    """(inizio quarto d'ora in UTC, kWh) per le righe di un giorno.
 
-    In un giorno normale la colonna i inizia a mezzanotte locale + i*15
-    minuti. Nei giorni del cambio ora le colonne restano 96 e i quarti
-    d'ora reali sono 92 o 100:
-    - 23 ore (marzo): se le 4 colonne 02:00-03:00 sono vuote si saltano; se
-      invece sono vuote le ultime 4, i 92 valori sono in sequenza dalla
-      mezzanotte. In entrambi i casi il tempo e' quello trascorso dalla
-      mezzanotte, come nella risposta API.
-    - 25 ore (ottobre): una colonna per ora non basta; si usa l'ora indicata
-      dalla colonna (02:00-03:00 riferita alla prima occorrenza), e il
-      giorno viene segnalato perche' un'ora potrebbe mancare.
+    Nei giorni normali c'e' una riga e ogni colonna e' l'ora dell'orologio.
+    Nei giorni del cambio ora vale il formato descritto nel docstring del
+    modulo; le celle che quel formato riempie con "0" segnaposto vengono
+    ignorate, con un avviso se contengono altro.
     """
-    mezzanotte = datetime(giorno.year, giorno.month, giorno.day, tzinfo=fuso)
-    domani = mezzanotte + timedelta(days=1)
-    domani = datetime(domani.year, domani.month, domani.day, tzinfo=fuso)
-    quarti_reali = int((domani.astimezone(UTC) - mezzanotte.astimezone(UTC))
-                       / timedelta(minutes=15))
-    inizio_utc = mezzanotte.astimezone(UTC)
+    quarti = _quarti_reali(giorno, fuso)
+    slot: list[tuple[datetime, float]] = []
 
-    def in_sequenza(sequenza: list[float | None]) -> list[tuple[datetime, float]]:
-        return [
-            (inizio_utc + timedelta(minutes=15 * i), v)
-            for i, v in enumerate(sequenza)
-            if v is not None
-        ]
+    def aggiungi(valori: list[float | None], colonne, fold: int = 0) -> None:
+        for colonna in colonne:
+            if valori[colonna] is not None:
+                slot.append((_istante_utc(giorno, colonna, fuso, fold), valori[colonna]))
 
-    if quarti_reali == QUARTI_D_ORA:
-        return in_sequenza(valori)
+    def segnala_ignorati(valori: list[float | None], colonne, cosa: str) -> None:
+        if any(valori[c] for c in colonne):
+            avvisi.append(f"{giorno:%d/%m/%Y}: valori non nulli ignorati ({cosa})")
 
-    if quarti_reali == QUARTI_D_ORA - 4:
-        if all(v is None for v in valori[8:12]):
-            return in_sequenza(valori[:8] + valori[12:])
-        if all(v is None for v in valori[-4:]):
-            return in_sequenza(valori[:-4])
+    if quarti == QUARTI_D_ORA or len(righe) > 2:
+        if len(righe) > 1:
+            avvisi.append(f"{giorno:%d/%m/%Y}: {len(righe)} righe, usata l'ultima")
+        aggiungi(righe[-1], range(QUARTI_D_ORA))
+        return slot
+
+    valori = righe[0]
+    if quarti < QUARTI_D_ORA:
+        # Cambio all'ora legale: le 02:00-03:00 non esistono.
+        segnala_ignorati(valori, _COLONNE_CAMBIO_ORA, "02:00-03:00 inesistenti")
+        aggiungi(valori, [c for c in range(QUARTI_D_ORA) if c not in _COLONNE_CAMBIO_ORA])
+        return slot
+
+    # Ritorno all'ora solare.
+    if len(righe) == 1:
         avvisi.append(
-            f"{giorno:%d/%m/%Y} (cambio all'ora legale): valori presenti in tutte le "
-            "colonne, ultimo quarto d'ora ignorato. Formato non ancora verificato."
+            f"{giorno:%d/%m/%Y} (ritorno all'ora solare): attese due righe, trovata una; "
+            "le 02:00-03:00 sono state lette una sola volta"
         )
-        return in_sequenza(valori[:-4])
+        aggiungi(valori, range(QUARTI_D_ORA))
+        return slot
 
-    avvisi.append(
-        f"{giorno:%d/%m/%Y} (ritorno all'ora solare): il file ha 96 colonne per 100 "
-        "quarti d'ora, un'ora potrebbe mancare. Formato non ancora verificato."
-    )
-    slot = []
-    for i, v in enumerate(valori):
-        if v is None:
-            continue
-        ora_locale = (datetime.min + timedelta(minutes=15 * i)).time()
-        locale = datetime.combine(giorno, ora_locale, tzinfo=fuso)
-        slot.append((locale.astimezone(UTC), v))
+    legale, solare = righe
+    aggiungi(legale, range(12))
+    segnala_ignorati(legale, range(12, QUARTI_D_ORA), "prima riga dopo le 03:00")
+    aggiungi(solare, _COLONNE_CAMBIO_ORA, fold=1)
+    aggiungi(solare, range(12, QUARTI_D_ORA))
+    segnala_ignorati(solare, range(8), "seconda riga prima delle 02:00")
     return slot
 
 
@@ -153,7 +172,7 @@ def leggi_csv_curva(contenuto: bytes, fuso: ZoneInfo) -> CurvaDaCsv:
         )
 
     risultato = CurvaDaCsv()
-    ore: dict[datetime, float] = defaultdict(float)
+    per_giorno: dict[date, list[list[float | None]]] = {}
     for numero_riga, riga in enumerate(righe[1:], start=2):
         corrispondenza = _RE_GIORNO.match(riga[0].strip())
         if not corrispondenza:
@@ -176,8 +195,12 @@ def leggi_csv_curva(contenuto: bytes, fuso: ZoneInfo) -> CurvaDaCsv:
                     f"{giorno:%d/%m/%Y}: valore non numerico ignorato ({cella!r})"
                 )
                 valori.append(None)
+        # Il giorno da 25 ore occupa due righe consecutive con la stessa data.
+        per_giorno.setdefault(giorno, []).append(valori)
 
-        slot = _slot_del_giorno(giorno, valori, fuso, risultato.avvisi)
+    ore: dict[datetime, float] = defaultdict(float)
+    for giorno, righe_giorno in per_giorno.items():
+        slot = _slot_del_giorno(giorno, righe_giorno, fuso, risultato.avvisi)
         if not slot:
             continue
         risultato.giorni.append(giorno)
