@@ -49,6 +49,13 @@ Assistant — segnala com'è andata in una issue. Dettagli sulle azioni in
 > e la carichi da **Configura** sulla voce dell'integrazione. Un mese per
 > file, negli ultimi 18 mesi; ricaricare lo stesso periodo non crea
 > doppioni. Le configurazioni automatiche già esistenti restano come sono.
+>
+> Chi vuole comunque lo scaricamento automatico può provare altre
+> integrazioni HACS, di altri autori, che offrono l'accesso dal browser:
+> [fabioscarparo/HomeAssistant-EDistribuzione](https://github.com/fabioscarparo/HomeAssistant-EDistribuzione)
+> e [maurobraggio/HomeAssistant-EDistribuzione](https://github.com/maurobraggio/HomeAssistant-EDistribuzione).
+> Il wizard le propone con la voce **Prova con altre integrazioni HACS**.
+> Non sono sviluppate né verificate da questo progetto.
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
@@ -207,6 +214,13 @@ Per importare i dati:
 
 Ripeti dal punto 1 quando vuoi aggiornare i dati: i giorni già importati
 vengono sovrascritti, senza doppioni.
+
+La voce **Prova con altre integrazioni HACS** chiude il wizard senza creare
+nulla e mostra i link alle integrazioni di terzi citate sopra. Se ne
+installi una, scegline una sola (usano lo stesso nome interno e non possono
+convivere); se tieni lo stesso POD anche qui con il caricamento manuale,
+nella dashboard Energia usa una sola delle due statistiche, altrimenti i
+consumi vengono contati due volte.
 
 Lo **scaricamento automatico** (email, password e codice OTP, con download
 giornaliero) resta nel wizard ma non è selezionabile finché E-Distribuzione

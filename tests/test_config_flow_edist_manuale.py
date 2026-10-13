@@ -71,6 +71,19 @@ async def test_automatico_non_selezionabile_finche_disattivato(hass, monkeypatch
     assert res["errors"] == {"modalita": "automatico_non_disponibile"}
 
 
+async def test_altre_integrazioni_chiude_con_i_link(hass):
+    res = await _fino_a_modalita(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"modalita": "altre_integrazioni"}
+    )
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "edistribuzione_altre_integrazioni"
+    elenco = res["description_placeholders"]["elenco"]
+    for _, url in edist_const.ALTRE_INTEGRAZIONI:
+        assert f"]({url})" in elenco
+    assert not hass.config_entries.async_entries(DOMAIN)
+
+
 async def test_automatico_riattivato_porta_al_login(hass, monkeypatch):
     monkeypatch.setattr(edist_const, "SCARICAMENTO_AUTOMATICO_DISPONIBILE", True)
     res = await _fino_a_modalita(hass)

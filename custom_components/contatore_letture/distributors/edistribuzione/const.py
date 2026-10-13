@@ -190,6 +190,25 @@ MAX_MESI_STORICO = 18
 CONF_MODALITA = "modalita"
 MODALITA_AUTOMATICA = "automatica"
 MODALITA_MANUALE = "manuale"
+# Scelta del wizard, non un valore salvato: chiude il flow con i link ad
+# ALTRE_INTEGRAZIONI senza creare nessuna entry.
+MODALITA_ALTRE_INTEGRAZIONI = "altre_integrazioni"
+
+# Integrazioni HACS di terzi per E-Distribuzione, proposte nel wizard a chi
+# vuole lo scaricamento automatico finche' il nostro resta disattivato: dal
+# 13/10/2026 offrono l'accesso dal browser al posto del login bloccato.
+# Questo progetto non le sviluppa ne' le verifica, e non insiste a cercare
+# un modo di aggirare il blocco di E-Distribuzione. (nome, url)
+ALTRE_INTEGRAZIONI = (
+    (
+        "fabioscarparo/HomeAssistant-EDistribuzione",
+        "https://github.com/fabioscarparo/HomeAssistant-EDistribuzione",
+    ),
+    (
+        "maurobraggio/HomeAssistant-EDistribuzione",
+        "https://github.com/maurobraggio/HomeAssistant-EDistribuzione",
+    ),
+)
 
 # Da ottobre 2026 il login automatico e' bloccato dall'antibot del portale
 # (issue #11): nel wizard la modalita' automatica resta visibile ma non

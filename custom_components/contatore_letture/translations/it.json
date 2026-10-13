@@ -172,7 +172,7 @@
       },
       "edistribuzione_modalita": {
         "title": "Distributore individuato: E-Distribuzione",
-        "description": "Scegli come importare i consumi del tuo POD.\n\n**Caricamento manuale curve**: scarichi la curva di carico dal sito E-Distribuzione (file CSV) e la carichi in Home Assistant dalle opzioni dell'integrazione, ogni volta che vuoi aggiornare i dati. Serve solo il codice POD, nessuna credenziale.\n\n**Scaricamento automatico**: l'integrazione accede con email, password e codice OTP e scarica i dati ogni giorno. Da ottobre 2026 E-Distribuzione blocca questo accesso con un sistema anti-bot, quindi per ora non è disponibile.",
+        "description": "Scegli come importare i consumi del tuo POD.\n\n**Caricamento manuale curve**: scarichi la curva di carico dal sito E-Distribuzione (file CSV) e la carichi in Home Assistant dalle opzioni dell'integrazione, ogni volta che vuoi aggiornare i dati. Serve solo il codice POD, nessuna credenziale.\n\n**Scaricamento automatico**: l'integrazione accede con email, password e codice OTP e scarica i dati ogni giorno. Da ottobre 2026 E-Distribuzione blocca questo accesso con un sistema anti-bot, quindi per ora non è disponibile.\n\n**Prova con altre integrazioni HACS**: ti mostra altre integrazioni per E-Distribuzione, di altri autori, che offrono lo scaricamento automatico con l'accesso dal browser.",
         "data": {
           "modalita": "Modalità"
         }
@@ -212,7 +212,8 @@
       "ireti_pods_failed": "Errore imprevisto nel recupero dei POD dall'account SmartPOD. Riprova la configurazione da capo.",
       "no_ireti_pods_associated": "Il tuo account SmartPOD non ha ancora nessun POD associato. Accedi al portale (smartpod.ireti.it), usa \"Aggiungi POD\" con il codice della tua fornitura, poi riprova questa configurazione.",
       "setdistribuzione_pods_failed": "Errore imprevisto nel recupero delle forniture dall'account mySET. Riprova la configurazione da capo.",
-      "no_setdistribuzione_pods": "Il tuo account mySET non ha nessuna fornitura elettrica associata. Accedi all'area riservata (myset.setdistribuzione.it), verifica che la fornitura compaia tra le tue utenze, poi riprova questa configurazione."
+      "no_setdistribuzione_pods": "Il tuo account mySET non ha nessuna fornitura elettrica associata. Accedi all'area riservata (myset.setdistribuzione.it), verifica che la fornitura compaia tra le tue utenze, poi riprova questa configurazione.",
+      "edistribuzione_altre_integrazioni": "Lo scaricamento automatico di questa integrazione è disattivato finché E-Distribuzione blocca l'accesso automatico. Altre integrazioni per E-Distribuzione offrono l'accesso dal browser al posto del login bloccato:\n\n{elenco}\n\nSi aggiungono in HACS come repository personalizzato, di tipo \"Integrazione\". Non sono sviluppate né verificate da questo progetto: per problemi o domande rivolgiti ai loro autori.\n\nSe ne installi una, scegline una sola (usano lo stesso nome interno e non possono convivere). Se tieni lo stesso POD anche qui con il caricamento manuale, nella dashboard Energia usa una sola delle due statistiche, altrimenti i consumi vengono contati due volte."
     }
   },
   "options": {
