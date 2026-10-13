@@ -3,6 +3,7 @@ E-Distribuzione: niente login, solo il POD, e i CSV del portale caricati
 dalle opzioni (issue #11)."""
 from __future__ import annotations
 
+import re
 from unittest.mock import AsyncMock
 
 import pytest
@@ -78,9 +79,10 @@ async def test_altre_integrazioni_chiude_con_i_link(hass):
     )
     assert res["type"] == FlowResultType.ABORT
     assert res["reason"] == "edistribuzione_altre_integrazioni"
-    elenco = res["description_placeholders"]["elenco"]
-    for _, url in edist_const.ALTRE_INTEGRAZIONI:
-        assert f"]({url})" in elenco
+    # Confronto esatto dei link estratti, non "url in testo": CodeQL lo
+    # segnala come controllo incompleto di un URL.
+    link = re.findall(r"\]\(([^)]*)\)", res["description_placeholders"]["elenco"])
+    assert link == [url for _, url in edist_const.ALTRE_INTEGRAZIONI]
     assert not hass.config_entries.async_entries(DOMAIN)
 
 
