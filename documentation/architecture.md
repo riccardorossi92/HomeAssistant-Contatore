@@ -2,7 +2,7 @@
 
 ```
 contatore_letture/
-  config_flow.py         # orchestratore: wizard ARERA + step "pcf"/"edistribuzione"/"areti"/"ireti" + reauth + options
+  config_flow.py         # orchestratore: wizard ARERA + step "pcf"/"edistribuzione"/"areti"/"ireti"/"setdistribuzione" + reauth + options
   __init__.py             # setup/unload, dispatch per distributore, servizi condivisi
   sensor.py                # dispatch verso il modulo del distributore
   istat_comuni.py           # elenco comuni: fetch live + fallback snapshot
@@ -43,6 +43,13 @@ contatore_letture/
       sensor.py                        # entita' diagnostiche per POD (ultima data disponibile, consumo giorno)
       statistics.py                     # import external statistics (curva di carico a 15 min)
       const.py                            # costanti di protocollo
+    setdistribuzione/               # pacchetto a se', Azure AD B2C + PKCE, nessun OTP
+      auth.py                       # login B2C (authorize -> SelfAsserted -> confirmed -> token)
+      api.py                         # client REST (profile/customer, utility/active, consumption)
+      coordinator.py                  # coda per POD, un giorno per richiesta, login solo se serve
+      sensor.py                        # entita' diagnostiche per POD (ultima data disponibile, consumo giorno)
+      statistics.py                     # import external statistics (curva oraria)
+      const.py                            # costanti di protocollo
 ```
 
 Ogni distributore (o gruppo di distributori che condividono un
@@ -59,8 +66,9 @@ vive tutta dentro il pacchetto del distributore.
 Per i dettagli specifici di ciascun protocollo, vedi
 [`pcf-protocol.md`](protocols/pcf-protocol.md) (Duereti/Unareti),
 [`edistribuzione-protocol.md`](protocols/edistribuzione-protocol.md),
-[`areti-protocol.md`](protocols/areti-protocol.md) e
-[`ireti-protocol.md`](protocols/ireti-protocol.md).
+[`areti-protocol.md`](protocols/areti-protocol.md),
+[`ireti-protocol.md`](protocols/ireti-protocol.md) e
+[`set-distribuzione-protocol.md`](protocols/set-distribuzione-protocol.md).
 
 ## Prima di usarlo su un'installazione reale
 

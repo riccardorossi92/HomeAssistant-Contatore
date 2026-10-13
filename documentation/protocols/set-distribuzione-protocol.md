@@ -1,23 +1,29 @@
-# SET Distribuzione — stato della ricerca (supporto non ancora implementato)
+# SET Distribuzione — protocollo
 
 **SET Distribuzione S.p.A.** (Rovereto, gruppo Dolomiti Energia) — portale
-`myset.setdistribuzione.it`. **Non ancora supportato.**
+`myset.setdistribuzione.it`. **Supportato** dal pacchetto
+`distributors/setdistribuzione/`.
 
-Login e anagrafica sono verificati con una cattura reale. Non è ancora
-noto se il portale espone dati di misura del distributore (curva di
-carico / letture), perché l'unica cattura disponibile viene da un
-account **senza fornitura associata** (profilo `Prospect`).
+Due catture reali:
+
+- **13/09/2026**, account **senza fornitura** (profilo `Prospect`), export
+  di Safari: login e anagrafica, nessun dato di consumo.
+- **13/10/2026**, account **con un POD attivo** (profilo `Retail_SET`),
+  export di Firefox con gli header: login, forniture e consumi fino al
+  quarto d'ora. Ha sciolto il dubbio della prima cattura: gli endpoint di
+  consumo restituiscono **letture del contatore 2G**, non dati di
+  fatturazione (vedi sotto).
 
 __Le informazioni qui sotto vengono dall'analisi del traffico del
-portale (cattura HAR) e dal bundle JavaScript dell'app, non da
+portale (catture HAR) e dal bundle JavaScript dell'app, non da
 documentazione ufficiale (che non esiste pubblicamente).__
 
 ## Quadro generale
 
 Il login passa da **Azure AD B2C** (Microsoft), non dal protocollo PCF
 (Duereti/Unareti) né da quello Salesforce/OTP di E-Distribuzione:
-protocollo strutturalmente nuovo, rientra nel **caso B** di
-[`CONTRIBUTING.md`](../CONTRIBUTING.md).
+protocollo strutturalmente nuovo, **caso B** di
+[`CONTRIBUTING.md`](../../CONTRIBUTING.md).
 
 La SPA (`myset.setdistribuzione.it`) è una web app React che espone la
 sua config al caricamento come `window.privatearea`:
@@ -39,11 +45,11 @@ sua config al caricamento come `window.privatearea`:
 BASE_API     = https://agw.setdistribuzione.it/api
 AUTH_DOMAIN  = sportelloclientib2cset.b2clogin.com
 TENANT       = sportelloclientib2cset.onmicrosoft.com
-POLICY       = b2c_1a_signin
+POLICY       = B2C_1A_signin
 CLIENT_ID    = 3cfe517e-7c9e-433e-a9dd-daf4cca499c9
 REDIRECT_URI = https://myset.setdistribuzione.it
 SCOPE        = https://sportelloclientib2cset.onmicrosoft.com/private/api/read openid profile offline_access
-PIVA (da footer del sito pubblico) = 01932800228
+PIVA         = 01932800228 (confermata da ARERA per il comune di Rovereto, 13/10/2026)
 ```
 
 > [!NOTE]
@@ -59,15 +65,25 @@ PIVA (da footer del sito pubblico) = 01932800228
 
 Flusso standard Azure AD B2C "sign in" via MSAL.js (Authorization Code
 + PKCE), niente password grant diretto come Ireti — bisogna passare
-dalla pagina ospitata su `b2clogin.com`:
+dalla pagina ospitata su `b2clogin.com`. Confermato identico dalla
+cattura del 13/10/2026. Implementato in `auth.py`:
 
-1. `GET {AUTH_DOMAIN}/{TENANT}/{POLICY}/v2.0/.well-known/openid-configuration`
-2. `GET {AUTH_DOMAIN}/{TENANT}/{POLICY}/oauth2/v2.0/authorize?client_id=...&code_challenge=...&code_challenge_method=S256&response_type=code&response_mode=fragment&...`
-3. `POST {AUTH_DOMAIN}/{TENANT}/{POLICY}/SelfAsserted?tx=...&p={POLICY}` — invio email+password (pagina ospitata da B2C, non da myset)
-4. `GET {AUTH_DOMAIN}/{TENANT}/{POLICY}/api/CombinedSigninAndSignup/confirmed?...` → redirect 302 con `code` in fragment verso `REDIRECT_URI`
-5. `POST {AUTH_DOMAIN}/{TENANT}/{POLICY}/oauth2/v2.0/token` — scambio `code` (+ `code_verifier`) → token
+1. `GET {AUTH_DOMAIN}/{TENANT}/{POLICY}/oauth2/v2.0/authorize?client_id=...&code_challenge=...&code_challenge_method=S256&response_type=code&response_mode=fragment&...`
+   → pagina HTML con il blob `var SETTINGS = {...}` (`csrf`, `transId`) e i
+   cookie `x-ms-cpim-*` della transazione
+2. `POST {AUTH_DOMAIN}/{TENANT}/{POLICY}/SelfAsserted?tx={transId}&p={POLICY}`
+   con `request_type=RESPONSE&signInName=<email>&password=<password>` e
+   header `X-CSRF-TOKEN: {csrf}` → `{"status":"200"}`
+3. `GET {AUTH_DOMAIN}/{TENANT}/{POLICY}/api/CombinedSigninAndSignup/confirmed?rememberMe=false&csrf_token={csrf}&tx={transId}&p={POLICY}`
+   → 302 verso `REDIRECT_URI#state=...&client_info=...&code=...`
+4. `POST {AUTH_DOMAIN}/{TENANT}/{POLICY}/oauth2/v2.0/token` — scambio
+   `code` (+ `code_verifier`) → token
 
-Risposta del passo 5, shape OIDC standard:
+Credenziali errate al passo 2 (verificato dal vivo il 13/10/2026 con un
+account inesistente): HTTP 200 con
+`{"status":"400","errorCode":"AADB2C90053","message":"Credenziali non valide."}`.
+
+Risposta del passo 4, shape OIDC standard:
 
 ```json
 {
@@ -77,113 +93,150 @@ Risposta del passo 5, shape OIDC standard:
   "expires_in": 3600,
   "refresh_token": "...",
   "refresh_token_expires_in": 86400,
-  "scope": "...",
+  "scope": "https://sportelloclientib2cset.onmicrosoft.com/private/api/read",
   "client_info": "..."
 }
 ```
 
-`refresh_token` dura **24h** (`refresh_token_expires_in: 86400`),
-`access_token` **1h** (`expires_in: 3600`) — nessun problema per un
-polling orario, a differenza del caso Ireti (refresh token da 30 min).
+`access_token` da **1 ora**, `refresh_token` da **24 ore**. Per i client
+"Single-Page Application" B2C non rinnova il refresh token oltre le 24
+ore dal login: l'integrazione non conserva token e rifà il login
+completo nei cicli in cui deve scaricare qualcosa (come Ireti).
+
+L'`id_token` e l'`access_token` contengono in chiaro **codice fiscale,
+email, nome e cognome** (claim `codice_fiscale`, `email_address`,
+`given_name`, `family_name`): non vanno mai loggati, e una cattura HAR
+li contiene in più punti (risposta del token endpoint, header
+`Authorization` di ogni chiamata).
 
 > [!WARNING]
-> La cattura è stata fatta con l'export HAR di **Safari/WebKit**
-> (`creator.name: "WebInspector"`): **non contiene nessun header
-> `Authorization` né `Cookie`, su nessuna delle 298 richieste**,
-> incluse quelle autenticate verso `agw.setdistribuzione.it`. Non è
-> un'assenza di autenticazione (il `token_type` è esplicitamente
-> `"Bearer"`) — è quasi certamente Safari che **redige questi header
-> per privacy** nell'export. Per le prossime catture su questo o altri
-> distributori, usare **Chrome/Firefox DevTools** (Network → Preserve
-> log → Export HAR with content), che non hanno questo comportamento:
-> senza l'header reale non sappiamo se è `Authorization: Bearer <token>`
-> semplice o se serve qualcos'altro (header custom, cookie di sessione
-> in aggiunta).
+> **Gotcha cookie (aiohttp):** i valori dei cookie `x-ms-cpim-*`
+> contengono `/`, `+` e `=`. Il cookie jar di default di aiohttp li
+> rimanda tra virgolette, B2C non li riconosce e risponde
+> **400 "Bad Request"** (testo semplice, non JSON) al passo 2. La
+> sessione va creata con `aiohttp.CookieJar(quote_cookie=False)`
+> (`auth.nuovo_cookie_jar()`). Verificato dal vivo il 13/10/2026: con
+> lo stesso codice e il jar non quotato arriva la normale risposta JSON.
 
-## API — verificate funzionanti (account senza fornitura, profilo "Prospect")
+> [!NOTE]
+> Il token endpoint riceve l'header `Origin: https://myset.setdistribuzione.it`,
+> come nel browser: per i client registrati come SPA, B2C rifiuta lo
+> scambio del code senza una richiesta cross-origin (errore
+> `AADSTS9002327`). Comportamento documentato da Microsoft, non provato
+> su questo tenant senza Origin.
 
-Tutte su `{BASE_API}`, presumibilmente con `Authorization: Bearer
-<access_token>` (vedi warning sopra).
+## API — verificate su account con POD (13/10/2026)
+
+Tutte su `{BASE_API}` con `Authorization: Bearer <access_token>` (header
+confermato dalla cattura Firefox). Nessun altro header o cookie
+richiesto.
 
 | Endpoint | Metodo | Cosa restituisce |
 |---|---|---|
-| `/b2c/alert` | GET | banner applicativo: `show` (bool), `message`, `iconName` |
-| `/secure/profile/registration` | GET | anagrafica: `email`, `cellphone`, `givenName`, `surname`, `fiscalCode`, `customerType` (`"RETAIL"`), `profiles` (`["Prospect"]`), `assistant`/`superAdmin`/`isReadOnly` (bool), `displayName` |
-| `/secure/profile/customer` | GET | `{"message": "Profile retrieved", "data": []}` — **nessun contratto/POD** |
-| `/secure/termsOfService` | GET | `{changed, termsOfService: {title, text, lastTimeChanged}}` |
-| `/secure/profile/image/{fiscalCode}?profile=Prospect` | GET | **403** — nessuna immagine per un profilo Prospect |
+| `/b2c/alert` | GET | banner applicativo (anche prima del login): `show`, `message`, `iconName` |
+| `/secure/profile/registration` | GET | anagrafica: `email`, `cellphone`, `givenName`, `surname`, `fiscalCode`, `customerType` (`"RETAIL"`), `profiles` (`["Retail_SET"]`, o `["Prospect"]` senza forniture) |
+| `/secure/profile/customer` | GET | `data`: un elemento per profilo, con `fiscalCode`, `profile`, `businessPartner`, `defaultProfile`. Lista vuota per un account Prospect |
+| `/secure/utility/{fiscalCode}/active?profile=` | GET | `data.utilities`: `podPdr`, `contractId`, `utilityType` (`"ENERGY"`), `utilityStatus` (`"ACTIVE"`), `name`, `utilityAddress`, `businessPartner`, `pesseGroup` |
+| `/secure/utility/detail/{fiscalCode}/{contractId}?profile=` | GET | dettaglio fornitura: `meterSerialNumber`, `meterType` (`"2G"`), `contractualPower`, `availablePower`, `voltage`, `phase`, `tariffCategory` |
+| `/secure/utility/{fiscalCode}/{contractId}/consumption` | GET | consumi, vedi sotto |
+| `/secure/utility/reports/{fiscalCode}?profile=` | GET | prossima lettura programmata (vuota nella cattura) |
+| `POST /secure/utility/pesse/emergency` | POST | piano di distacco PESSE dei POD (`{"fc","profile","podBp"}`) |
 
-`profiles: ["Prospect"]` è la conferma diretta, lato API, del motivo per
-cui l'account di cattura non ha POD: non è ancora un cliente attivo con
-una fornitura, è solo un utente registrato al portale.
+`{fiscalCode}` nel path è il codice fiscale del titolare (nella cattura
+mascherato a mano da chi l'ha fatta, come i campi dell'anagrafica).
+L'integrazione lo legge da `/secure/profile/customer` insieme al
+profilo, poi le forniture da `utility/active`; scarta quelle con
+`utilityType` diverso da `ENERGY` (il portale gestisce anche gas e
+teleriscaldamento del gruppo).
 
-## Endpoint di consumo/misura — individuati nel bundle, MAI chiamati, non verificati
+### Consumi
 
-Estratti dalle definizioni RTK Query nel bundle
-`clientlibs-reactbuild-area-privata/resources/static/js/*.chunk.js`
-(stesso tipo di analisi statica fatta per Ireti). **Nessuno di questi è
-mai stato chiamato nella cattura** (l'account Prospect non ha nulla da
-mostrare), quindi non abbiamo risposte reali né conferma che siano
-raggiungibili per un profilo diverso da Prospect.
+`GET /secure/utility/{fiscalCode}/{contractId}/consumption` con
+`consumptionRange=F1_F2_F3`, `consumptionType=A1`, `profile`,
+`supplyPoint={POD}`, `year`, e opzionalmente `month` e `day`. Tre
+livelli di dettaglio:
 
-| Nome (RTK Query) | Metodo | Path (relativo a `{BASE_API}`) | Query params |
-|---|---|---|---|
-| `getUtilityConsumptionUsingGet` | GET | `/secure/utility/{fiscalCode}/{contractualAccount}/{contractId}/consumption` | `consumptionRange`, `consumptionType`, `day`, `month`, `profile`, `supplyPoint`, `year` |
-| `getUtilityConsumptionFileUsingGet` | GET | `.../consumption/excel` | come sopra + `hour` |
-| `getSuppliesConsumptionFileUsingGet` | GET | `/secure/utility/{fiscalCode}/consumption/excel/{year}/{month}` | `profile` |
-| `getUtilityDetailsUsingGet` | GET | `/secure/utility/detail/{fiscalCode}/{contractId}` | `contractualAccount`, `profile` |
-| `getMultisiteUtilityDetailsUsingGet` | GET | `/secure/utility/{fiscalCode}/{contractualAccount}` | `profile` |
-| `getUtilityMeterSelfReadingUsingGet` | GET | `.../{contractId}/self-reading/{utilityType}/{utilityPoint}` | `profile` |
-| `postUtilityMeterSelfReadingUsingPost` | POST | idem | — (autolettura) |
-| `getUtilityMeterReadFileUsingGet` | GET | `.../{contractId}/{meterSerialNumber}/meter-read/excel` | `profile`, `year` |
-| `getUtilityMeterReadUsingGet` | GET | `/secure/utility/{fiscalCode}/{pdc}/{meterSerialNumber}/meter-read...` | — |
-| `getBillsUsingGet` | GET | `/secure/bill/{fiscalCode}` | `billStatus`, `contractualAccount`, `month`, `page`, `podPdr`, `profile`, `relatedBusinessPartner`, `size`, `supplyType`, `year` |
-| `getUtilityDocumentsUsingGet` | GET | `/secure/utility/documents/{fiscalCode}` | `commodity`, `month`, `page`, `podPdr`, `profile`, `relatedBusinessPartner` |
+| Parametri | `data.consumptions[]` | Note |
+|---|---|---|
+| solo `year` | un elemento per mese: `month`, `total` (kWh), `estimated` | `data.total` = somma dell'anno |
+| `year` + `month` | un elemento per giorno: `day`, `total`, `average` | in più `data.powerPeak`, es. `"sabato 3 ore 19: 2,472 kW"` |
+| `year` + `month` + `day` | un elemento per ora: `hour` (0-23), `quarters` (4 valori), `total`, `average` | **usato dall'integrazione** |
 
-Note dal bundle:
+> [!IMPORTANT]
+> **`month` nella richiesta parte da 0**: `month=9` restituisce ottobre.
+> Nelle risposte invece `month` è 1-based (`"month": 10`). `day` è
+> 1-based in entrambi.
 
-- `podPdr` è un parametro unico (POD elettrico o PDR gas): il portale
-  gestisce più commodity insieme — un `enum` nel bundle elenca
-  `Energy`/`Gas`/`Teleriscaldamento`.
-- `consumptionType`, `consumptionRange` e il parametro `hour` (solo
-  sulla variante `/excel`) suggeriscono una granularità selezionabile,
-  ma senza una risposta reale non si sa il formato né se il livello di
-  dettaglio arriva a curva di carico o si ferma al dato mensile.
+Elemento orario reale (12/10/2026):
 
-> [!WARNING]
-> **Il bundle è condiviso con myDOLOMITI** (venditore del gruppo, non
-> distributore): lo schema `contractId`/`contractualAccount`/
-> `actualAccount`/`getBillsUsingGet` è tipico di un rapporto di
-> **fornitura/fatturazione con un venditore**, non delle letture di rete
-> di un distributore puro. Non è da escludere che questi endpoint
-> restituiscano dati di fatturazione (kWh a consuntivo mensile) invece
-> di una vera curva di carico da smart meter — o che per un account SET
-> Distribuzione "reale" (senza rapporto di vendita nel gruppo) tornino
-> semplicemente vuoti/non pertinenti. Questo cambia molto l'utilità di
-> questi dati per l'integrazione: va verificato con un account vero
-> prima di scriverci sopra del codice.
+```json
+{
+  "drillDownAvailable": true,
+  "year": 2026, "month": 10, "day": 12, "hour": 13,
+  "quarters": [0.268, 0.457, 0.085, 0.072],
+  "total": 0.88199997,
+  "average": 0.22049999,
+  "estimated": false,
+  "meterSerialNumber": "...",
+  "kConstant": "1"
+}
+```
 
-## Cosa manca
+**Unità: kWh per intervallo.** Conferma interna alla cattura: il
+`powerPeak` del giorno (`"lunedì 12 ore 13: 1,828 kW"`) è esattamente il
+quarto d'ora più alto (0,457 kWh) moltiplicato per 4. `total` dell'ora è
+la somma dei `quarters`, e la somma delle 24 ore coincide con `data.total`
+del giorno. Sono **misure del contatore 2G del distributore**, non dati di
+fatturazione: c'è il dettaglio a 15 minuti e il flag `estimated` per ora.
 
-1. Un account **non-Prospect**, cioè con almeno un POD associato, per
-   vedere le risposte reali di uno qualsiasi degli endpoint di
-   consumo/misura sopra.
-2. Con quell'account: capire se `consumption` è dato di fatturazione o
-   dato di misura del distributore (vedi warning sopra) — decide se
-   questi endpoint sono utili o un vicolo cieco come Areti.
-3. Una cattura fatta con **Chrome o Firefox** (non Safari), per vedere
-   l'header `Authorization` reale sulle chiamate a `agw.setdistribuzione.it`.
+## Design dell'integrazione
 
-## Come contribuire
+- **Una richiesta per giorno**: solo il livello con `day` ha l'ora, quindi
+  ogni giorno da importare costa una chiamata. Le statistiche si scrivono
+  a blocchi (un ciclo, o 31 giorni di `recupera_storico`), non una volta
+  per giorno: ogni scrittura rilegge e riscrive l'intera serie.
+- **Coda per-POD** dei giorni da riprovare, come E-Distribuzione e Ireti:
+  ogni ciclo chiede ieri (se non è già nelle statistiche) più i giorni in
+  coda; un giorno vuoto o incompleto entra in coda e viene abbandonato
+  con un avviso dopo 7 giorni.
+- **Orario casuale per installazione tra le 18:00 e le 22:00**, come
+  E-Distribuzione (16-20): scelto alla configurazione e salvato nelle
+  opzioni (`orario_richiesta`), così le installazioni non interrogano il
+  portale tutte insieme. Il primo ciclo dopo la configurazione chiede
+  subito ieri per verificare login e POD; poi si chiede solo dopo
+  l'orario. Il giorno precedente era completo alle 22:23 nella cattura,
+  prima non è verificato: se manca, il ciclo orario lo richiede.
+- **Ciclo orario, login solo se serve**: prima dell'orario, o con ieri già
+  nelle statistiche, il ciclo non contatta il portale.
+- **`recupera_storico`**: limite di cortesia di 366 giorni per azione
+  (una chiamata al giorno).
 
-Serve chi ha un'utenza mySET con una fornitura SET Distribuzione attiva
-(POD associato, profilo diverso da `Prospect`). Non c'è ancora uno
-script dedicato come `scripts/raccogli_dati_ireti.py` — per ora vale la
-cattura HAR manuale: login + pagina consumi con un grafico caricato,
-con **Chrome o Firefox** (Preserve log attivo *prima* di navigare,
-"Export HAR with content" per includere i body delle risposte).
+## Cosa resta aperto
 
-Vedi [Aiutare senza scrivere codice](../CONTRIBUTING.md#aiutare-senza-scrivere-codice-raccolta-dati)
-in CONTRIBUTING.md: **non allegare la HAR grezza a una issue
-pubblica** (contiene token di sessione e dati personali in chiaro) —
-apri prima una issue per concordare come condividerla.
+1. **Cambio ora**: nessuna cattura contiene un giorno da 23 o 25 ore.
+   L'integrazione importa un giorno solo se il numero di ore coincide con
+   la durata reale della giornata (23/24/25), mappando l'i-esima ora come
+   tempo trascorso dalla mezzanotte (lo schema verificato per Ireti). Se
+   il portale restituisce sempre 24 ore anche in quei giorni, il giorno
+   viene scartato con un avviso nei log: è il primo punto da controllare
+   dopo il 25/10/2026.
+2. **Ora di pubblicazione** del giorno precedente: da misurare (lo
+   script `scripts/verify_setdistribuzione_login.py` dice se un giorno
+   c'è già).
+3. **Risposta per un giorno non ancora pubblicato** (lista vuota o 404):
+   mai vista, entrambe trattate come "non ancora disponibile".
+4. **Valori `estimated`**: importati come gli altri; non sappiamo se il
+   portale li corregge in seguito né quando.
+
+## Verifica da terminale
+
+`scripts/verify_setdistribuzione_login.py` importa `auth.py`/`api.py`
+dell'integrazione e prova login, forniture e ore di un giorno, stampando
+POD e contratto mascherati (vedi [`scripts.md`](../scripts.md)).
+
+Per una nuova cattura: Chrome o Firefox (Safari toglie gli header
+`Authorization` e `Cookie` dall'export), **Preserve log** attivo prima del
+login, poi "Export HAR with content". **Non allegare la HAR grezza a una
+issue pubblica**: contiene token validi per 24 ore, codice fiscale (nei
+token), POD, indirizzi e, se il browser ha fatto altre richieste durante
+la cattura, anche cookie di sessione di altri siti.

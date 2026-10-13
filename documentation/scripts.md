@@ -71,3 +71,18 @@ Non è un test automatico (richiede credenziali reali digitate a mano):
 utile per iterare più velocemente di quanto permetta la UI di Home
 Assistant, e come primo controllo se il login smette di funzionare in
 produzione.
+
+## `scripts/verify_setdistribuzione_login.py`
+
+Testa da terminale il login **SET Distribuzione** (Azure AD B2C), l'elenco
+delle forniture elettriche dell'account e le ore di un giorno a scelta
+(predefinito: ieri). Come `verify_edistribuzione_login.py` importa
+`auth.py`/`api.py` reali dell'integrazione, quindi verifica il codice che
+gira in Home Assistant.
+
+L'output è fatto per essere incollato in una issue: POD e contratto
+compaiono mascherati, codice fiscale e nomi mai. Utile anche per misurare
+a che ora viene pubblicato il giorno precedente (vedi
+[`set-distribuzione-protocol.md`](protocols/set-distribuzione-protocol.md)).
+
+Richiede solo `aiohttp` (`pip install aiohttp`).

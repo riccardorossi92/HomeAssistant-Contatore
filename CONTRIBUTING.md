@@ -17,8 +17,9 @@ ancora supportato, puoi essere d'aiuto anche senza toccare Python.
 Funziona: è così che **Ireti** è passato da "in ricerca" a supportato
 (issue #6) — un contributore con un POD attivo ha condiviso una cattura
 dell'endpoint di misura, mancante da un account come il mio, senza POD
-associati. Per i distributori ancora in questa fase (login/anagrafica
-verificati, consumi da confermare — SET Distribuzione, Edyna, Deval,
+associati. Lo stesso per **SET Distribuzione** (cattura del 13/10/2026
+da un account con POD attivo). Per i distributori ancora in questa fase (login/anagrafica
+verificati, consumi da confermare — Edyna, Deval,
 V-Reti, AcegasApsAmga alla data di questa nota) vedi le rispettive schede
 in [`documentation/protocols/`](documentation/protocols/), o il README
 (sezione "Cercasi contributori").

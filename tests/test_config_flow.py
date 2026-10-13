@@ -65,6 +65,17 @@ from custom_components.contatore_letture.distributors.pcf_common.const import (
     CONF_PENDING_DATA_DA,
     CONF_PENDING_TICKET,
 )
+from custom_components.contatore_letture.distributors.setdistribuzione import api as set_api
+from custom_components.contatore_letture.distributors.setdistribuzione import auth as set_auth
+from custom_components.contatore_letture.distributors.setdistribuzione.auth import (
+    SetDistribuzioneInvalidCredentials,
+)
+from custom_components.contatore_letture.distributors.setdistribuzione.const import (
+    CONF_EMAIL as SET_CONF_EMAIL,
+)
+from custom_components.contatore_letture.distributors.setdistribuzione.const import (
+    CONF_PASSWORD as SET_CONF_PASSWORD,
+)
 
 FAKE_TREE = {
     "Lombardia": {
@@ -833,6 +844,154 @@ async def test_ireti_opzioni_non_supportate(hass):
     """v1 minimale: i POD si aggiornano solo tramite reauth, nessuna voce
     di opzioni dedicata ancora (vedi documentation/protocols/ireti-protocol.md)."""
     entry = _entry_ireti(hass)
+    res = await hass.config_entries.options.async_init(entry.entry_id)
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "options_not_supported"
+
+
+# --- ramo SET Distribuzione (login B2C -> POD dall'account, come Ireti) ---
+
+SET_POD_1 = {
+    "pod": "IT999E00000001", "fiscal_code": "XXXX", "profile": "Retail_SET",
+    "contract_id": "0100000001", "nome": "Casa",
+}
+SET_POD_2 = {**SET_POD_1, "pod": "IT999E00000002", "contract_id": "0100000002", "nome": ""}
+
+
+@pytest.fixture
+def set_mocks(monkeypatch):
+    """Sostituisce SetDistribuzioneAuthClient / ApiClient e le sessioni
+    aiohttp. Default: login ok, un solo POD sull'account."""
+    auth = Mock()
+    auth.async_login = AsyncMock(return_value="token-fantasia")
+
+    api = Mock()
+    api.async_get_pod_account = AsyncMock(return_value=[SET_POD_1])
+
+    monkeypatch.setattr(set_auth, "SetDistribuzioneAuthClient", Mock(return_value=auth))
+    monkeypatch.setattr(set_api, "SetDistribuzioneApiClient", Mock(return_value=api))
+    monkeypatch.setattr(cf, "async_create_clientsession", lambda *a, **k: Mock())
+    return SimpleNamespace(auth=auth, api=api)
+
+
+async def _fino_a_set_user(hass):
+    res = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"regione": "Lombardia"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"provincia": "Milano"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"comune": "Vimodrone"})
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"distributor": "setdistribuzione"}
+    )
+    return await hass.config_entries.flow.async_configure(res["flow_id"], {})
+
+
+async def test_set_credenziali_non_valide(hass, _arera_sconosciuto, set_mocks):
+    set_mocks.auth.async_login.side_effect = SetDistribuzioneInvalidCredentials("no")
+    res = await _fino_a_set_user(hass)
+    assert res["step_id"] == "setdistribuzione_user"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "sbagliata"}
+    )
+    assert res["type"] == FlowResultType.FORM
+    assert res["errors"] == {"base": "invalid_auth_email"}
+
+
+async def test_set_un_solo_pod_crea_entry_subito(hass, _arera_sconosciuto, set_mocks):
+    res = await _fino_a_set_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.CREATE_ENTRY
+    assert res["title"] == "SET Distribuzione (IT999E00000001)"
+    assert res["data"]["distributor"] == "setdistribuzione"
+    assert res["data"][SET_CONF_EMAIL] == "a@b.it"
+    assert res["data"][SET_CONF_PASSWORD] == "x"
+    assert res["data"][CONF_PODS] == ["IT999E00000001"]
+    # Orario casuale per installazione, come E-Distribuzione.
+    assert "18:00" <= res["options"]["orario_richiesta"] <= "22:00"
+
+
+async def test_set_account_senza_forniture_abortisce(hass, _arera_sconosciuto, set_mocks):
+    set_mocks.api.async_get_pod_account.return_value = []
+    res = await _fino_a_set_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "no_setdistribuzione_pods"
+
+
+async def test_set_recupero_pod_fallito_abortisce(hass, _arera_sconosciuto, set_mocks):
+    set_mocks.api.async_get_pod_account.side_effect = RuntimeError("boom")
+    res = await _fino_a_set_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "setdistribuzione_pods_failed"
+
+
+async def test_set_piu_pod_si_scelgono(hass, _arera_sconosciuto, set_mocks):
+    set_mocks.api.async_get_pod_account.return_value = [SET_POD_1, SET_POD_2]
+    res = await _fino_a_set_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "x"}
+    )
+    assert res["step_id"] == "setdistribuzione_pod"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {CONF_PODS: ["IT999E00000002"]}
+    )
+    assert res["type"] == FlowResultType.CREATE_ENTRY
+    assert res["data"][CONF_PODS] == ["IT999E00000002"]
+
+
+def _entry_set(hass):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "distributor": "setdistribuzione",
+            SET_CONF_EMAIL: "a@b.it",
+            SET_CONF_PASSWORD: "vecchia",
+            CONF_PODS: ["IT999E00000001"],
+        },
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def test_set_reauth_aggiorna_credenziali(hass, set_mocks):
+    entry = _entry_set(hass)
+    res = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "reauth", "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    assert res["step_id"] == "setdistribuzione_reauth_user"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "nuova"}
+    )
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "reauth_successful"
+    assert entry.data[SET_CONF_PASSWORD] == "nuova"
+
+
+async def test_set_reauth_credenziali_non_valide(hass, set_mocks):
+    entry = _entry_set(hass)
+    set_mocks.auth.async_login.side_effect = SetDistribuzioneInvalidCredentials("no")
+    res = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "reauth", "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"email": "a@b.it", "password": "sbagliata"}
+    )
+    assert res["type"] == FlowResultType.FORM
+    assert res["errors"] == {"base": "invalid_auth_email"}
+
+
+async def test_set_opzioni_non_supportate(hass):
+    entry = _entry_set(hass)
     res = await hass.config_entries.options.async_init(entry.entry_id)
     assert res["type"] == FlowResultType.ABORT
     assert res["reason"] == "options_not_supported"

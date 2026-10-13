@@ -176,6 +176,12 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._ireti_username: str | None = None
         self._ireti_password: str | None = None
         self._ireti_pods: list[dict] = []
+        # Stato del ramo SET Distribuzione
+        self._set_session = None
+        self._set_access_token: str | None = None
+        self._set_email: str | None = None
+        self._set_password: str | None = None
+        self._set_pods: list[dict] = []
 
     # ------------------------------------------------------------------
     # Wizard ARERA: regione -> provincia -> comune -> lookup
@@ -331,6 +337,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_areti_user()
             if info["kind"] == "ireti":
                 return await self.async_step_ireti_user()
+            if info["kind"] == "setdistribuzione":
+                return await self.async_step_setdistribuzione_user()
             return await self.async_step_edistribuzione_user()
 
         return self.async_show_form(
@@ -1143,6 +1151,178 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     # ------------------------------------------------------------------
+    # Ramo SET Distribuzione: login email/password su Azure AD B2C (nessun
+    # OTP) -> POD scoperti dall'account (profile/customer + utility/active),
+    # come ireti.
+    # ------------------------------------------------------------------
+
+    def _nuova_sessione_set(self):
+        from .distributors.setdistribuzione.auth import nuovo_cookie_jar
+
+        return async_create_clientsession(self.hass, cookie_jar=nuovo_cookie_jar())
+
+    async def _async_set_login(
+        self, session, email: str, password: str
+    ) -> tuple[str | None, str | None]:
+        """(access_token, None) se il login riesce, (None, chiave d'errore)
+        altrimenti. Condiviso da onboarding e reauth."""
+        from .distributors.setdistribuzione.auth import (
+            SetDistribuzioneAuthClient,
+            SetDistribuzioneAuthError,
+            SetDistribuzioneInvalidCredentials,
+        )
+
+        try:
+            token = await SetDistribuzioneAuthClient(session).async_login(email, password)
+        except SetDistribuzioneInvalidCredentials:
+            return None, "invalid_auth_email"
+        except SetDistribuzioneAuthError:
+            _LOGGER.exception("Login SET Distribuzione fallito")
+            return None, "cannot_connect"
+        except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+            _LOGGER.exception("Errore imprevisto durante il login SET Distribuzione")
+            return None, "cannot_connect"
+        return token, None
+
+    async def async_step_setdistribuzione_user(self, user_input: dict[str, Any] | None = None):
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            if self._set_session is None:
+                self._set_session = self._nuova_sessione_set()
+            token, errore = await self._async_set_login(
+                self._set_session, user_input["email"], user_input["password"]
+            )
+            if errore:
+                errors["base"] = errore
+            else:
+                self._set_email = user_input["email"]
+                self._set_password = user_input["password"]
+                self._set_access_token = token
+                return await self.async_step_setdistribuzione_pod()
+
+        return self.async_show_form(
+            step_id="setdistribuzione_user",
+            data_schema=vol.Schema({
+                vol.Required("email"): str,
+                vol.Required("password"): str,
+            }),
+            errors=errors,
+        )
+
+    async def async_step_setdistribuzione_pod(self, user_input: dict[str, Any] | None = None):
+        from .distributors.setdistribuzione.api import (
+            SetDistribuzioneApiClient,
+            SetDistribuzioneApiError,
+        )
+        from .distributors.setdistribuzione.const import (
+            CONF_EMAIL,
+            CONF_ORARIO_RICHIESTA,
+            CONF_PASSWORD,
+            CONF_PODS,
+            orario_casuale,
+        )
+
+        if not self._set_pods:
+            api = SetDistribuzioneApiClient(self._set_session, self._set_access_token)
+            try:
+                self._set_pods = await api.async_get_pod_account()
+            except SetDistribuzioneApiError:
+                _LOGGER.exception("Errore nel recupero dei POD SET Distribuzione")
+                return self.async_abort(reason="setdistribuzione_pods_failed")
+            except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                _LOGGER.exception("Errore imprevisto nel recupero dei POD SET Distribuzione")
+                return self.async_abort(reason="setdistribuzione_pods_failed")
+
+        pod_codes = [p["pod"] for p in self._set_pods]
+        if not pod_codes:
+            # Account mySET registrato ma senza forniture (profilo
+            # "Prospect", la situazione della prima cattura del 13/09/2026).
+            return self.async_abort(reason="no_setdistribuzione_pods")
+
+        def crea_entry(pods: list[str]):
+            titolo = pods[0] if len(pods) == 1 else f"{len(pods)} POD"
+            return self.async_create_entry(
+                title=f"SET Distribuzione ({titolo})",
+                data={
+                    "distributor": "setdistribuzione",
+                    "comune": self._comune_name,
+                    CONF_EMAIL: self._set_email,
+                    CONF_PASSWORD: self._set_password,
+                    CONF_PODS: pods,
+                },
+                # Orario casuale per installazione, come edistribuzione.
+                options={CONF_ORARIO_RICHIESTA: orario_casuale()},
+            )
+
+        if len(pod_codes) == 1:
+            return crea_entry(pod_codes)
+
+        if user_input is not None:
+            scelti = user_input[CONF_PODS]
+            if not scelti:
+                return self.async_show_form(
+                    step_id="setdistribuzione_pod",
+                    data_schema=self._schema_setdistribuzione_pod(),
+                    errors={"pods": "nessun_pod_selezionato"},
+                )
+            return crea_entry(scelti)
+
+        return self.async_show_form(
+            step_id="setdistribuzione_pod", data_schema=self._schema_setdistribuzione_pod()
+        )
+
+    def _schema_setdistribuzione_pod(self) -> vol.Schema:
+        from .distributors.setdistribuzione.const import CONF_PODS
+
+        opzioni = [
+            {"value": p["pod"], "label": f"{p['pod']} ({p['nome']})" if p["nome"] else p["pod"]}
+            for p in self._set_pods
+        ]
+        return vol.Schema({
+            vol.Required(CONF_PODS, default=[p["pod"] for p in self._set_pods]): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=opzioni, multiple=True)
+            )
+        })
+
+    async def async_step_setdistribuzione_reauth_user(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Reauth SET Distribuzione: stesso login dell'onboarding, niente
+        riselezione POD - aggiorna email/password sulla entry esistente."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            from .distributors.setdistribuzione.const import CONF_EMAIL, CONF_PASSWORD
+
+            _, errore = await self._async_set_login(
+                self._nuova_sessione_set(), user_input["email"], user_input["password"]
+            )
+            if errore:
+                errors["base"] = errore
+            else:
+                nuovi_dati = {
+                    **self._reauth_entry.data,
+                    CONF_EMAIL: user_input["email"],
+                    CONF_PASSWORD: user_input["password"],
+                }
+                self.hass.config_entries.async_update_entry(self._reauth_entry, data=nuovi_dati)
+                await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="setdistribuzione_reauth_user",
+            data_schema=vol.Schema({
+                vol.Required("email"): str,
+                vol.Required("password"): str,
+            }),
+            errors=errors,
+            description_placeholders={
+                "pod_correnti": ", ".join(self._reauth_entry.data.get(CONF_PODS, []))
+            },
+        )
+
+    # ------------------------------------------------------------------
     # Reauth E-Distribuzione: stesso login+OTP dell'onboarding iniziale,
     # ma niente selezione POD (la entry esistente ha gia' i suoi) - alla
     # fine aggiorna il refresh_token sulla entry esistente invece di
@@ -1299,6 +1479,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_areti_reauth_user()
         if kind == "ireti":
             return await self.async_step_ireti_reauth_user()
+        if kind == "setdistribuzione":
+            return await self.async_step_setdistribuzione_reauth_user()
         return self.async_abort(reason="reauth_not_supported")
 
     async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None):
@@ -1344,9 +1526,9 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
     """Aggiungi/rimuovi POD e imposta l'orario, dopo la configurazione iniziale.
 
     Generico: legge il distributore dalla config entry (self.config_entry.data)
-    per sapere quale modulo usare per validare i POD. Per Ireti (kind non
-    ancora gestito qui sotto) non offre nulla di specifico oggi: solo un
-    abort chiaro.
+    per sapere quale modulo usare per validare i POD. Per Ireti e SET
+    Distribuzione (kind non ancora gestiti qui sotto) non offre nulla di
+    specifico oggi: solo un abort chiaro.
     """
 
     def _modulo(self):

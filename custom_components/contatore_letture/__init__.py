@@ -7,7 +7,8 @@ E-Distribuzione ha un coordinator proprio (protocollo diverso, OAuth2+OTP
 invece di Client ID/Secret ID), Areti un altro ancora (sessione a cookie,
 nessun OTP, cursore mensile invece di coda giornaliera) e Ireti un altro
 ancora (REST + Bearer token Keycloak, nessun OTP, finestra scorrevole
-invece di coda/cursore) - tutti implementano la stessa azione
+invece di coda/cursore) e SET Distribuzione un altro ancora (Azure AD B2C
+con PKCE, nessun OTP, coda giornaliera) - tutti implementano la stessa azione
 'recupera_storico' con firma compatibile (pod opzionale, non solo per
 l'intera configurazione come i PCF).
 """
@@ -31,10 +32,20 @@ from .distributors.edistribuzione.coordinator import EdistribuzioneCoordinator
 from .distributors.edistribuzione.manuale import EdistribuzioneManuale, e_manuale
 from .distributors.ireti.coordinator import IretiCoordinator
 from .distributors.pcf_common.coordinator import PcfCoordinator
+from .distributors.setdistribuzione.coordinator import SetDistribuzioneCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
+
+# Coordinator il cui recupera_storico accetta un POD specifico (tutti tranne
+# PCF, che recupera sempre l'intera configurazione insieme).
+_COORDINATOR_CON_POD = (
+    EdistribuzioneCoordinator,
+    AretiCoordinator,
+    IretiCoordinator,
+    SetDistribuzioneCoordinator,
+)
 
 SERVICE_RECUPERA_TICKET = "recupera_ticket"
 SERVICE_RECUPERA_STORICO = "recupera_storico"
@@ -90,8 +101,9 @@ def _risolvi_coordinator_e_pod_da_device(hass: HomeAssistant, device_id: str):
     POD E-Distribuzione, al POD specifico.
 
     Gli identifiers dei device sono sempre (DOMAIN, f"{entry_id}_{pod}")
-    per i dispositivi per-POD (pcf_common, edistribuzione, areti e ireti,
-    stesso formato in tutti - vedi rispettivi sensor.py), o (DOMAIN, entry_id)
+    per i dispositivi per-POD (pcf_common, edistribuzione, areti, ireti e
+    setdistribuzione, stesso formato in tutti - vedi rispettivi sensor.py),
+    o (DOMAIN, entry_id)
     per il dispositivo "account" di pcf_common (senza POD specifico: il
     recupero PCF vale sempre per l'intera configurazione insieme).
     """
@@ -128,7 +140,7 @@ def _risolvi_coordinator_e_pod_da_device(hass: HomeAssistant, device_id: str):
     coordinator = hass.data[DOMAIN][entry_id]
 
     pod = None
-    if isinstance(coordinator, (EdistribuzioneCoordinator, AretiCoordinator, IretiCoordinator)):
+    if isinstance(coordinator, _COORDINATOR_CON_POD):
         prefisso = f"{entry_id}_"
         for dominio, identificativo in device.identifiers:
             if dominio == DOMAIN and identificativo.startswith(prefisso):
@@ -159,12 +171,12 @@ async def _async_registra_servizi(hass: HomeAssistant) -> None:
         coordinator, pod = _risolvi_coordinator_e_pod_da_device(hass, call.data["device_id"])
         if not isinstance(
             coordinator,
-            (PcfCoordinator, EdistribuzioneCoordinator, AretiCoordinator, IretiCoordinator),
+            (PcfCoordinator, *_COORDINATOR_CON_POD),
         ):
             raise HomeAssistantError(
                 "Il dispositivo selezionato non supporta il recupero storico."
             )
-        if isinstance(coordinator, (EdistribuzioneCoordinator, AretiCoordinator, IretiCoordinator)):
+        if isinstance(coordinator, _COORDINATOR_CON_POD):
             await coordinator.async_recupera_storico(
                 call.data["data_da"], call.data["data_a"], pod=pod
             )
@@ -253,7 +265,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         return True
 
-    if info["kind"] == "ireti":
+    if info["kind"] in ("ireti", "setdistribuzione"):
         coordinator = modulo.create_coordinator(hass, entry)
         hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
         await _async_registra_servizi(hass)
@@ -290,9 +302,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     rimanenti = list(hass.data[DOMAIN].values())
     pcf_rimasti = any(isinstance(c, PcfCoordinator) for c in rimanenti)
-    edistribuzione_rimasti = any(isinstance(c, EdistribuzioneCoordinator) for c in rimanenti)
-    areti_rimasti = any(isinstance(c, AretiCoordinator) for c in rimanenti)
-    ireti_rimasti = any(isinstance(c, IretiCoordinator) for c in rimanenti)
+    con_pod_rimasti = any(isinstance(c, _COORDINATOR_CON_POD) for c in rimanenti)
 
     # has_service: le entry E-Distribuzione manuali non registrano azioni,
     # quindi possono essere le uniche caricate senza che esistano.
@@ -300,9 +310,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_remove(DOMAIN, SERVICE_RECUPERA_TICKET)
     if (
         not pcf_rimasti
-        and not edistribuzione_rimasti
-        and not areti_rimasti
-        and not ireti_rimasti
+        and not con_pod_rimasti
         and hass.services.has_service(DOMAIN, SERVICE_RECUPERA_STORICO)
     ):
         hass.services.async_remove(DOMAIN, SERVICE_RECUPERA_STORICO)

@@ -11,11 +11,14 @@ Salesforce diverso, nessun OTP, cursore mensile invece di coda
 giornaliera) - vedi distributors/areti/. Ireti e' un quarto pacchetto
 a se' (REST + Bearer token Keycloak, nessun OTP, POD scoperti
 dall'account come edistribuzione, finestra scorrevole invece di
-coda/cursore) - vedi distributors/ireti/.
+coda/cursore) - vedi distributors/ireti/. SET Distribuzione e' un quinto
+pacchetto (login Azure AD B2C con PKCE, nessun OTP, POD scoperti
+dall'account, coda giornaliera come edistribuzione) - vedi
+distributors/setdistribuzione/.
 """
 from __future__ import annotations
 
-from . import areti, duereti, edistribuzione, ireti, retipiu, revv, unareti
+from . import areti, duereti, edistribuzione, ireti, retipiu, revv, setdistribuzione, unareti
 
 # "kind" distingue il tipo di flow che il distributore usa nel config flow:
 # "pcf" ha credenziali client_id/secret_id + lista POD (Duereti/Unareti/RetiPiù/RE.V.V.,
@@ -24,7 +27,9 @@ from . import areti, duereti, edistribuzione, ireti, retipiu, revv, unareti
 # (nessun OTP osservato) + POD inseriti a mano (nessun elenco "tutti i POD
 # dell'account" verificato, a differenza di edistribuzione), "ireti" ha
 # login username/password (nessun OTP) + POD scoperti dall'account (come
-# edistribuzione, non inseriti a mano come areti).
+# edistribuzione, non inseriti a mano come areti), "setdistribuzione" ha
+# login email/password su Azure AD B2C (nessun OTP) + POD scoperti
+# dall'account, come ireti.
 DISTRIBUTOR_REGISTRY: dict[str, dict] = {
     "duereti": {
         "display_name": duereti.DISPLAY_NAME,
@@ -83,6 +88,16 @@ DISTRIBUTOR_REGISTRY: dict[str, dict] = {
             "Username e password dell'area clienti SmartPOD (smartpod.ireti.it)",
             "Almeno un POD già associato al tuo account sul portale "
             "(Aggiungi POD, se non l'hai ancora fatto)",
+        ],
+    },
+    "setdistribuzione": {
+        "display_name": setdistribuzione.DISPLAY_NAME,
+        "piva": setdistribuzione.PIVA,
+        "kind": "setdistribuzione",
+        "module": setdistribuzione,
+        "required_info": [
+            "Email e password dell'area riservata mySET (myset.setdistribuzione.it)",
+            "Almeno una fornitura elettrica attiva visibile nel tuo account mySET",
         ],
     },
 }
