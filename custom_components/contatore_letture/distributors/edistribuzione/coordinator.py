@@ -28,14 +28,22 @@ from datetime import date, time, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from ...const import DOMAIN
 from .api import EdistribuzioneApiClient, EdistribuzioneApiError
-from .auth import EdistribuzioneAuthClient, EdistribuzioneAuthError
+from .auth import (
+    EdistribuzioneAuthClient,
+    EdistribuzioneAuthError,
+    EdistribuzioneTokenNonValido,
+)
 from .const import (
     ABBANDONO_CODA_DOPO_GIORNI,
     CONF_DATA_INSTALLAZIONE,
@@ -130,10 +138,18 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         refresh_token = self.entry.data[CONF_REFRESH_TOKEN]
         try:
             tokens = await self._auth.async_refresh_access_token(refresh_token)
+        except EdistribuzioneTokenNonValido as err:
+            # refresh_token scaduto o revocato (cambio password, sessioni
+            # chiuse dal portale...): solo un nuovo accesso lo sostituisce.
+            # Home Assistant avvia il reauth, che propone l'accesso dal
+            # browser mantenendo POD, opzioni e storico.
+            raise ConfigEntryAuthFailed(
+                f"Accesso E-Distribuzione scaduto, serve un nuovo accesso: {err}"
+            ) from err
         except EdistribuzioneAuthError as err:
-            # A failed refresh almost certainly means the refresh_token was
-            # revoked (password change, Enel-side session cleanup, ...) and
-            # the user needs to go through config_flow's re-auth again.
+            # Antibot, app_blocked, rete: dipende da E-Distribuzione e il
+            # token resta valido, quindi si riprova al ciclo successivo
+            # invece di chiedere un nuovo accesso che non cambierebbe nulla.
             raise UpdateFailed(f"Token refresh failed: {err}") from err
 
         self._api.update_token(tokens.access_token)

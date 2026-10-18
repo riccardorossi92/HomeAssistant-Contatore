@@ -7,7 +7,8 @@ Flusso:
      risultati, fallisce, o restituisce un operatore non supportato
   4. distributor_info -> mostra cosa serve, in base al distributore
   5a. (kind="pcf", Duereti/Unareti) pcf_credentials -> pcf_add_pod (loop)
-  5b. (kind="edistribuzione") edistribuzione_credentials
+  5b. (kind="edistribuzione") edistribuzione_modalita -> caricamento
+      manuale, accesso dal browser o login con password e OTP
 
 Il flow e' UNA SOLA classe (nessuna multi-inheritance tra distributori):
 gli step del ramo "pcf" sono generici e dispatchano a runtime sul modulo
@@ -66,6 +67,16 @@ STEP_POD_SCHEMA = vol.Schema(
     {
         vol.Required("pod"): str,
         vol.Required("df"): str,
+    }
+)
+
+# Multilinea: si puo' incollare l'intera riga rossa della Console del browser,
+# che contiene l'indirizzo eneldist://redirect insieme al messaggio d'errore.
+STEP_EDISTRIBUZIONE_BROWSER_SCHEMA = vol.Schema(
+    {
+        vol.Required("redirect"): selector.TextSelector(
+            selector.TextSelectorConfig(multiline=True)
+        ),
     }
 )
 
@@ -164,6 +175,10 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._edistribuzione_access_token: str | None = None
         self._edistribuzione_refresh_token: str | None = None
         self._edistribuzione_pods: list[dict] = []
+        # Link dell'accesso dal browser: generato una volta per flow e
+        # ripresentato uguale dopo un errore, perche' lo state che contiene
+        # e' quello che il redirect incollato deve riportare.
+        self._edistribuzione_url_browser: str | None = None
         # Stato del ramo Areti
         self._areti_session = None
         self._areti_api = None
@@ -526,16 +541,18 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_edistribuzione_modalita(
         self, user_input: dict[str, Any] | None = None
     ):
-        """Caricamento manuale dei CSV del portale o scaricamento automatico.
+        """Accesso dal browser, caricamento manuale dei CSV del portale o
+        login automatico con password e OTP.
 
-        Finche' SCARICAMENTO_AUTOMATICO_DISPONIBILE e' False l'automatico
-        resta nell'elenco, con il motivo, ma sceglierlo da' errore: i
-        selettori di Home Assistant non hanno opzioni disattivate."""
+        Finche' SCARICAMENTO_AUTOMATICO_DISPONIBILE e' False il login con
+        password resta nell'elenco, con il motivo, ma sceglierlo da' errore:
+        i selettori di Home Assistant non hanno opzioni disattivate."""
         from .distributors.edistribuzione.const import (
             ALTRE_INTEGRAZIONI,
             CONF_MODALITA,
             MODALITA_ALTRE_INTEGRAZIONI,
             MODALITA_AUTOMATICA,
+            MODALITA_BROWSER,
             MODALITA_MANUALE,
             SCARICAMENTO_AUTOMATICO_DISPONIBILE,
         )
@@ -555,26 +572,25 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         )
                     },
                 )
+            if user_input[CONF_MODALITA] == MODALITA_BROWSER:
+                return await self.async_step_edistribuzione_browser()
             if SCARICAMENTO_AUTOMATICO_DISPONIBILE:
                 return await self.async_step_edistribuzione_user()
             errors[CONF_MODALITA] = "automatico_non_disponibile"
 
-        etichetta_automatico = "Scaricamento automatico"
+        etichetta_automatico = "Scaricamento automatico con password e OTP"
         if not SCARICAMENTO_AUTOMATICO_DISPONIBILE:
-            etichetta_automatico += " (non disponibile: problemi da ottobre 2026)"
+            etichetta_automatico += " (non disponibile: bloccato da ottobre 2026)"
         return self.async_show_form(
             step_id="edistribuzione_modalita",
             data_schema=vol.Schema({
-                vol.Required(
-                    CONF_MODALITA,
-                    default=(
-                        MODALITA_AUTOMATICA
-                        if SCARICAMENTO_AUTOMATICO_DISPONIBILE
-                        else MODALITA_MANUALE
-                    ),
-                ): SelectSelector(
+                vol.Required(CONF_MODALITA, default=MODALITA_BROWSER): SelectSelector(
                     SelectSelectorConfig(
                         options=[
+                            {
+                                "value": MODALITA_BROWSER,
+                                "label": "Scaricamento automatico, accesso dal browser",
+                            },
                             {"value": MODALITA_MANUALE, "label": "Caricamento manuale curve"},
                             {"value": MODALITA_AUTOMATICA, "label": etichetta_automatico},
                             {
@@ -588,6 +604,73 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }),
             errors=errors,
         )
+
+    def _edistribuzione_form_browser(
+        self, step_id: str, errors: dict[str, str], dettaglio: str = ""
+    ):
+        """Il form dell'accesso dal browser, uguale nel flusso iniziale e nel
+        reauth. Due link: la pagina di login del portale e, una volta entrati,
+        quello di autorizzazione (vedi prepara_url_accesso_browser), che
+        resta lo stesso per tutto il flow (vedi _edistribuzione_url_browser)."""
+        from .distributors.edistribuzione.auth import EdistribuzioneAuthClient
+        from .distributors.edistribuzione.const import LOGIN_PAGE_URL
+
+        if self._edistribuzione_url_browser is None:
+            self._edistribuzione_auth = EdistribuzioneAuthClient(
+                async_get_clientsession(self.hass)
+            )
+            self._edistribuzione_url_browser = (
+                self._edistribuzione_auth.prepara_url_accesso_browser()
+            )
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=STEP_EDISTRIBUZIONE_BROWSER_SCHEMA,
+            errors=errors,
+            description_placeholders={
+                "login_url": LOGIN_PAGE_URL,
+                "url": self._edistribuzione_url_browser,
+                "dettaglio": dettaglio,
+            },
+        )
+
+    def _edistribuzione_token_da_browser(
+        self, testo: str
+    ) -> tuple[Any, str | None, str]:
+        """(token, chiave_errore, dettaglio) dal testo incollato nel form."""
+        from .distributors.edistribuzione.auth import (
+            EdistribuzioneAppBloccata,
+            EdistribuzioneParsingError,
+            EdistribuzioneRedirectNonValido,
+        )
+
+        try:
+            return self._edistribuzione_auth.token_da_redirect_browser(testo), None, ""
+        except EdistribuzioneRedirectNonValido as err:
+            return None, f"redirect_{err.motivo}", err.dettaglio
+        except EdistribuzioneAppBloccata as err:
+            return None, "app_bloccata", str(err)
+        except EdistribuzioneParsingError:
+            return None, "redirect_token_mancanti", ""
+
+    async def async_step_edistribuzione_browser(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Accesso sul sito ufficiale dal browser dell'utente, che il blocco
+        dell'accesso automatico non ferma: l'utente incolla l'indirizzo
+        eneldist://redirect con cui il portale restituisce i token."""
+        if user_input is None:
+            return self._edistribuzione_form_browser("edistribuzione_browser", {})
+
+        tokens, errore, dettaglio = self._edistribuzione_token_da_browser(
+            user_input["redirect"]
+        )
+        if errore:
+            return self._edistribuzione_form_browser(
+                "edistribuzione_browser", {"base": errore}, dettaglio
+            )
+        self._edistribuzione_access_token = tokens.access_token
+        self._edistribuzione_refresh_token = tokens.refresh_token
+        return await self.async_step_edistribuzione_pod()
 
     async def async_step_edistribuzione_manuale_pod(
         self, user_input: dict[str, Any] | None = None
@@ -1480,6 +1563,65 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "edistribuzione_reauth_otp", errors, avviso
         )
 
+    async def async_step_edistribuzione_reauth(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Come riaccedere: dal browser (consigliato), o con password e OTP,
+        offerto lo stesso per quando E-Distribuzione lo riaccettera'."""
+        return self.async_show_menu(
+            step_id="edistribuzione_reauth",
+            menu_options=["edistribuzione_reauth_browser", "edistribuzione_reauth_user"],
+            description_placeholders={
+                "pod_correnti": ", ".join(self._reauth_entry.data.get(CONF_PODS, []))
+            },
+        )
+
+    async def async_step_edistribuzione_reauth_browser(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Nuovo accesso dal browser per una entry esistente: aggiorna il
+        refresh_token mantenendo POD, opzioni e storico.
+
+        Il link non forza un nuovo login, quindi un browser gia' collegato al
+        portale con un altro account darebbe i token di quell'account: prima
+        di salvarli si controlla che vedano almeno uno dei POD della entry."""
+        from .distributors.edistribuzione.api import EdistribuzioneApiClient
+        from .distributors.edistribuzione.const import CONF_REFRESH_TOKEN
+
+        step_id = "edistribuzione_reauth_browser"
+        if user_input is None:
+            return self._edistribuzione_form_browser(step_id, {})
+
+        tokens, errore, dettaglio = self._edistribuzione_token_da_browser(
+            user_input["redirect"]
+        )
+        if errore:
+            return self._edistribuzione_form_browser(step_id, {"base": errore}, dettaglio)
+
+        api = EdistribuzioneApiClient(async_get_clientsession(self.hass), tokens.access_token)
+        try:
+            forniture = await api.async_get_supplies()
+        except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+            # I token sono validi per ore: lo stesso indirizzo si puo'
+            # reincollare quando le API rispondono di nuovo.
+            _LOGGER.exception("Recupero dei POD E-Distribuzione fallito (reauth dal browser)")
+            return self._edistribuzione_form_browser(step_id, {"base": "cannot_connect"})
+
+        pod_entry = set(self._reauth_entry.data.get(CONF_PODS, []))
+        if pod_entry and not pod_entry & {p.get("IdPod") for p in forniture}:
+            _LOGGER.warning(
+                "Reauth E-Distribuzione dal browser: l'account non vede nessuno dei POD %s",
+                ", ".join(sorted(pod_entry)),
+            )
+            return self._edistribuzione_form_browser(step_id, {"base": "altro_account"})
+
+        self.hass.config_entries.async_update_entry(
+            self._reauth_entry,
+            data={**self._reauth_entry.data, CONF_REFRESH_TOKEN: tokens.refresh_token},
+        )
+        await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
+        return self.async_abort(reason="reauth_successful")
+
     # ------------------------------------------------------------------
     # Reauth (generico, dispatcha sul distributore della entry esistente)
     # ------------------------------------------------------------------
@@ -1491,7 +1633,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if kind == "pcf":
             return await self.async_step_reauth_confirm()
         if kind == "edistribuzione":
-            return await self.async_step_edistribuzione_reauth_user()
+            return await self.async_step_edistribuzione_reauth()
         if kind == "areti":
             return await self.async_step_areti_reauth_user()
         if kind == "ireti":

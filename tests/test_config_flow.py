@@ -655,6 +655,11 @@ async def test_edist_reauth_aggiorna_refresh_token(hass, edist_mocks):
         context={"source": "reauth", "entry_id": entry.entry_id},
         data=entry.data,
     )
+    assert res["type"] == FlowResultType.MENU
+    assert res["step_id"] == "edistribuzione_reauth"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"next_step_id": "edistribuzione_reauth_user"}
+    )
     assert res["step_id"] == "edistribuzione_reauth_user"
     res = await hass.config_entries.flow.async_configure(
         res["flow_id"], {"email": "a@b.it", "password": "x"}
@@ -995,3 +1000,128 @@ async def test_set_opzioni_non_supportate(hass):
     res = await hass.config_entries.options.async_init(entry.entry_id)
     assert res["type"] == FlowResultType.ABORT
     assert res["reason"] == "options_not_supported"
+
+
+# --- accesso dal browser -----------------------------------------------------
+
+REDIRECT_OK = (
+    "Failed to launch 'eneldist://redirect#access_token=acc-browser"
+    "&refresh_token=ref-browser&instance_url=https%3A%2F%2Fx&state=ST' because "
+    "the scheme does not have a registered handler."
+)
+
+
+@pytest.fixture
+def browser_mocks(edist_mocks):
+    """Accesso dal browser: il client prepara il link e legge il redirect
+    incollato; lo state del link e' "ST"."""
+    auth = edist_mocks.auth
+    auth.prepara_url_accesso_browser = Mock(return_value="https://link-di-accesso")
+
+    def leggi(testo):
+        if "state=ST" not in testo:
+            raise edist_auth.EdistribuzioneRedirectNonValido("altro_tentativo")
+        return SimpleNamespace(access_token="acc-browser", refresh_token="ref-browser")
+
+    auth.token_da_redirect_browser = Mock(side_effect=leggi)
+    return edist_mocks
+
+
+async def _fino_a_edist_browser(hass):
+    res = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"regione": "Lombardia"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"provincia": "Milano"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"comune": "Vimodrone"})
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"distributor": "edistribuzione"}
+    )
+    return await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"modalita": "browser"}
+    )
+
+
+async def test_edist_browser_crea_entry_automatica(hass, _arera_sconosciuto, browser_mocks):
+    browser_mocks_auth = browser_mocks.auth
+    res = await _fino_a_edist_browser(hass)
+    assert res["step_id"] == "edistribuzione_browser"
+    assert res["description_placeholders"]["url"] == "https://link-di-accesso"
+    # Prima il login sul portale, poi il link di autorizzazione.
+    assert res["description_placeholders"]["login_url"] == edist_const.LOGIN_PAGE_URL
+
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"redirect": REDIRECT_OK}
+    )
+    assert res["type"] == FlowResultType.CREATE_ENTRY
+    assert res["data"][CONF_PODS] == ["IT001E00000009"]
+    assert res["data"][CONF_REFRESH_TOKEN] == "ref-browser"
+    browser_mocks.api.async_get_supplies.assert_awaited_once()
+    browser_mocks_auth.token_da_redirect_browser.assert_called_once_with(REDIRECT_OK)
+
+
+async def test_edist_browser_errore_ripresenta_lo_stesso_link(
+    hass, _arera_sconosciuto, browser_mocks
+):
+    """Lo state del link deve restare quello che il redirect riporta: dopo
+    un errore il form mostra lo stesso link, non uno nuovo."""
+    res = await _fino_a_edist_browser(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"redirect": "eneldist://redirect#state=VECCHIO"}
+    )
+    assert res["step_id"] == "edistribuzione_browser"
+    assert res["errors"] == {"base": "redirect_altro_tentativo"}
+    assert res["description_placeholders"]["url"] == "https://link-di-accesso"
+    browser_mocks.auth.prepara_url_accesso_browser.assert_called_once()
+
+
+async def test_edist_browser_app_bloccata(hass, _arera_sconosciuto, browser_mocks):
+    browser_mocks.auth.token_da_redirect_browser = Mock(
+        side_effect=edist_auth.EdistribuzioneAppBloccata("blocked")
+    )
+    res = await _fino_a_edist_browser(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"redirect": REDIRECT_OK}
+    )
+    assert res["errors"] == {"base": "app_bloccata"}
+
+
+async def test_edist_reauth_dal_browser_aggiorna_refresh_token(hass, browser_mocks):
+    entry = _entry_edist(hass)
+    res = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "reauth", "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"next_step_id": "edistribuzione_reauth_browser"}
+    )
+    assert res["step_id"] == "edistribuzione_reauth_browser"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"redirect": REDIRECT_OK}
+    )
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "reauth_successful"
+    assert entry.data[CONF_REFRESH_TOKEN] == "ref-browser"
+    assert entry.data[CONF_PODS] == ["IT001E00000009"]
+
+
+async def test_edist_reauth_dal_browser_con_altro_account(hass, browser_mocks):
+    """Il link non forza un nuovo login: un browser collegato con un altro
+    account darebbe i token di quell'account, che non vanno salvati."""
+    browser_mocks.api.async_get_supplies = AsyncMock(
+        return_value=[{"IdPod": "IT001E99999999"}]
+    )
+    entry = _entry_edist(hass)
+    res = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "reauth", "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"next_step_id": "edistribuzione_reauth_browser"}
+    )
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"redirect": REDIRECT_OK}
+    )
+    assert res["type"] == FlowResultType.FORM
+    assert res["errors"] == {"base": "altro_account"}
+    assert entry.data[CONF_REFRESH_TOKEN] == "ref-vecchio"

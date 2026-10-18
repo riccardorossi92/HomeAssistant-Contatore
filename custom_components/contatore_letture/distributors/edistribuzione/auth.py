@@ -33,7 +33,7 @@ import secrets
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlencode, urlsplit
 
 import aiohttp
 
@@ -71,10 +71,11 @@ _MARCATORI_TROPPE_SESSIONI = (
 
 # Rifiuto generico del controller di login del portale: "KO: Errore Tecnico"
 # con l'azione Aura in stato SUCCESS (visto su edistribuzione.my.site.com il
-# 10/10/2026, risposta in 4 ms). Lo stesso messaggio compariva in quel
-# momento anche accedendo dal sito ufficiale: e' un guasto lato portale, e
-# trattarlo come "credenziali errate" mandava l'utente a ricontrollare la
-# password senza motivo.
+# 10/10/2026, risposta in 4 ms). Il 10/10 compariva anche sul sito
+# ufficiale; dal 13/10 il sito ufficiale accetta di nuovo il login da
+# browser (HAR dell'app) mentre my.site.com continua a rispondere cosi': e'
+# E-Distribuzione che non accetta il login automatico su quell'host, non
+# un problema di credenziali. Il wizard propone l'accesso dal browser.
 _MARCATORI_ERRORE_TECNICO = ("errore tecnico",)
 
 # Pagine della protezione antibot di Imperva (Incapsula), che risponde al
@@ -261,8 +262,10 @@ class EdistribuzioneErroreTecnico(EdistribuzioneAuthError):
     """Il portale ha rifiutato il login con il suo messaggio generico
     "Errore Tecnico" invece che con un motivo preciso.
 
-    Non e' un problema di credenziali ne' dell'integrazione: il 10/10/2026 lo
-    stesso errore compariva anche sul sito ufficiale.
+    Non e' un problema di credenziali ne' dell'integrazione: arriva dal
+    dominio alternativo (my.site.com), dove dal 13/10/2026 E-Distribuzione
+    non accetta il login automatico mentre il sito ufficiale da browser
+    funziona. Rimedio: l'accesso dal browser.
     """
 
 
@@ -296,6 +299,53 @@ class EdistribuzioneAppBloccata(EdistribuzioneAuthError):
     un token scaduto ne' un blocco antibot: e' un rifiuto deliberato lato
     server, e riprovare non serve.
     """
+
+
+class EdistribuzioneTokenNonValido(EdistribuzioneAuthError):
+    """Il token endpoint risponde "invalid_grant": il refresh_token e'
+    scaduto o revocato (cambio password, sessioni chiuse dal portale...).
+    Solo un nuovo accesso lo sostituisce, a differenza di antibot e
+    app_blocked che dipendono da E-Distribuzione e vanno solo riprovati."""
+
+
+class EdistribuzioneRedirectNonValido(EdistribuzioneAuthError):
+    """Il testo incollato alla fine dell'accesso dal browser non e' usabile.
+
+    'motivo' dice perche', per scegliere il messaggio del form:
+    "mancante" (nessun indirizzo eneldist://redirect), "negato" (il portale
+    ha rifiutato l'autorizzazione, 'dettaglio' dice come), "altro_tentativo"
+    (appartiene a un altro link), "token_mancanti" (manca access_token o
+    refresh_token, elencati in 'dettaglio').
+    """
+
+    def __init__(self, motivo: str, dettaglio: str = "") -> None:
+        super().__init__(f"{motivo}: {dettaglio}" if dettaglio else motivo)
+        self.motivo = motivo
+        self.dettaglio = dettaglio
+
+
+# L'indirizzo di ritorno all'app come lo mostra il browser: da solo, o dentro
+# la riga che Chrome scrive nella Console ("Failed to launch
+# 'eneldist://redirect#access_token=...' because the scheme does not have a
+# registered handler."), virgolette comprese.
+_RE_REDIRECT_APP = re.compile(re.escape(OAUTH_REDIRECT_URI) + r"[^\s'\"<>]*")
+
+
+def _parametri_redirect(url: str) -> dict[str, str]:
+    """Parametri dell'indirizzo di ritorno, dal fragment (flusso user-agent)
+    o dalla query.
+
+    Decodificati con unquote e non come un form (parse_qs): un "+" in un
+    token e' un piu' letterale, e trasformato in spazio darebbe un token
+    all'apparenza buono e rifiutato ore dopo.
+    """
+    parti = urlsplit(url)
+    parametri: dict[str, str] = {}
+    for coppia in (parti.fragment or parti.query).split("&"):
+        chiave, _, valore = coppia.partition("=")
+        if chiave:
+            parametri[unquote(chiave)] = unquote(valore)
+    return parametri
 
 
 def _verifica_app_non_bloccata(testo: str) -> None:
@@ -1068,6 +1118,102 @@ class EdistribuzioneAuthClient:
             payload = json.loads(await _leggi_testo(resp))
         return self._tokens_from_payload(payload)
 
+    # -- Accesso dal browser dell'utente ---------------------------------------
+    # Il login automatico qui sopra e' bloccato da ottobre 2026 (Imperva su
+    # private.e-distribuzione.it, "Errore Tecnico" su my.site.com). Il
+    # browser dell'utente invece passa: l'utente accede sul sito ufficiale,
+    # apre nella stessa finestra il link di autorizzazione e i token tornano
+    # nel fragment del redirect all'app
+    # (eneldist://redirect#access_token=...&refresh_token=...), che un
+    # browser desktop non sa aprire e l'utente incolla nel wizard. Nessuna
+    # password passa da Home Assistant e nessuna richiesta di token parte da
+    # qui: e' il flusso OAuth "user-agent" (response_type=token) dello stesso
+    # client dell'app. Stesso approccio di maurobraggio e fabioscarparo
+    # (HomeAssistant-EDistribuzione, 13/10/2026).
+
+    def prepara_url_accesso_browser(self) -> str:
+        """Link di autorizzazione, da aprire nel browser DOPO aver fatto
+        accesso al portale nella stessa finestra (LOGIN_PAGE_URL).
+
+        Il portale arriva al redirect verso l'app solo con un browser gia'
+        collegato. Uno non collegato viene mandato al login del dominio
+        canonico (edistribuzione.my.site.com), che risponde "Errore
+        Tecnico"; e la pagina di login del dominio personalizzato, dopo
+        l'OTP, finisce sulla home del portale qualunque sia lo startURL.
+        Da qui i due passaggi: accesso, poi questo link. Scoperto da
+        fabioscarparo/HomeAssistant-EDistribuzione (issue #6 e #8 di quel
+        repository, v0.8.3 e v0.8.4).
+
+        Senza prompt=login: il browser prosegue con l'account con cui e'
+        collegato (nel reauth il config flow controlla i POD). Uno state
+        nuovo a ogni chiamata: un redirect di un link precedente viene
+        rifiutato.
+        """
+        self._code_verifier = None
+        self._oauth_state = _b64url(secrets.token_bytes(16))
+        params = {
+            "nonce": _b64url(secrets.token_bytes(16)),
+            "display": "touch",
+            "response_type": "token",
+            "scope": OAUTH_SCOPE,
+            "redirect_uri": OAUTH_REDIRECT_URI,
+            "client_id": OAUTH_CLIENT_ID,
+            "state": self._oauth_state,
+        }
+        return f"{OAUTH_AUTHORIZE_URL}?{urlencode(params)}"
+
+    def token_da_redirect_browser(self, testo: str) -> OAuthTokens:
+        """Token dal testo incollato alla fine dell'accesso dal browser:
+        l'indirizzo eneldist://redirect da solo o l'intera riga della
+        Console del browser."""
+        if self._oauth_state is None:
+            raise EdistribuzioneRedirectNonValido("altro_tentativo", "nessun link generato")
+
+        corrispondenza = _RE_REDIRECT_APP.search(testo)
+        if corrispondenza is None:
+            _LOGGER.warning(
+                "Accesso dal browser: nessun indirizzo %s nel testo incollato (%d caratteri)",
+                OAUTH_REDIRECT_URI,
+                len(testo),
+            )
+            raise EdistribuzioneRedirectNonValido("mancante")
+
+        parametri = _parametri_redirect(corrispondenza.group(0))
+        # Solo i nomi: i valori sono i token.
+        _LOGGER.debug("Accesso dal browser: parametri ricevuti %s", sorted(parametri))
+
+        if "error" in parametri:
+            descrizione = parametri.get("error_description", "").replace("+", " ")
+            _LOGGER.warning(
+                "Accesso dal browser rifiutato da E-Distribuzione: %s (%s)",
+                parametri["error"],
+                descrizione,
+            )
+            if parametri["error"] == "app_blocked":
+                raise EdistribuzioneAppBloccata(descrizione or "app_blocked")
+            raise EdistribuzioneRedirectNonValido("negato", descrizione or parametri["error"])
+
+        if parametri.get("state") != self._oauth_state:
+            _LOGGER.warning(
+                "Accesso dal browser: l'indirizzo incollato appartiene a un altro link"
+            )
+            raise EdistribuzioneRedirectNonValido("altro_tentativo")
+
+        mancanti = [
+            nome for nome in ("access_token", "refresh_token") if not parametri.get(nome)
+        ]
+        if mancanti:
+            _LOGGER.warning(
+                "Accesso dal browser: nel redirect mancano %s", ", ".join(mancanti)
+            )
+            raise EdistribuzioneRedirectNonValido("token_mancanti", ", ".join(mancanti))
+
+        _LOGGER.info(
+            "Accesso dal browser riuscito (istanza %s)",
+            parametri.get("instance_url") or "-",
+        )
+        return self._tokens_from_payload(parametri)
+
     async def async_refresh_access_token(self, refresh_token: str) -> OAuthTokens:
         """Get a fresh access_token. No Aura/OTP involved - this is the path
         the integration should use on every normal startup/renewal.
@@ -1109,6 +1255,10 @@ class EdistribuzioneAuthClient:
             # a leggerla come JSON.
             text = await _leggi_testo(resp)
             _verifica_app_non_bloccata(text)
+            if resp.status != 200 and '"invalid_grant"' in text:
+                raise EdistribuzioneTokenNonValido(
+                    f"refresh_token exchange failed ({resp.status}): {text[:300]}"
+                )
             if resp.status != 200:
                 raise EdistribuzioneAuthError(
                     f"refresh_token exchange failed ({resp.status}): {text[:300]}"

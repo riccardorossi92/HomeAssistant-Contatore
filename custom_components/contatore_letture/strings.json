@@ -172,7 +172,7 @@
       },
       "edistribuzione_modalita": {
         "title": "Distributore individuato: E-Distribuzione",
-        "description": "Scegli come importare i consumi del tuo POD.\n\n**Caricamento manuale curve**: scarichi la curva di carico dal sito E-Distribuzione (file CSV) e la carichi in Home Assistant dalle opzioni dell'integrazione, ogni volta che vuoi aggiornare i dati. Serve solo il codice POD, nessuna credenziale.\n\n**Scaricamento automatico**: l'integrazione accede con email, password e codice OTP e scarica i dati ogni giorno. Da ottobre 2026 E-Distribuzione blocca questo accesso con un sistema anti-bot, quindi per ora non è disponibile.\n\n**Prova con altre integrazioni HACS**: ti mostra altre integrazioni per E-Distribuzione, di altri autori, che offrono lo scaricamento automatico con l'accesso dal browser.",
+        "description": "Scegli come importare i consumi del tuo POD.\n\n**Scaricamento automatico, accesso dal browser**: accedi una volta sul sito ufficiale E-Distribuzione dal browser di un computer, apri un link di autorizzazione e incolli qui l'indirizzo che ti restituisce. Da lì l'integrazione rinnova l'accesso e scarica i dati ogni giorno da sola. La password non passa da Home Assistant. È un accesso non ufficiale: E-Distribuzione può bloccarlo in qualsiasi momento.\n\n**Caricamento manuale curve**: scarichi la curva di carico dal sito E-Distribuzione (file CSV) e la carichi in Home Assistant dalle opzioni dell'integrazione, ogni volta che vuoi aggiornare i dati. Serve solo il codice POD, nessuna credenziale.\n\n**Scaricamento automatico con password e OTP**: l'integrazione accede da sola con email, password e codice OTP. Da ottobre 2026 E-Distribuzione blocca questo accesso, quindi per ora non è disponibile.\n\n**Prova con altre integrazioni HACS**: ti mostra altre integrazioni per E-Distribuzione, di altri autori, che offrono lo scaricamento automatico con l'accesso dal browser.",
         "data": {
           "modalita": "Modalità"
         }
@@ -182,6 +182,28 @@
         "description": "Inserisci il codice POD (inizia con IT e lo trovi in bolletta). Dopo aver creato la configurazione, apri **Configura** per caricare il file della curva di carico scaricato dal sito E-Distribuzione.",
         "data": {
           "pod": "POD"
+        }
+      },
+      "edistribuzione_browser": {
+        "title": "E-Distribuzione - Accesso dal browser",
+        "description": "1. Da un **computer**, apri [il sito di E-Distribuzione]({login_url}) e accedi con l'account dei tuoi POD, codice OTP compreso, fino all'area clienti. Se nel browser sei già entrato con un altro account, esci prima; se sei già entrato con quello giusto, passa al punto 2. Non usare un telefono con l'app E-Distribuzione installata: l'app aprirebbe l'indirizzo finale al posto tuo.\n\n2. Nella **stessa finestra** apri [il link di autorizzazione]({url}). La pagina resta bianca o mostra un errore: è normale, l'indirizzo finale è pensato per l'app. Il link di autorizzazione vale solo per questa configurazione.\n\n3. Copia quell'indirizzo, che inizia con `eneldist://redirect`. In Chrome ed Edge apri gli strumenti per sviluppatori (**F12**, o **⌥⌘J** su Mac) e copia dalla scheda **Console** la riga rossa che lo contiene; in altri browser può comparire nella barra degli indirizzi. Puoi incollare la riga intera.\n\nLa password non passa da Home Assistant: riceve solo i token di accesso, che rinnova da solo.",
+        "data": {
+          "redirect": "Indirizzo eneldist://redirect (o la riga intera della Console)"
+        }
+      },
+      "edistribuzione_reauth": {
+        "title": "E-Distribuzione - Accedi di nuovo",
+        "description": "L'accesso salvato non è più valido per i POD: {pod_correnti}. Accedi di nuovo: POD, opzioni e storico restano.",
+        "menu_options": {
+          "edistribuzione_reauth_browser": "Accesso dal browser (consigliato)",
+          "edistribuzione_reauth_user": "Email, password e OTP (bloccato da ottobre 2026)"
+        }
+      },
+      "edistribuzione_reauth_browser": {
+        "title": "E-Distribuzione - Accedi di nuovo dal browser",
+        "description": "1. Da un **computer**, apri [il sito di E-Distribuzione]({login_url}) e accedi con l'account dei tuoi POD, codice OTP compreso, fino all'area clienti. Se nel browser sei già entrato con un altro account, esci prima; se sei già entrato con quello giusto, passa al punto 2. Non usare un telefono con l'app E-Distribuzione installata: l'app aprirebbe l'indirizzo finale al posto tuo.\n\n2. Nella **stessa finestra** apri [il link di autorizzazione]({url}). La pagina resta bianca o mostra un errore: è normale, l'indirizzo finale è pensato per l'app. Il link di autorizzazione vale solo per questa configurazione.\n\n3. Copia quell'indirizzo, che inizia con `eneldist://redirect`. In Chrome ed Edge apri gli strumenti per sviluppatori (**F12**, o **⌥⌘J** su Mac) e copia dalla scheda **Console** la riga rossa che lo contiene; in altri browser può comparire nella barra degli indirizzi. Puoi incollare la riga intera.\n\nLa password non passa da Home Assistant: riceve solo i token di accesso, che rinnova da solo.",
+        "data": {
+          "redirect": "Indirizzo eneldist://redirect (o la riga intera della Console)"
         }
       }
     },
@@ -195,25 +217,31 @@
       "areti_pod_non_valido": "POD non riconosciuto su questo account Areti. Controlla il codice (inizia con IT e lo trovi in bolletta) e che sia associato all'account con cui hai fatto accesso.",
       "invalid_otp": "Codice OTP errato o scaduto. Deve essere il codice inviato da questa configurazione: uno generato sul sito o nell'app appartiene a un'altra sessione di login e viene sempre rifiutato.",
       "otp_mancante": "Inserisci il codice OTP, oppure spunta \"Richiedi un nuovo codice\" per farne inviare uno nuovo",
-      "bloccato_antibot": "E-Distribuzione ha bloccato la richiesta con la sua protezione anti-bot prima ancora di mostrare il login, sia sul sito principale sia sull'indirizzo alternativo. Non dipende dalle credenziali: riprova più tardi. Se il blocco persiste per giorni, apri una issue.",
-      "errore_tecnico_portale": "E-Distribuzione ha rifiutato l'accesso con un generico \"Errore Tecnico\". È un problema del portale, non dell'integrazione né delle credenziali inserite qui: lo stesso errore compare anche accedendo dal sito ufficiale. Riprova più tardi; se persiste anche sul sito, contatta l'assistenza di E-Distribuzione.",
+      "bloccato_antibot": "E-Distribuzione ha bloccato la richiesta con la sua protezione anti-bot prima ancora di mostrare il login, sia sul sito principale sia sull'indirizzo alternativo. Non dipende dalle credenziali: torna indietro e scegli l'accesso dal browser.",
+      "errore_tecnico_portale": "E-Distribuzione ha risposto con un generico \"Errore Tecnico\": non accetta il login automatico sull'indirizzo alternativo che l'integrazione usa quando il sito principale la blocca. Non dipende dalle credenziali: torna indietro e scegli l'accesso dal browser.",
       "troppe_sessioni": "E-Distribuzione ha rifiutato l'accesso perché l'account ha troppe sessioni aperte contemporaneamente. Esci dall'app ufficiale e dal sito, attendi qualche minuto e riprova: in questo stato nessun codice OTP viene inviato.",
       "nessun_pod_selezionato": "Seleziona almeno un POD",
-      "automatico_non_disponibile": "Lo scaricamento automatico non è disponibile da ottobre 2026: E-Distribuzione blocca l'accesso con un sistema anti-bot. Scegli il caricamento manuale.",
-      "pod_formato_non_valido": "Codice POD non valido: deve avere la forma IT001E12345678 (IT, 3 cifre, E, 8 caratteri)."
+      "automatico_non_disponibile": "Il login automatico con password e OTP è bloccato da E-Distribuzione da ottobre 2026. Scegli l'accesso dal browser o il caricamento manuale.",
+      "pod_formato_non_valido": "Codice POD non valido: deve avere la forma IT001E12345678 (IT, 3 cifre, E, 8 caratteri).",
+      "redirect_mancante": "Nel testo incollato non c'è nessun indirizzo che inizi con eneldist://redirect. Copia l'indirizzo mostrato dopo aver aperto il link di autorizzazione, non uno dei link di questa pagina. Se dopo l'accesso sei finito nell'area clienti, è normale: apri ora il link di autorizzazione nella stessa finestra.",
+      "redirect_negato": "E-Distribuzione ha rifiutato l'autorizzazione: {dettaglio}. Riapri il link di autorizzazione; se si ripete, riprova più tardi.",
+      "redirect_altro_tentativo": "L'indirizzo appartiene a un altro link di autorizzazione, per esempio di un tentativo precedente. Apri il link di autorizzazione di questa pagina e incolla il nuovo indirizzo.",
+      "redirect_token_mancanti": "All'indirizzo mancano dei dati ({dettaglio}): probabilmente è stato copiato solo in parte. Copialo tutto, fino alla fine della riga.",
+      "app_bloccata": "E-Distribuzione rifiuta il client dell'app ufficiale con cui accede l'integrazione (app_blocked). Non dipende dalle credenziali: riprova più tardi.",
+      "altro_account": "L'account con cui hai fatto accesso non vede nessuno dei POD di questa configurazione. Esci dal portale nel browser, accedi con l'account giusto e riapri il link di autorizzazione."
     },
     "abort": {
       "reauth_successful": "Credenziali aggiornate con successo",
       "reauth_not_supported": "Questo distributore non supporta ancora il reinserimento delle credenziali da questo flusso",
       "no_pods_found": "Nessun POD trovato per questo account",
-      "edistribuzione_supplies_failed": "Errore imprevisto nel recupero dei POD dall'account. Riprova la configurazione da capo (login + OTP inclusi).",
+      "edistribuzione_supplies_failed": "Errore imprevisto nel recupero dei POD dall'account. Riprova la configurazione da capo.",
       "edistribuzione_otp_exchange_failed": "Il codice OTP è stato accettato ma il completamento dell'accesso è fallito. Riprova la configurazione da capo (login + OTP inclusi).",
       "edistribuzione_password_scaduta": "E-Distribuzione chiede di cambiare la password dell'account prima di completare l'accesso. Accedi al sito o all'app ufficiale, imposta una nuova password e poi ripeti la configurazione usando quella nuova.",
       "ireti_pods_failed": "Errore imprevisto nel recupero dei POD dall'account SmartPOD. Riprova la configurazione da capo.",
       "no_ireti_pods_associated": "Il tuo account SmartPOD non ha ancora nessun POD associato. Accedi al portale (smartpod.ireti.it), usa \"Aggiungi POD\" con il codice della tua fornitura, poi riprova questa configurazione.",
       "setdistribuzione_pods_failed": "Errore imprevisto nel recupero delle forniture dall'account mySET. Riprova la configurazione da capo.",
       "no_setdistribuzione_pods": "Il tuo account mySET non ha nessuna fornitura elettrica associata. Accedi all'area riservata (myset.setdistribuzione.it), verifica che la fornitura compaia tra le tue utenze, poi riprova questa configurazione.",
-      "edistribuzione_altre_integrazioni": "Lo scaricamento automatico di questa integrazione è disattivato finché E-Distribuzione blocca l'accesso automatico. Altre integrazioni per E-Distribuzione offrono l'accesso dal browser al posto del login bloccato:\n\n{elenco}\n\nSi aggiungono in HACS come repository personalizzato, di tipo \"Integrazione\". Non sono sviluppate né verificate da questo progetto: per problemi o domande rivolgiti ai loro autori.\n\nSe ne installi una, scegline una sola (usano lo stesso nome interno e non possono convivere). Se tieni lo stesso POD anche qui con il caricamento manuale, nella dashboard Energia usa una sola delle due statistiche, altrimenti i consumi vengono contati due volte."
+      "edistribuzione_altre_integrazioni": "Altre integrazioni per E-Distribuzione, di altri autori, offrono anche loro l'accesso dal browser:\n\n{elenco}\n\nSi aggiungono in HACS come repository personalizzato, di tipo \"Integrazione\". Non sono sviluppate né verificate da questo progetto: per problemi o domande rivolgiti ai loro autori.\n\nSe ne installi una, scegline una sola (usano lo stesso nome interno e non possono convivere). Non configurare lo stesso POD sia lì sia qui, oppure nella dashboard Energia usa una sola delle due statistiche: altrimenti i consumi vengono contati due volte."
     }
   },
   "options": {
@@ -303,7 +331,7 @@
       "options_not_supported": "Questo distributore non ha ancora opzioni configurabili",
       "nessun_pod_selezionato": "Seleziona almeno un POD da aggiungere",
       "nessun_pod_da_aggiungere": "Tutti i POD del tuo account sono già configurati qui",
-      "edistribuzione_refresh_failed": "Non è stato possibile rinnovare l'accesso a E-Distribuzione. Riprova più tardi; se il problema persiste potrebbe servire un nuovo login (rimuovi e riconfigura l'integrazione).",
+      "edistribuzione_refresh_failed": "Non è stato possibile rinnovare l'accesso a E-Distribuzione. Riprova più tardi; se il problema persiste, Home Assistant chiederà un nuovo accesso (dal browser) in Impostazioni → Dispositivi e servizi.",
       "edistribuzione_supplies_failed": "Errore imprevisto nel recupero dei POD dall'account. Riprova più tardi.",
       "areti_login_failed": "Non è stato possibile accedere ad Areti con le credenziali salvate. Riprova più tardi; se il problema persiste potrebbe servire un nuovo login (rimuovi e riconfigura l'integrazione).",
       "csv_importato": "Import completato per il POD {pod}: {giorni} giorni, dal {data_da} al {data_a}, per {kwh} kWh. I dati sono visibili nella Energy Dashboard.",

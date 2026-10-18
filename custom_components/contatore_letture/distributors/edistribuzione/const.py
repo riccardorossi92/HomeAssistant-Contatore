@@ -194,11 +194,10 @@ MODALITA_MANUALE = "manuale"
 # ALTRE_INTEGRAZIONI senza creare nessuna entry.
 MODALITA_ALTRE_INTEGRAZIONI = "altre_integrazioni"
 
-# Integrazioni HACS di terzi per E-Distribuzione, proposte nel wizard a chi
-# vuole lo scaricamento automatico finche' il nostro resta disattivato: dal
-# 13/10/2026 offrono l'accesso dal browser al posto del login bloccato.
-# Questo progetto non le sviluppa ne' le verifica, e non insiste a cercare
-# un modo di aggirare il blocco di E-Distribuzione. (nome, url)
+# Integrazioni HACS di terzi per E-Distribuzione, proposte nel wizard come
+# alternativa: dal 13/10/2026 offrono anche loro l'accesso dal browser al
+# posto del login bloccato. Questo progetto non le sviluppa ne' le
+# verifica. (nome, url)
 ALTRE_INTEGRAZIONI = (
     (
         "fabioscarparo/HomeAssistant-EDistribuzione",
@@ -209,10 +208,16 @@ ALTRE_INTEGRAZIONI = (
         "https://github.com/maurobraggio/HomeAssistant-EDistribuzione",
     ),
 )
+# Scelta del wizard, non un valore salvato: l'accesso dal browser crea una
+# entry automatica come quella con password e OTP (stesso refresh_token,
+# stesso download giornaliero), cambia solo come si ottiene il primo token.
+MODALITA_BROWSER = "browser"
 
-# Da ottobre 2026 il login automatico e' bloccato dall'antibot del portale
-# (issue #11): nel wizard la modalita' automatica resta visibile ma non
-# selezionabile. Rimettere True quando torna a funzionare.
+# Da ottobre 2026 il login automatico con password e OTP e' bloccato (issue
+# #11): Imperva su private.e-distribuzione.it, "Errore Tecnico" su
+# my.site.com. Nel wizard resta visibile ma non selezionabile; l'accesso
+# dal browser (MODALITA_BROWSER) lo sostituisce. Rimettere True quando
+# torna a funzionare.
 SCARICAMENTO_AUTOMATICO_DISPONIBILE = False
 
 # Il CSV del portale e' in ora italiana, qualunque sia il fuso di Home Assistant.

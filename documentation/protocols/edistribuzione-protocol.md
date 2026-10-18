@@ -52,6 +52,54 @@ esso anche gli URL che il server genera (Location, frontdoor, redirect JS,
 action dei form) — altrimenti si tornerebbe sul dominio bloccato al primo
 redirect. Il backend MuleSoft non è coinvolto.
 
+Dal 13/10/2026 l'host diretto non serve più per il login: `loginUser` vi
+risponde `KO: Errore Tecnico` (azione in stato SUCCESS, in pochi ms) mentre
+il sito ufficiale, da browser, accetta di nuovo il login (HAR dell'app
+dello stesso giorno). Il login automatico resta quindi bloccato su
+entrambi gli host; lo sostituisce l'accesso dal browser (sotto).
+
+## Accesso dal browser (dalla v0.10.0)
+
+Il browser dell'utente supera il controllo di Imperva (esegue lo script e
+ottiene il cookie `reese84`, come la webview dell'app nel HAR del
+13/10/2026), il client dell'integrazione no. L'integrazione quindi non fa
+il login: genera il link e riceve i token.
+
+1. L'utente accede sul sito ufficiale da `{LOGIN_PAGE_URL}` (email,
+   password, OTP) fino all'area clienti.
+2. Nella stessa finestra apre `GET {OAUTH_AUTHORIZE_URL}` con
+   `response_type=token` (flusso OAuth "user-agent", niente PKCE),
+   `display=touch`, stesso `client_id`/`redirect_uri`/`scope` dell'app e
+   uno `state` casuale. Senza `prompt=login`: il browser già collegato
+   prosegue con quell'account e arriva subito al redirect.
+
+   Servono due passaggi (scoperto da fabioscarparo, v0.8.3 e v0.8.4 del suo
+   repository): con un browser non collegato l'authorize rimanda al login
+   di `edistribuzione.my.site.com`, che risponde "Errore Tecnico"; e la
+   pagina di login del dominio personalizzato con lo `startURL`
+   dell'authorize, dopo l'OTP, finisce sulla home del portale ignorando lo
+   `startURL`.
+3. Il portale rimanda a
+   `eneldist://redirect#access_token=…&refresh_token=…&instance_url=…&state=…`.
+   Un browser desktop non sa aprirlo: Chrome lo riporta in Console
+   (`Failed to launch 'eneldist://redirect#…' because the scheme does not
+   have a registered handler.`). L'utente incolla quella riga nel wizard.
+4. `auth.token_da_redirect_browser` estrae l'indirizzo dal testo, controlla
+   lo `state` e la presenza di `access_token` e `refresh_token`. I valori
+   si decodificano con `unquote`, non come form: un `+` nel token è un più
+   letterale.
+
+Nessuna richiesta di token parte da Home Assistant: nel HAR del 13/10
+anche lo scambio `code → token` dell'app nativa su
+`private.e-distribuzione.it` riceveva la pagina di Imperva. Il refresh
+successivo va su `edistribuzione.my.salesforce.com` (vedi Refresh). Nel
+reauth il link non forza un nuovo login, quindi prima di salvare i token il
+config flow controlla con `getSupplies` che l'account veda almeno uno dei
+POD della configurazione.
+
+Stesso approccio di maurobraggio/HomeAssistant-EDistribuzione e
+fabioscarparo/HomeAssistant-EDistribuzione (v0.8.0), 13/10/2026.
+
 ## Flusso di login (email + password + OTP)
 
 ### 1. `GET {OAUTH_AUTHORIZE_URL}` (con PKCE)
@@ -200,6 +248,13 @@ standard OAuth2.
 coinvolto — il percorso normale per ogni avvio/rinnovo. Salesforce non
 restituisce sempre un nuovo `refresh_token` (va gestita la rotazione solo
 quando presente, non assunta ad ogni chiamata).
+
+`invalid_grant` (token scaduto o revocato) solleva
+`EdistribuzioneTokenNonValido`, che il coordinator trasforma in
+`ConfigEntryAuthFailed`: Home Assistant avvia il reauth, che propone
+l'accesso dal browser. Antibot e `app_blocked` invece restano
+`UpdateFailed` e si riprova al ciclo successivo, perché un nuovo accesso
+non li risolverebbe.
 
 ## API dati (MuleSoft)
 

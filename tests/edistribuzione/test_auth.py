@@ -1025,3 +1025,112 @@ class TestRefreshConRipiego:
         })
         client = auth.EdistribuzioneAuthClient(session)
         assert (await client.async_refresh_access_token("RT")).refresh_token == "RT"
+
+
+# ---------------------------------------------------------------------------
+# Accesso dal browser (flusso OAuth user-agent, token nel fragment)
+# ---------------------------------------------------------------------------
+
+
+class TestAccessoBrowser:
+    def _client_con_link(self):
+        client = auth.EdistribuzioneAuthClient(None)
+        url = client.prepara_url_accesso_browser()
+        state = dict(
+            coppia.split("=", 1) for coppia in urlparse(url).query.split("&")
+        )["state"]
+        return client, url, state
+
+    def test_link_flusso_user_agent_senza_pkce_ne_prompt(self):
+        _, url, _ = self._client_con_link()
+        query = urlparse(url).query
+        assert url.startswith(auth.OAUTH_AUTHORIZE_URL + "?")
+        assert "response_type=token" in query
+        assert "redirect_uri=eneldist%3A%2F%2Fredirect" in query
+        assert "code_challenge" not in query
+        assert "prompt" not in query
+
+    def test_state_nuovo_a_ogni_link(self):
+        client = auth.EdistribuzioneAuthClient(None)
+        assert client.prepara_url_accesso_browser() != client.prepara_url_accesso_browser()
+
+    def test_riga_intera_della_console(self):
+        client, _, state = self._client_con_link()
+        riga = (
+            "Failed to launch 'eneldist://redirect#access_token=00D%21AQ"
+            f"&refresh_token=5Aep+x%3D&instance_url=https%3A%2F%2Fi&state={state}' "
+            "because the scheme does not have a registered handler."
+        )
+        tokens = client.token_da_redirect_browser(riga)
+        assert tokens.access_token == "00D!AQ"
+        # Il "+" resta un piu': con parse_qs diventerebbe uno spazio.
+        assert tokens.refresh_token == "5Aep+x="
+        assert tokens.instance_url == "https://i"
+
+    def test_indirizzo_da_solo_con_query(self):
+        client, _, state = self._client_con_link()
+        tokens = client.token_da_redirect_browser(
+            f"  eneldist://redirect?access_token=A&refresh_token=R&state={state}\n"
+        )
+        assert (tokens.access_token, tokens.refresh_token) == ("A", "R")
+
+    def test_testo_senza_redirect(self):
+        client, url, _ = self._client_con_link()
+        with pytest.raises(auth.EdistribuzioneRedirectNonValido) as err:
+            client.token_da_redirect_browser(url)
+        assert err.value.motivo == "mancante"
+
+    def test_state_di_un_altro_link(self):
+        client, _, _ = self._client_con_link()
+        with pytest.raises(auth.EdistribuzioneRedirectNonValido) as err:
+            client.token_da_redirect_browser(
+                "eneldist://redirect#access_token=A&refresh_token=R&state=altro"
+            )
+        assert err.value.motivo == "altro_tentativo"
+
+    def test_senza_link_generato(self):
+        client = auth.EdistribuzioneAuthClient(None)
+        with pytest.raises(auth.EdistribuzioneRedirectNonValido) as err:
+            client.token_da_redirect_browser(
+                "eneldist://redirect#access_token=A&refresh_token=R&state=S"
+            )
+        assert err.value.motivo == "altro_tentativo"
+
+    def test_refresh_token_mancante(self):
+        client, _, state = self._client_con_link()
+        with pytest.raises(auth.EdistribuzioneRedirectNonValido) as err:
+            client.token_da_redirect_browser(
+                f"eneldist://redirect#access_token=A&state={state}"
+            )
+        assert err.value.motivo == "token_mancanti"
+        assert err.value.dettaglio == "refresh_token"
+
+    def test_autorizzazione_negata(self):
+        client, _, state = self._client_con_link()
+        with pytest.raises(auth.EdistribuzioneRedirectNonValido) as err:
+            client.token_da_redirect_browser(
+                "eneldist://redirect#error=access_denied"
+                f"&error_description=end-user+denied+authorization&state={state}"
+            )
+        assert err.value.motivo == "negato"
+        assert err.value.dettaglio == "end-user denied authorization"
+
+    def test_app_bloccata(self):
+        client, _, state = self._client_con_link()
+        with pytest.raises(auth.EdistribuzioneAppBloccata):
+            client.token_da_redirect_browser(
+                f"eneldist://redirect#error=app_blocked&state={state}"
+            )
+
+
+class TestRefreshTokenScaduto:
+    async def test_invalid_grant_ha_eccezione_dedicata(self):
+        session = _SessioneTokenPerHost({
+            SF_HOST_TOKEN: _RispostaToken(
+                '{"error":"invalid_grant","error_description":"expired access/refresh token"}',
+                status=400,
+            ),
+        })
+        client = auth.EdistribuzioneAuthClient(session)
+        with pytest.raises(auth.EdistribuzioneTokenNonValido):
+            await client.async_refresh_access_token("RT")

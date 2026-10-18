@@ -24,7 +24,7 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | Unareti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
 | RetiPiù | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
 | Reti Valtellina Valchiavenna | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
-| E-Distribuzione | Solo POD (caricamento manuale del CSV) | `recupera_storico` (solo configurazioni automatiche esistenti) |
+| E-Distribuzione | Accesso dal browser, oppure solo POD (caricamento manuale del CSV) | `recupera_storico` (solo configurazioni automatiche) |
 | Areti | Email + password | `recupera_storico` |
 | Ireti | Username + password | `recupera_storico` |
 | SET Distribuzione | Email + password | `recupera_storico` |
@@ -38,23 +38,25 @@ Assistant — segnala com'è andata in una issue. Dettagli sulle azioni in
 [Azioni](#azioni) più sotto.
 
 > [!WARNING]
-> **E-Distribuzione: per ora solo caricamento manuale**
+> **E-Distribuzione: login automatico bloccato, accesso dal browser**
 > ([issue #11](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/11)).
-> Da ottobre 2026 il portale E-Distribuzione blocca con un sistema
-> anti-bot l'accesso automatico dell'integrazione, quindi nella
-> configurazione lo scaricamento automatico non è selezionabile. Al suo
-> posto c'è il **caricamento manuale**: basta il codice POD, poi scarichi
-> la curva di carico dal sito, alla pagina
-> [Curve di carico](https://private.e-distribuzione.it/PortaleClienti/s/curvedicarico),
-> e la carichi da **Configura** sulla voce dell'integrazione. Un mese per
-> file, negli ultimi 18 mesi; ricaricare lo stesso periodo non crea
-> doppioni. Le configurazioni automatiche già esistenti restano come sono.
+> Da ottobre 2026 il portale E-Distribuzione blocca il login automatico
+> dell'integrazione con email, password e OTP. Al suo posto ci sono due
+> strade: l'**accesso dal browser** (accedi una volta sul sito ufficiale da
+> un computer, apri un link di autorizzazione e incolli in Home Assistant
+> l'indirizzo che ti restituisce; poi il download giornaliero è automatico)
+> e il **caricamento manuale** del CSV della pagina
+> [Curve di carico](https://private.e-distribuzione.it/PortaleClienti/s/curvedicarico).
+> L'accesso dal browser usa il client dell'app ufficiale e non è
+> autorizzato da E-Distribuzione: può smettere di funzionare in qualsiasi
+> momento. Il caricamento manuale non dipende da nessun accesso non
+> ufficiale.
 >
-> Chi vuole comunque lo scaricamento automatico può provare altre
-> integrazioni HACS, di altri autori, che offrono l'accesso dal browser:
+> Lo stesso accesso dal browser lo offrono anche altre integrazioni HACS,
+> di altri autori:
 > [fabioscarparo/HomeAssistant-EDistribuzione](https://github.com/fabioscarparo/HomeAssistant-EDistribuzione)
-> e [maurobraggio/HomeAssistant-EDistribuzione](https://github.com/maurobraggio/HomeAssistant-EDistribuzione).
-> Il wizard le propone con la voce **Prova con altre integrazioni HACS**.
+> e [maurobraggio/HomeAssistant-EDistribuzione](https://github.com/maurobraggio/HomeAssistant-EDistribuzione)
+> (il wizard le propone con la voce **Prova con altre integrazioni HACS**).
 > Non sono sviluppate né verificate da questo progetto.
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
@@ -197,10 +199,39 @@ può velocizzarlo né bypassarlo.
 </details>
 
 <details>
-<summary><b>E-Distribuzione (caricamento manuale del CSV)</b></summary>
+<summary><b>E-Distribuzione (accesso dal browser o caricamento manuale del CSV)</b></summary>
 
-Dopo aver scelto il comune, il wizard chiede la modalità: scegli
-**Caricamento manuale curve** e inserisci il codice POD (lo trovi in
+Dopo aver scelto il comune, il wizard chiede la modalità.
+
+**Scaricamento automatico, accesso dal browser**
+1. Da un computer, apri il primo link mostrato nel wizard, il sito di
+   E-Distribuzione, e accedi con l'account dei tuoi POD, codice OTP
+   compreso, fino all'area clienti. Se il browser è già collegato con un
+   altro account, esci prima; se è già collegato con quello giusto, passa
+   al punto 2. Non farlo da un telefono con l'app E-Distribuzione
+   installata: l'app aprirebbe l'indirizzo finale.
+2. Nella stessa finestra apri il secondo link, quello di autorizzazione.
+   La pagina resta bianca o mostra un errore: è normale, l'indirizzo
+   finale è pensato per l'app.
+3. Copia quell'indirizzo, che inizia con `eneldist://redirect`. In Chrome
+   ed Edge apri gli strumenti per sviluppatori (**F12**, o **⌥⌘J** su Mac)
+   e copia dalla scheda **Console** la riga rossa che lo contiene (va bene
+   la riga intera); in altri browser può comparire nella barra degli
+   indirizzi.
+4. Incollalo nel wizard e scegli i POD.
+
+Servono due link perché il portale arriva all'indirizzo finale solo con un
+browser già collegato: aprendo direttamente il link di autorizzazione,
+dopo l'OTP si finisce sulla home dell'area clienti.
+
+La password non passa da Home Assistant, che riceve solo i token e li
+rinnova da solo. Il link di autorizzazione vale solo per la configurazione
+che lo ha mostrato. Se l'accesso scade (per esempio dopo un cambio
+password), Home Assistant chiede di accedere di nuovo da **Impostazioni →
+Dispositivi e servizi**, sempre dal browser, mantenendo POD, opzioni e
+storico: non serve rimuovere l'integrazione.
+
+**Caricamento manuale curve**: inserisci il codice POD (lo trovi in
 bolletta). Non servono credenziali.
 
 Per importare i dati:
@@ -218,15 +249,14 @@ vengono sovrascritti, senza doppioni.
 La voce **Prova con altre integrazioni HACS** chiude il wizard senza creare
 nulla e mostra i link alle integrazioni di terzi citate sopra. Se ne
 installi una, scegline una sola (usano lo stesso nome interno e non possono
-convivere); se tieni lo stesso POD anche qui con il caricamento manuale,
-nella dashboard Energia usa una sola delle due statistiche, altrimenti i
-consumi vengono contati due volte.
+convivere); non configurare lo stesso POD sia lì sia qui, oppure nella
+dashboard Energia usa una sola delle due statistiche, altrimenti i consumi
+vengono contati due volte.
 
-Lo **scaricamento automatico** (email, password e codice OTP, con download
-giornaliero) resta nel wizard ma non è selezionabile finché E-Distribuzione
-blocca l'accesso con il sistema anti-bot. Le configurazioni automatiche
-create prima continuano a funzionare come prima, finché il portale le
-accetta.
+Lo **scaricamento automatico con password e OTP** resta nel wizard ma non
+è selezionabile finché E-Distribuzione blocca il login automatico. Le
+configurazioni automatiche create prima continuano a funzionare finché il
+rinnovo del loro accesso riesce; quando scade, si riaccede dal browser.
 
 </details>
 
