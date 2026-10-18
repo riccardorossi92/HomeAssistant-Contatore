@@ -1171,24 +1171,20 @@ class EdistribuzioneAuthClient:
 
         corrispondenza = _RE_REDIRECT_APP.search(testo)
         if corrispondenza is None:
+            # I log di questa funzione non riportano niente del testo
+            # incollato, nemmeno lunghezza o nomi dei parametri: contiene i
+            # token. I dettagli finiscono nell'errore mostrato nel form.
             _LOGGER.warning(
-                "Accesso dal browser: nessun indirizzo %s nel testo incollato (%d caratteri)",
+                "Accesso dal browser: nessun indirizzo %s nel testo incollato",
                 OAUTH_REDIRECT_URI,
-                len(testo),
             )
             raise EdistribuzioneRedirectNonValido("mancante")
 
         parametri = _parametri_redirect(corrispondenza.group(0))
-        # Solo i nomi: i valori sono i token.
-        _LOGGER.debug("Accesso dal browser: parametri ricevuti %s", sorted(parametri))
 
         if "error" in parametri:
             descrizione = parametri.get("error_description", "").replace("+", " ")
-            _LOGGER.warning(
-                "Accesso dal browser rifiutato da E-Distribuzione: %s (%s)",
-                parametri["error"],
-                descrizione,
-            )
+            _LOGGER.warning("Accesso dal browser rifiutato da E-Distribuzione")
             if parametri["error"] == "app_blocked":
                 raise EdistribuzioneAppBloccata(descrizione or "app_blocked")
             raise EdistribuzioneRedirectNonValido("negato", descrizione or parametri["error"])
@@ -1203,15 +1199,10 @@ class EdistribuzioneAuthClient:
             nome for nome in ("access_token", "refresh_token") if not parametri.get(nome)
         ]
         if mancanti:
-            _LOGGER.warning(
-                "Accesso dal browser: nel redirect mancano %s", ", ".join(mancanti)
-            )
+            _LOGGER.warning("Accesso dal browser: nel redirect mancano dei token")
             raise EdistribuzioneRedirectNonValido("token_mancanti", ", ".join(mancanti))
 
-        _LOGGER.info(
-            "Accesso dal browser riuscito (istanza %s)",
-            parametri.get("instance_url") or "-",
-        )
+        _LOGGER.info("Accesso dal browser riuscito")
         return self._tokens_from_payload(parametri)
 
     async def async_refresh_access_token(self, refresh_token: str) -> OAuthTokens:
