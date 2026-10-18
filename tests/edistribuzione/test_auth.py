@@ -1043,8 +1043,16 @@ class TestAccessoBrowser:
 
     def test_link_flusso_user_agent_senza_pkce_ne_prompt(self):
         _, url, _ = self._client_con_link()
-        query = urlparse(url).query
-        assert url.startswith(auth.OAUTH_AUTHORIZE_URL + "?")
+        parti = urlparse(url)
+        query = parti.query
+        # Confronto esatto di host e percorso, non startswith sull'URL:
+        # CodeQL lo segnala come controllo incompleto di un URL.
+        atteso = urlparse(auth.OAUTH_AUTHORIZE_URL)
+        assert (parti.scheme, parti.hostname, parti.path) == (
+            atteso.scheme,
+            atteso.hostname,
+            atteso.path,
+        )
         assert "response_type=token" in query
         assert "redirect_uri=eneldist%3A%2F%2Fredirect" in query
         assert "code_challenge" not in query
