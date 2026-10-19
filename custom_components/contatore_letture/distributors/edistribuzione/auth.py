@@ -1175,8 +1175,7 @@ class EdistribuzioneAuthClient:
             # incollato, nemmeno lunghezza o nomi dei parametri: contiene i
             # token. I dettagli finiscono nell'errore mostrato nel form.
             _LOGGER.warning(
-                "Accesso dal browser: nessun indirizzo %s nel testo incollato",
-                OAUTH_REDIRECT_URI,
+                "Accesso dal browser: nessun indirizzo eneldist://redirect nel testo incollato"
             )
             raise EdistribuzioneRedirectNonValido("mancante")
 
