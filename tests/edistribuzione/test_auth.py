@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import logging
 import sys
 import types
 from pathlib import Path
@@ -148,7 +149,7 @@ class TestLoginRifiutato:
 
     async def _dump(self, tmp_path):
         # Scritto in un executor, come gli altri dump di debug.
-        dump = tmp_path / "login_response_debug.json"
+        dump = tmp_path / "contatore_letture" / "debug" / "login_response_debug.json"
         for _ in range(50):
             if dump.exists() and dump.stat().st_size:
                 break
@@ -161,6 +162,7 @@ class TestLoginRifiutato:
         """Credenziali che funzionano sul sito ma rifiutate qui: il log deve
         dire su quale host e con quale messaggio, senza l'email."""
         monkeypatch.chdir(tmp_path)
+        caplog.set_level(logging.DEBUG)
         body = json.dumps({
             "actions": [{
                 "state": "SUCCESS",
@@ -201,7 +203,7 @@ class TestLoginRifiutato:
         assert "KO: Errore Tecnico" in caplog.text
         assert not any(r.levelname == "ERROR" for r in caplog.records)
         await asyncio.sleep(0.1)
-        assert not (tmp_path / "login_response_debug.json").exists()
+        assert not (tmp_path / "contatore_letture").exists()
 
     async def test_azione_in_errore_riporta_il_messaggio_del_server(
         self, monkeypatch, tmp_path, caplog
@@ -565,6 +567,7 @@ class TestInvioOtp:
         # Il dump di debug viene scritto nella cwd: lo dirottiamo su tmp_path
         # per non lasciare otp_send_debug.html dentro il repository.
         monkeypatch.chdir(tmp_path)
+        caplog.set_level(logging.DEBUG)
         client, _ = _client_su_form_otp(TestParseOtpPage.HTML_PAGINA_OTP)
         await client._async_trigger_otp_send()
         assert client.otp_invio_confermato is False
@@ -572,12 +575,27 @@ class TestInvioOtp:
         # Il dump e' scritto in un executor (per non bloccare l'event loop di
         # Home Assistant), quindi puo' non esistere ancora al ritorno della
         # chiamata.
-        dump = tmp_path / "otp_send_debug.html"
+        dump = tmp_path / "contatore_letture" / "debug" / "otp_send_debug.html"
         for _ in range(50):
             if dump.exists():
                 break
             await asyncio.sleep(0.02)
         assert dump.exists()
+
+    async def test_senza_log_di_debug_nessun_dump_su_disco(
+        self, caplog, monkeypatch, tmp_path
+    ):
+        """Le pagine di debug vengono scritte solo se il log di debug
+        dell'integrazione e' attivo: altrimenti niente file non richiesti
+        nella cartella di configurazione dell'utente."""
+        monkeypatch.chdir(tmp_path)
+        caplog.set_level(logging.INFO)
+        client, _ = _client_su_form_otp(TestParseOtpPage.HTML_PAGINA_OTP)
+        await client._async_trigger_otp_send()
+        assert "non ha confermato l'invio" in caplog.text
+        await asyncio.sleep(0.1)
+        assert not (tmp_path / "contatore_letture").exists()
+        assert not (tmp_path / "otp_send_debug.html").exists()
 
     async def test_pagina_limite_sessioni_solleva_eccezione_dedicata(
         self, monkeypatch, tmp_path

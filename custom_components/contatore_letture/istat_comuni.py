@@ -46,7 +46,7 @@ async def async_get_comuni_tree(hass: HomeAssistant) -> ComuniTree:
             "potrebbe essere cambiato il formato della sorgente dati.",
             exc,
         )
-        return _load_snapshot()
+        return await hass.async_add_executor_job(_load_snapshot)
 
 
 def _load_snapshot() -> ComuniTree:

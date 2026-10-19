@@ -8,10 +8,10 @@ external statistics, le stesse della modalita' automatica.
 from __future__ import annotations
 
 import logging
-from zoneinfo import ZoneInfo
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .const import CONF_MODALITA, CONF_PODS, FUSO_PORTALE, MODALITA_MANUALE
 from .csv_curve import CurvaDaCsv, leggi_csv_curva
@@ -36,9 +36,8 @@ class EdistribuzioneManuale:
         """Legge l'export del portale e lo importa sul POD della entry.
 
         Solleva csv_curve.CsvCurveError se il file non e' riconosciuto."""
-        curva = await self.hass.async_add_executor_job(
-            leggi_csv_curva, contenuto, ZoneInfo(FUSO_PORTALE)
-        )
+        fuso = await dt_util.async_get_time_zone(FUSO_PORTALE)
+        curva = await self.hass.async_add_executor_job(leggi_csv_curva, contenuto, fuso)
         pod = self.pods[0]
         for avviso in curva.avvisi:
             _LOGGER.warning("CSV E-Distribuzione per %s: %s", pod, avviso)

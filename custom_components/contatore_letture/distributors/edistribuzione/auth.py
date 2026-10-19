@@ -175,9 +175,14 @@ def _messaggio_rifiuto_login(payload: dict, return_value: object) -> str:
     return f"state={azione.get('state')!r}, error={errori!r}, returnValue={return_value!r}"
 
 
+# Relativa alla cwd, che in Home Assistant e' la cartella di configurazione.
+_DIR_DEBUG = Path("contatore_letture") / "debug"
+
+
 def _scrivi_pagina_debug(html: str, nome_file: str) -> None:
     try:
-        percorso = Path(nome_file)
+        percorso = _DIR_DEBUG / nome_file
+        percorso.parent.mkdir(parents=True, exist_ok=True)
         percorso.write_text(html, encoding="utf-8")
     except OSError as exc:
         _LOGGER.debug("Impossibile salvare %s su disco: %s", nome_file, exc)
@@ -186,10 +191,11 @@ def _scrivi_pagina_debug(html: str, nome_file: str) -> None:
 
 
 def _salva_pagina_debug(html: str, nome_file: str) -> None:
-    """Scrive la pagina su disco accanto a configuration.yaml (best-effort:
-    se il filesystem non e' scrivibile in questo contesto non blocca nulla)
-    e logga il percorso, cosi' e' richiedibile all'utente in una
-    segnalazione senza dovergli far catturare una HAR.
+    """Scrive la pagina in contatore_letture/debug/, accanto a
+    configuration.yaml, solo se il log di debug dell'integrazione e' attivo
+    (best-effort: se il filesystem non e' scrivibile in questo contesto non
+    blocca nulla) e logga il percorso, cosi' e' richiedibile all'utente in
+    una segnalazione senza dovergli far catturare una HAR.
 
     La scrittura e' delegata a un executor: qui siamo dentro l'event loop di
     Home Assistant, che segnala l'I/O sincrono con "Detected blocking call
@@ -197,6 +203,8 @@ def _salva_pagina_debug(html: str, nome_file: str) -> None:
     0.6.1 su consent_page_debug.html). Fuori da un event loop (test,
     scripts/verify_edistribuzione_login.py) scrive direttamente.
     """
+    if not _LOGGER.isEnabledFor(logging.DEBUG):
+        return
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -900,7 +908,7 @@ class EdistribuzioneAuthClient:
                 "E-Distribuzione non ha confermato l'invio del codice OTP "
                 "(nessuno dei messaggi attesi %r nella risposta, lunga %d "
                 "caratteri). Se il codice non arriva ne' via email ne' via "
-                "SMS, allega otp_send_debug.html alla segnalazione.",
+                "SMS, attiva il log di debug dell'integrazione, ripeti l'accesso e allega contatore_letture/debug/otp_send_debug.html alla segnalazione.",
                 _MARCATORI_OTP_INVIATO,
                 len(body),
             )

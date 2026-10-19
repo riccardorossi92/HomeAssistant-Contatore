@@ -26,3 +26,5 @@ edistribuzione_refresh_token.txt
 areti_misure_debug.json
 areti_home_debug.html
 areti_login_debug.html
+# Dump di debug dell'integrazione quando gli script girano dalla radice del repo.
+/contatore_letture/
