@@ -51,12 +51,6 @@ Assistant — segnala com'è andata in una issue. Dettagli sulle azioni in
 > autorizzato da E-Distribuzione: può smettere di funzionare in qualsiasi
 > momento. Il caricamento manuale non dipende da nessun accesso non
 > ufficiale.
->
-> Lo stesso accesso dal browser lo offrono anche altre integrazioni HACS,
-> di altri autori:
-> [fabioscarparo/HomeAssistant-EDistribuzione](https://github.com/fabioscarparo/HomeAssistant-EDistribuzione)
-> e [maurobraggio/HomeAssistant-EDistribuzione](https://github.com/maurobraggio/HomeAssistant-EDistribuzione).
-> Non sono sviluppate né verificate da questo progetto.
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
