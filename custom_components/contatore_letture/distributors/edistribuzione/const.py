@@ -190,24 +190,6 @@ MAX_MESI_STORICO = 18
 CONF_MODALITA = "modalita"
 MODALITA_AUTOMATICA = "automatica"
 MODALITA_MANUALE = "manuale"
-# Scelta del wizard, non un valore salvato: chiude il flow con i link ad
-# ALTRE_INTEGRAZIONI senza creare nessuna entry.
-MODALITA_ALTRE_INTEGRAZIONI = "altre_integrazioni"
-
-# Integrazioni HACS di terzi per E-Distribuzione, proposte nel wizard come
-# alternativa: dal 13/10/2026 offrono anche loro l'accesso dal browser al
-# posto del login bloccato. Questo progetto non le sviluppa ne' le
-# verifica. (nome, url)
-ALTRE_INTEGRAZIONI = (
-    (
-        "fabioscarparo/HomeAssistant-EDistribuzione",
-        "https://github.com/fabioscarparo/HomeAssistant-EDistribuzione",
-    ),
-    (
-        "maurobraggio/HomeAssistant-EDistribuzione",
-        "https://github.com/maurobraggio/HomeAssistant-EDistribuzione",
-    ),
-)
 # Scelta del wizard, non un valore salvato: l'accesso dal browser crea una
 # entry automatica come quella con password e OTP (stesso refresh_token,
 # stesso download giornaliero), cambia solo come si ottiene il primo token.

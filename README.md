@@ -55,8 +55,7 @@ Assistant — segnala com'è andata in una issue. Dettagli sulle azioni in
 > Lo stesso accesso dal browser lo offrono anche altre integrazioni HACS,
 > di altri autori:
 > [fabioscarparo/HomeAssistant-EDistribuzione](https://github.com/fabioscarparo/HomeAssistant-EDistribuzione)
-> e [maurobraggio/HomeAssistant-EDistribuzione](https://github.com/maurobraggio/HomeAssistant-EDistribuzione)
-> (il wizard le propone con la voce **Prova con altre integrazioni HACS**).
+> e [maurobraggio/HomeAssistant-EDistribuzione](https://github.com/maurobraggio/HomeAssistant-EDistribuzione).
 > Non sono sviluppate né verificate da questo progetto.
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
@@ -245,13 +244,6 @@ Per importare i dati:
 
 Ripeti dal punto 1 quando vuoi aggiornare i dati: i giorni già importati
 vengono sovrascritti, senza doppioni.
-
-La voce **Prova con altre integrazioni HACS** chiude il wizard senza creare
-nulla e mostra i link alle integrazioni di terzi citate sopra. Se ne
-installi una, scegline una sola (usano lo stesso nome interno e non possono
-convivere); non configurare lo stesso POD sia lì sia qui, oppure nella
-dashboard Energia usa una sola delle due statistiche, altrimenti i consumi
-vengono contati due volte.
 
 Lo **scaricamento automatico con password e OTP** resta nel wizard ma non
 è selezionabile finché E-Distribuzione blocca il login automatico. Le

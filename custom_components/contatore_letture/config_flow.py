@@ -548,9 +548,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         password resta nell'elenco, con il motivo, ma sceglierlo da' errore:
         i selettori di Home Assistant non hanno opzioni disattivate."""
         from .distributors.edistribuzione.const import (
-            ALTRE_INTEGRAZIONI,
             CONF_MODALITA,
-            MODALITA_ALTRE_INTEGRAZIONI,
             MODALITA_AUTOMATICA,
             MODALITA_BROWSER,
             MODALITA_MANUALE,
@@ -561,17 +559,6 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             if user_input[CONF_MODALITA] == MODALITA_MANUALE:
                 return await self.async_step_edistribuzione_manuale_pod()
-            if user_input[CONF_MODALITA] == MODALITA_ALTRE_INTEGRAZIONI:
-                # I link passano come placeholder: hassfest non accetta URL
-                # scritti direttamente nei testi di traduzione.
-                return self.async_abort(
-                    reason="edistribuzione_altre_integrazioni",
-                    description_placeholders={
-                        "elenco": "\n".join(
-                            f"- [{nome}]({url})" for nome, url in ALTRE_INTEGRAZIONI
-                        )
-                    },
-                )
             if user_input[CONF_MODALITA] == MODALITA_BROWSER:
                 return await self.async_step_edistribuzione_browser()
             if SCARICAMENTO_AUTOMATICO_DISPONIBILE:
@@ -593,10 +580,6 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             },
                             {"value": MODALITA_MANUALE, "label": "Caricamento manuale curve"},
                             {"value": MODALITA_AUTOMATICA, "label": etichetta_automatico},
-                            {
-                                "value": MODALITA_ALTRE_INTEGRAZIONI,
-                                "label": "Prova con altre integrazioni HACS",
-                            },
                         ],
                         mode=selector.SelectSelectorMode.LIST,
                     )

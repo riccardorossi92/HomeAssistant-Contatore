@@ -3,7 +3,6 @@ E-Distribuzione: niente login, solo il POD, e i CSV del portale caricati
 dalle opzioni (issue #11)."""
 from __future__ import annotations
 
-import re
 from unittest.mock import AsyncMock
 
 import pytest
@@ -70,20 +69,6 @@ async def test_automatico_non_selezionabile_finche_disattivato(hass, monkeypatch
     )
     assert res["step_id"] == "edistribuzione_modalita"
     assert res["errors"] == {"modalita": "automatico_non_disponibile"}
-
-
-async def test_altre_integrazioni_chiude_con_i_link(hass):
-    res = await _fino_a_modalita(hass)
-    res = await hass.config_entries.flow.async_configure(
-        res["flow_id"], {"modalita": "altre_integrazioni"}
-    )
-    assert res["type"] == FlowResultType.ABORT
-    assert res["reason"] == "edistribuzione_altre_integrazioni"
-    # Confronto esatto dei link estratti, non "url in testo": CodeQL lo
-    # segnala come controllo incompleto di un URL.
-    link = re.findall(r"\]\(([^)]*)\)", res["description_placeholders"]["elenco"])
-    assert link == [url for _, url in edist_const.ALTRE_INTEGRAZIONI]
-    assert not hass.config_entries.async_entries(DOMAIN)
 
 
 async def test_automatico_riattivato_porta_al_login(hass, monkeypatch):
