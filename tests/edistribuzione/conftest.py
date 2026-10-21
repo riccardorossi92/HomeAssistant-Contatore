@@ -5,6 +5,8 @@ __init__ non fa I/O, e i client auth/api creati restano inutilizzati.
 """
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -35,6 +37,10 @@ def make_edist_coordinator(hass):
             },
         )
         entry.add_to_hass(hass)
-        return create_coordinator(hass, entry)
+        coordinator = create_coordinator(hass, entry)
+        # Nessuna fornitura con impianto: i test che non riguardano
+        # l'immissione non devono arrivare alla rete per getSupplies.
+        coordinator._api.async_get_supplies = AsyncMock(return_value=[])
+        return coordinator
 
     return _make

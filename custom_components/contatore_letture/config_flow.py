@@ -826,7 +826,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_edistribuzione_pod(self, user_input: dict[str, Any] | None = None):
         from .distributors.edistribuzione.api import EdistribuzioneApiClient
-        from .distributors.edistribuzione.const import CONF_PODS, CONF_REFRESH_TOKEN, CONF_SUPPLIES
+        from .distributors.edistribuzione.const import CONF_PODS, CONF_REFRESH_TOKEN
 
         session = async_get_clientsession(self.hass)
         api = EdistribuzioneApiClient(session, self._edistribuzione_access_token)
@@ -848,11 +848,6 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         def crea_entry(pods: list[str]):
             titolo = pods[0] if len(pods) == 1 else f"{len(pods)} POD"
-            supplies_map = {
-                s.get("IdPod", s.get("pod")): s
-                for s in (self._edistribuzione_pods or [])
-                if s.get("IdPod") or s.get("pod")
-            }
             return self.async_create_entry(
                 title=f"E-Distribuzione ({titolo})",
                 data={
@@ -860,7 +855,6 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "comune": self._comune_name,
                     CONF_PODS: pods,
                     CONF_REFRESH_TOKEN: self._edistribuzione_refresh_token,
-                    CONF_SUPPLIES: supplies_map,
                 },
                 # Orario casuale per installazione (vedi orario_casuale):
                 # modificabile dalle opzioni.

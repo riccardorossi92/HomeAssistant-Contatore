@@ -331,6 +331,28 @@ metodo>` (varia per endpoint).
   tra prelievo e immissione/produzione è `energyType`, che riflette la grandezza
   richiesta (`"A1"` per energia attiva prelevata, `"A2"` per energia attiva immessa/prodotta).
 
+### Immissione e produzione (A2)
+
+Confermato da un impianto fotovoltaico in scambio sul posto con due POD
+(issue #13). `magnitude` accetta `A1` (energia prelevata) e `A2` (energia
+immessa); `energyType` nella risposta riporta la grandezza richiesta.
+
+| POD | `getSupplies` | `A1` | `A2` |
+|---|---|---|---|
+| scambio (`MeteringPointType: "M1"`) | `HasPlant: true` | prelievo da rete | immissione in rete |
+| produzione (`"M2"`, `POD_Scambio` rimanda al POD di scambio) | `HasPlant` assente | solo lo standby notturno dell'inverter (~0,05 kWh/giorno) | produzione solare |
+
+L'integrazione importa `A1` in `<pod>_energia` e `A2` in `<pod>_immissione`
+per tutti i POD, senza distinguere il POD di produzione dal prefisso. `A2` si
+chiede solo se `HasPlant` non è `false` (cioè `true` o assente), così chi non
+ha impianto non fa richieste in più; `getSupplies` si rilegge una volta al
+giorno e non viene salvato nella config entry, perché contiene codice
+fiscale e indirizzo. Il prelievo (`A1`) decide la coda dei giorni da
+riprovare: l'immissione non la tocca, e un errore su `A2` è solo un warning.
+Se `energyType` non coincide con la grandezza richiesta la curva viene
+scartata, per non scrivere un consumo nella serie dell'immissione se il
+server ignorasse il parametro.
+
 ## Caricamento manuale del CSV (dalla v0.9.0)
 
 Alternativa al login automatico, bloccato dall'antibot da ottobre 2026

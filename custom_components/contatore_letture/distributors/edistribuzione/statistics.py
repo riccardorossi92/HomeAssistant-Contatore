@@ -62,6 +62,7 @@ from ...statistics_common import (
     async_ultima_data_disponibile,
     sanitize_statistic_id,
 )
+from .const import MAGNITUDE_IMMISSIONE, MAGNITUDE_PRELIEVO
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ def _aggrega_per_ora(giorni: list[dict]) -> list[tuple[datetime, float]]:
 
 
 async def async_import_curva_giornaliera(
-    hass: HomeAssistant, pod: str, dati_grezzi: list[dict], magnitude: str = "A1"
+    hass: HomeAssistant, pod: str, dati_grezzi: list[dict], magnitude: str = MAGNITUDE_PRELIEVO
 ) -> date | None:
     """Importa i campioni a 15 minuti di E-Distribuzione come external
     statistics, aggregandoli in bucket orari.
@@ -138,6 +139,12 @@ async def async_import_curva_giornaliera(
     sovrapposizione) e ricalcola tutte le somme progressive da zero, così
     l'ordine di importazione (storico prima o dopo i dati recenti) non
     influisce sul risultato finale.
+
+    'magnitude' e' la grandezza chiesta all'API e decide la serie: il
+    prelievo va in <pod>_energia, l'immissione in <pod>_immissione. Se
+    'energyType' della risposta non coincide, la curva viene scartata (il
+    server potrebbe aver ignorato il parametro e risposto con l'altra
+    grandezza, che finirebbe nella serie sbagliata).
 
     Restituisce la data locale dell'ultimo punto della serie risultante,
     o None se non c'è nulla da importare.
@@ -157,7 +164,7 @@ async def async_import_curva_giornaliera(
             )
             return None
 
-    if magnitude == "A2":
+    if magnitude == MAGNITUDE_IMMISSIONE:
         statistic_id = sanitize_statistic_id(pod, "immissione")
         nome = f"E-Distribuzione {pod} Immissione"
     else:

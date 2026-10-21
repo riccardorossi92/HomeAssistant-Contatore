@@ -86,7 +86,6 @@ DEFAULT_UPDATE_INTERVAL_MINUTES = 60
 CONF_PODS = "pods"  # lista di codici POD (stringhe), non dict come pcf_common: qui non serve un dato fiscale per POD, sono tutti sulla stessa utenza gia' autenticata
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_ACCESS_TOKEN = "access_token"
-CONF_SUPPLIES = "supplies"
 
 DISPLAY_NAME = "E-Distribuzione"
 PIVA = "05779711000"  # confermata via scheda operatore ARERA (Id operatore 435, gruppo ENEL)
@@ -183,6 +182,14 @@ def orario_da_opzioni(opzioni: Mapping[str, Any]) -> time | None:
 # inizio non puo' essere anteriore a 18 mesi fa.
 MAX_MESI_PER_RICHIESTA = 6
 MAX_MESI_STORICO = 18
+
+# Grandezze del parametro 'magnitude' di async_get_daily_load_profile (backend
+# MuleSoft). Confermate su un impianto fotovoltaico reale (issue #13): vale
+# per il POD di scambio come per quello di produzione, e 'energyType' nella
+# risposta riporta la grandezza richiesta. Ogni grandezza ha la sua serie di
+# statistiche (statistics.py).
+MAGNITUDE_PRELIEVO = "A1"  # energia prelevata dalla rete -> <pod>_energia
+MAGNITUDE_IMMISSIONE = "A2"  # energia immessa (su un POD di produzione, la produzione) -> <pod>_immissione
 
 # Modalita' della config entry. "automatica" e' quella storica (login +
 # OTP, download giornaliero via API); "manuale" non ha credenziali: l'utente
