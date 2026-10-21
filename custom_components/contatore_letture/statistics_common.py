@@ -29,7 +29,7 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
-def sanitize_statistic_id(pod: str) -> str:
+def sanitize_statistic_id(pod: str, tipo: str = "energia") -> str:
     """Genera uno statistic_id valido a partire dal codice POD.
 
     Stesso formato per tutti i distributori: convivono così in modo
@@ -37,7 +37,7 @@ def sanitize_statistic_id(pod: str) -> str:
     popolato lo statistic_id di un dato POD.
     """
     slug = re.sub(r"[^a-z0-9_]", "_", pod.lower())
-    return f"{DOMAIN}:{slug}_energia"
+    return f"{DOMAIN}:{slug}_{tipo}"
 
 
 async def leggi_serie_esistente(hass: HomeAssistant, statistic_id: str) -> dict[datetime, float]:

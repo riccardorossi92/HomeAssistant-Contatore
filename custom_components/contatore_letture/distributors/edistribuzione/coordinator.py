@@ -52,6 +52,7 @@ from .const import (
     CONF_ORARIO_RICHIESTA,
     CONF_PODS,
     CONF_REFRESH_TOKEN,
+    CONF_SUPPLIES,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     MAX_GIORNI_IN_CODA,
     MAX_MESI_PER_RICHIESTA,
@@ -132,6 +133,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         self._auth = EdistribuzioneAuthClient(session)
         self._api = EdistribuzioneApiClient(session, access_token="")
         self._orario_ripiego: time | None = None
+        self._supplies: dict[str, dict] | None = None
         self._assicura_orario_richiesta()
 
     async def _async_ensure_token(self) -> None:
@@ -373,6 +375,43 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
         return atteso, atteso
 
+    async def _async_get_supplies_map(self) -> dict[str, dict]:
+        """Restituisce le forniture indicizzate per POD, cachandole in memoria."""
+        if self._supplies is None:
+            supplies_data = self.entry.data.get(CONF_SUPPLIES)
+            if supplies_data:
+                self._supplies = dict(supplies_data)
+                return self._supplies
+
+            try:
+                supplies = await self._api.async_get_supplies()
+                self._supplies = {
+                    s.get("IdPod", s.get("pod")): s
+                    for s in supplies
+                    if s.get("IdPod") or s.get("pod")
+                }
+            except Exception as err:
+                _LOGGER.warning(
+                    "Impossibile recuperare l'elenco forniture da E-Distribuzione: %s",
+                    err,
+                )
+                self._supplies = {}
+        return self._supplies
+
+    async def _async_magnitudes_for_pod(self, pod: str) -> list[str]:
+        """Restituisce le grandezze da richiedere per il POD.
+
+        A1 (prelievo) per tutti; A2 (immissione/produzione) solo se HasPlant
+        in getSupplies non è False (True per POD di scambio con impianto,
+        None/omesso per POD di produzione). Se getSupplies non è disponibile o
+        fallisce, per cautela richiede solo A1.
+        """
+        supplies = await self._async_get_supplies_map()
+        supply = supplies.get(pod)
+        if supply is not None and supply.get("HasPlant") is not False:
+            return ["A1", "A2"]
+        return ["A1"]
+
     # ------------------------------------------------------------------
     # Ciclo di polling automatico
     # ------------------------------------------------------------------
@@ -389,7 +428,9 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 data_da, data_a = richiesta
                 ultimo_giorno_richiesto = data_a
                 try:
-                    curva = await self._api.async_get_daily_load_profile(pod, data_da, data_a)
+                    curva = await self._api.async_get_daily_load_profile(
+                        pod, data_da, data_a, magnitude="A1"
+                    )
                 except EdistribuzioneApiError as err:
                     # I giorni richiesti vanno in coda invece di andare persi:
                     # al ciclo successivo 'atteso' sarebbe già avanzato.
@@ -400,7 +441,9 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                     ) from err
 
                 if _curva_ha_dati(curva):
-                    await async_import_curva_giornaliera(self.hass, pod, curva)
+                    await async_import_curva_giornaliera(
+                        self.hass, pod, curva, magnitude="A1"
+                    )
 
                     # L'intervallo può tornare parziale (i giorni più recenti
                     # non ancora pubblicati): quelli ricevuti escono dalla
@@ -416,6 +459,27 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 else:
                     for giorno in _giorni_nel_periodo(data_da, data_a):
                         self._accoda_giorno(pod, giorno)
+
+                # A2 (immissione/produzione): solo per POD con impianto.
+                # Non influenza coda né UpdateFailed: un errore qui genera solo un warning.
+                magnitudes = await self._async_magnitudes_for_pod(pod)
+                if "A2" in magnitudes:
+                    try:
+                        curva_a2 = await self._api.async_get_daily_load_profile(
+                            pod, data_da, data_a, magnitude="A2"
+                        )
+                        if _curva_ha_dati(curva_a2):
+                            await async_import_curva_giornaliera(
+                                self.hass, pod, curva_a2, magnitude="A2"
+                            )
+                    except EdistribuzioneApiError as err:
+                        _LOGGER.warning(
+                            "POD %s: errore recuperando A2 per il periodo %s - %s: %s",
+                            pod,
+                            data_da,
+                            data_a,
+                            err,
+                        )
 
             # 'reading'/'time_of_use' (letture ufficiali mensili) NON sono
             # piu' recuperati automaticamente qui - lo erano fino al ciclo
@@ -518,7 +582,9 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
         for pod_corrente in pod_da_recuperare:
             try:
-                curva = await self._api.async_get_daily_load_profile(pod_corrente, data_da, data_a)
+                curva = await self._api.async_get_daily_load_profile(
+                    pod_corrente, data_da, data_a, magnitude="A1"
+                )
             except EdistribuzioneApiError as err:
                 _LOGGER.warning(
                     "POD %s: errore recuperando il periodo %s - %s: %s",
@@ -537,7 +603,9 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 fallimenti.append(f"{pod_corrente}: nessun dato per il periodo richiesto")
                 continue
 
-            await async_import_curva_giornaliera(self.hass, pod_corrente, curva)
+            await async_import_curva_giornaliera(
+                self.hass, pod_corrente, curva, magnitude="A1"
+            )
 
             giorni_ricevuti = {
                 g.get("readings", {}).get("sampleDate") for g in curva if _curva_ha_dati([g])
@@ -579,6 +647,26 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 len(giorni_attesi),
                 dettaglio_mancanti,
             )
+
+            # A2 (immissione/produzione): solo per POD con impianto.
+            magnitudes = await self._async_magnitudes_for_pod(pod_corrente)
+            if "A2" in magnitudes:
+                try:
+                    curva_a2 = await self._api.async_get_daily_load_profile(
+                        pod_corrente, data_da, data_a, magnitude="A2"
+                    )
+                    if curva_a2 and _curva_ha_dati(curva_a2):
+                        await async_import_curva_giornaliera(
+                            self.hass, pod_corrente, curva_a2, magnitude="A2"
+                        )
+                except EdistribuzioneApiError as err:
+                    _LOGGER.warning(
+                        "POD %s: errore recuperando A2 per lo storico %s - %s: %s",
+                        pod_corrente,
+                        data_da,
+                        data_a,
+                        err,
+                    )
 
         if pod_con_dati == 0:
             raise HomeAssistantError(

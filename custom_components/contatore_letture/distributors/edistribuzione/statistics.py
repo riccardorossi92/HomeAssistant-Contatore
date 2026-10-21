@@ -38,15 +38,15 @@ async_get_reading): 134.925 kWh in entrambi i casi, combacianti fino alla
 terza cifra decimale. Non una stima approssimativa: un confronto diretto
 con dati reali.
 
-ASSUNZIONE ANCORA NON CONFERMATA (nessuna documentazione ufficiale, solo
-osservazione su due POD):
+CONFERMATO su impianto reale (ottobre 2026, issue #13):
 
-- 'timeType' osservato finora: solo "CONS" (consumo). Entrambi i POD di
-  test hanno HasPlant=False (nessun impianto di produzione); un POD con
-  impianto potrebbe restituire un valore diverso (es. "PROD" per
-  l'energia immessa in rete) che questo modulo non distingue ancora -
-  oggi somma comunque tutto in un'unica serie di "energia", da rivedere
-  se emerge un caso reale con impianto.
+- 'timeType' è sempre "CONS" sia per POD di prelievo/scambio (HasPlant: true),
+  sia per POD di produzione fotovoltaica dedicati (M2): E-Distribuzione non
+  restituisce mai "PROD". L'unica discriminante effettiva è 'energyType'
+  nei campioni di lettura, che rispecchia la grandezza richiesta ('magnitude'):
+  - A1: energia attiva prelevata (scritta nella serie _energia);
+  - A2: energia attiva immessa (scritta nella serie _immissione, che sul
+    contatore di produzione rappresenta l'energia solare generata).
 """
 from __future__ import annotations
 
@@ -127,7 +127,7 @@ def _aggrega_per_ora(giorni: list[dict]) -> list[tuple[datetime, float]]:
 
 
 async def async_import_curva_giornaliera(
-    hass: HomeAssistant, pod: str, dati_grezzi: list[dict]
+    hass: HomeAssistant, pod: str, dati_grezzi: list[dict], magnitude: str = "A1"
 ) -> date | None:
     """Importa i campioni a 15 minuti di E-Distribuzione come external
     statistics, aggregandoli in bucket orari.
@@ -143,10 +143,27 @@ async def async_import_curva_giornaliera(
     o None se non c'è nulla da importare.
     """
     if not dati_grezzi:
-        _LOGGER.debug("Nessun dato curva da importare per POD %s", pod)
+        _LOGGER.debug("Nessun dato curva da importare per POD %s (%s)", pod, magnitude)
         return None
 
-    statistic_id = sanitize_statistic_id(pod)
+    for g in dati_grezzi:
+        energy_type = g.get("readings", {}).get("energyType")
+        if energy_type and energy_type != magnitude:
+            _LOGGER.warning(
+                "POD %s: risposta con energyType '%s' non coincidente con la grandezza richiesta '%s', curva scartata",
+                pod,
+                energy_type,
+                magnitude,
+            )
+            return None
+
+    if magnitude == "A2":
+        statistic_id = sanitize_statistic_id(pod, "immissione")
+        nome = f"E-Distribuzione {pod} Immissione"
+    else:
+        statistic_id = sanitize_statistic_id(pod, "energia")
+        nome = f"E-Distribuzione {pod}"
+
     nuove_ore = dict(_aggrega_per_ora(dati_grezzi))
 
     if not nuove_ore:
@@ -169,7 +186,7 @@ async def async_import_curva_giornaliera(
     )
 
     return await async_scrivi_serie_oraria(
-        hass, pod, statistic_id, f"E-Distribuzione {pod}", nuove_ore
+        hass, pod, statistic_id, nome, nuove_ore
     )
 
 

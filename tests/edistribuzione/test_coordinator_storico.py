@@ -124,7 +124,7 @@ async def test_fallimento_parziale_resta_un_successo(
     qualcosa E' stato importato, e il POD fallito resta nei log."""
     coordinator = make_edist_coordinator(pods=[POD_A, POD_B])
 
-    async def _per_pod(pod, data_da, data_a):
+    async def _per_pod(pod, data_da, data_a, magnitude="A1"):
         if pod == POD_A:
             raise EdistribuzioneApiError("timeout")
         return _curva([data_da])
@@ -181,3 +181,62 @@ async def test_inizio_oltre_diciotto_mesi_fa_viene_rifiutato(
         await coordinator.async_recupera_storico(date(2025, 3, 14), date(2025, 6, 30))
 
     coordinator._api.async_get_daily_load_profile.assert_not_awaited()
+
+
+async def test_recupera_storico_con_impianto_richiede_anche_a2(
+    hass, make_edist_coordinator, _senza_token, _import_statistiche
+):
+    """POD con HasPlant: true richiede sia A1 (prelievo) sia A2 (immissione)."""
+    coordinator = make_edist_coordinator(
+        pods=[POD_A],
+        data={"supplies": {POD_A: {"HasPlant": True}}},
+    )
+    coordinator._api.async_get_daily_load_profile = AsyncMock(
+        return_value=_curva([DATA_DA])
+    )
+
+    with freeze_time(OGGI):
+        await coordinator.async_recupera_storico(DATA_DA, DATA_A)
+
+    assert coordinator._api.async_get_daily_load_profile.await_count == 2
+    assert _import_statistiche.await_count == 2
+
+
+async def test_recupera_storico_senza_impianto_richiede_solo_a1(
+    hass, make_edist_coordinator, _senza_token, _import_statistiche
+):
+    """POD con HasPlant: False richiede esclusivamente A1."""
+    coordinator = make_edist_coordinator(
+        pods=[POD_A],
+        data={"supplies": {POD_A: {"HasPlant": False}}},
+    )
+    coordinator._api.async_get_daily_load_profile = AsyncMock(
+        return_value=_curva([DATA_DA])
+    )
+
+    with freeze_time(OGGI):
+        await coordinator.async_recupera_storico(DATA_DA, DATA_A)
+
+    coordinator._api.async_get_daily_load_profile.assert_awaited_once_with(
+        POD_A, DATA_DA, DATA_A, magnitude="A1"
+    )
+    _import_statistiche.assert_awaited_once()
+
+
+async def test_recupera_storico_pod_produzione_m2_richiede_a2(
+    hass, make_edist_coordinator, _senza_token, _import_statistiche
+):
+    """POD di produzione dove HasPlant è omesso/None (non False) richiede anche A2."""
+    coordinator = make_edist_coordinator(
+        pods=[POD_A],
+        data={"supplies": {POD_A: {"MeteringPointType": "M2"}}},
+    )
+    coordinator._api.async_get_daily_load_profile = AsyncMock(
+        return_value=_curva([DATA_DA])
+    )
+
+    with freeze_time(OGGI):
+        await coordinator.async_recupera_storico(DATA_DA, DATA_A)
+
+    assert coordinator._api.async_get_daily_load_profile.await_count == 2
+

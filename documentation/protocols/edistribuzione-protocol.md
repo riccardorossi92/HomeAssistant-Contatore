@@ -324,9 +324,12 @@ metodo>` (varia per endpoint).
   della curva per un mese intero con il delta di due letture ufficiali
   consecutive: 134.925 kWh in entrambi i casi, combacianti fino alla
   terza cifra decimale.
-- `timeType` osservato finora: solo `"CONS"` (consumo). Un POD con
-  impianto di produzione (`HasPlant: true` in `getSupplies`) potrebbe
-  restituire un valore diverso (es. `"PROD"`) non ancora gestito.
+- `timeType` osservato: sempre `"CONS"`. Confermato su impianto reale con
+  fotovoltaico (ottobre 2026, issue #13) che anche per POD con impianto di
+  produzione (`HasPlant: true` sul POD di scambio e `MeteringPointType: M2` sul
+  POD di produzione) l'endpoint restituisce sempre `"CONS"`. L'unica discriminante
+  tra prelievo e immissione/produzione è `energyType`, che riflette la grandezza
+  richiesta (`"A1"` per energia attiva prelevata, `"A2"` per energia attiva immessa/prodotta).
 
 ## Caricamento manuale del CSV (dalla v0.9.0)
 

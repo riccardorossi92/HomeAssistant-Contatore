@@ -86,6 +86,7 @@ DEFAULT_UPDATE_INTERVAL_MINUTES = 60
 CONF_PODS = "pods"  # lista di codici POD (stringhe), non dict come pcf_common: qui non serve un dato fiscale per POD, sono tutti sulla stessa utenza gia' autenticata
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_ACCESS_TOKEN = "access_token"
+CONF_SUPPLIES = "supplies"
 
 DISPLAY_NAME = "E-Distribuzione"
 PIVA = "05779711000"  # confermata via scheda operatore ARERA (Id operatore 435, gruppo ENEL)
