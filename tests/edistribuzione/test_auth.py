@@ -1100,6 +1100,13 @@ class TestAccessoBrowser:
         )
         assert (tokens.access_token, tokens.refresh_token) == ("A", "R")
 
+    def test_intestazione_location_della_scheda_network(self):
+        client, _, state = self._client_con_link()
+        tokens = client.token_da_redirect_browser(
+            f"location: eneldist://redirect#access_token=A&refresh_token=R&state={state}"
+        )
+        assert (tokens.access_token, tokens.refresh_token) == ("A", "R")
+
     def test_testo_senza_redirect(self):
         client, url, _ = self._client_con_link()
         with pytest.raises(auth.EdistribuzioneRedirectNonValido) as err:

@@ -203,14 +203,23 @@ Dopo aver scelto il comune, il wizard chiede la modalità.
    altro account, esci prima; se è già collegato con quello giusto, passa
    al punto 2. Non farlo da un telefono con l'app E-Distribuzione
    installata: l'app aprirebbe l'indirizzo finale.
-2. Nella stessa finestra apri il secondo link, quello di autorizzazione.
-   La pagina resta bianca o mostra un errore: è normale, l'indirizzo
-   finale è pensato per l'app.
-3. Copia quell'indirizzo, che inizia con `eneldist://redirect`. In Chrome
-   ed Edge apri gli strumenti per sviluppatori (**F12**, o **⌥⌘J** su Mac)
-   e copia dalla scheda **Console** la riga rossa che lo contiene (va bene
-   la riga intera); in altri browser può comparire nella barra degli
-   indirizzi.
+2. Nella stessa finestra, **prima** di aprire il secondo link, apri gli
+   strumenti per sviluppatori (**F12**, o **⌥⌘I** su Mac), vai nella
+   scheda **Network** (Rete) e spunta **Preserve log** (Mantieni log). Poi
+   apri il link di autorizzazione. Se compare una pagina con **Consenti**
+   (succede la prima volta che un account autorizza l'app), premilo. La
+   pagina resta bianca o mostra un errore e la barra degli indirizzi non
+   cambia (per esempio resta su `…/AuthorizationPage`): è normale,
+   l'indirizzo finale è pensato per l'app e non compare lì.
+3. Nella scheda **Network** cerca la riga con stato **302**, cliccala e in
+   **Headers** → **Response Headers** copia il valore di **Location**, che
+   inizia con `eneldist://redirect`. In alternativa, nella scheda
+   **Console** può comparire una riga rossa `Failed to launch
+   'eneldist://redirect…'`: va bene anche quella intera. Se gli strumenti
+   per sviluppatori si aprono solo dopo, la riga di solito non c'è più:
+   riapri il link di autorizzazione con la scheda Network già aperta. Se il
+   browser chiede di aprire un'app, annulla: l'indirizzo va copiato, non
+   aperto.
 4. Incollalo nel wizard e scegli i POD.
 
 Servono due link perché il portale arriva all'indirizzo finale solo con un
