@@ -32,10 +32,10 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 Per Duereti/Unareti/E-Distribuzione/Areti/Ireti: login, lettura dati,
 import nella Energy Dashboard e più POD per configurazione — tutto
 confermato funzionante su installazioni reali. **SET Distribuzione** è
-nuovo: costruito su una cattura reale di un account con POD attivo, login
-provato dal vivo, ma non ancora confermato su un'installazione Home
-Assistant — segnala com'è andata in una issue. Dettagli sulle azioni in
-[Azioni](#azioni) più sotto.
+stato integrato in Home Assistant da un utente con POD attivo, che ha
+confermato i dati e importato lo storico; restano da verificare i giorni
+di cambio ora (dopo il 25/10/2026), quindi segnala in una issue
+eventuali anomalie. Dettagli sulle azioni in [Azioni](#azioni) più sotto.
 
 > [!WARNING]
 > **E-Distribuzione: login automatico bloccato, accesso dal browser**

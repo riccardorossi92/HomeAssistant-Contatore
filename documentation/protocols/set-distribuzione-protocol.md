@@ -211,6 +211,12 @@ fatturazione: c'è il dettaglio a 15 minuti e il flag `estimated` per ora.
 - **`recupera_storico`**: limite di cortesia di 366 giorni per azione
   (una chiamata al giorno).
 
+## Conferma su installazione reale
+
+Il contributore che ha fornito la cattura ha integrato SET Distribuzione in
+Home Assistant (21/10/2026): i dati corrispondono a quelli del portale e lo
+storico (`recupera_storico`) è stato importato senza problemi.
+
 ## Cosa resta aperto
 
 1. **Cambio ora**: nessuna cattura contiene un giorno da 23 o 25 ore.
