@@ -60,6 +60,10 @@ recupera_storico:
     attraversa e per ciascuno si importa il mese intero (non solo i
     giorni richiesti).
     Per periodi più lunghi ripeti l'azione su intervalli consecutivi.
+    Per Duereti/Unareti/RetiPiù/RE.V.V. ripetere l'azione sullo stesso
+    periodo mentre il file è ancora in coda viene rifiutato (il ticket in
+    corso resta valido); un periodo diverso sostituisce invece il recupero
+    in corso.
   fields:
     device_id:
       name: Configurazione / POD

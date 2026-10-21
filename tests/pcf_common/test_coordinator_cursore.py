@@ -224,3 +224,83 @@ async def test_recupera_storico_rifiuta_oltre_cinque_anni(hass, make_pcf_coordin
     coordinator = make_pcf_coordinator()
     with freeze_time(OGGI), pytest.raises(ServiceValidationError, match="ultimi 5 anni"):
         await coordinator.async_recupera_storico(date(2020, 1, 1), date(2020, 2, 1))
+
+
+async def _storico_in_attesa(hass, coordinator, da, a):
+    """Avvia un recupero storico il cui requestResult resta in coda finché
+    il test non lo sblocca (o lo annulla)."""
+    import asyncio
+
+    sblocca = asyncio.Event()
+
+    async def _attendi(ticket):
+        await sblocca.wait()
+        return b"<zip fittizio>"
+
+    coordinator.api.request_result.side_effect = _attendi
+    await coordinator.async_recupera_storico(da, a)
+    await hass.async_block_till_done(wait_background_tasks=False)
+    return sblocca
+
+
+async def test_recupera_storico_stesso_periodo_in_corso_non_rifa_la_richiesta(
+    hass, make_pcf_coordinator
+):
+    """Ripetere l'azione sullo stesso periodo mentre il file è ancora in coda
+    non deve buttare via il ticket con una nuova requestExport."""
+    from homeassistant.exceptions import ServiceValidationError
+
+    coordinator = make_pcf_coordinator()
+    with freeze_time(OGGI):
+        sblocca = await _storico_in_attesa(hass, coordinator, DA_AGO, A_AGO)
+        with pytest.raises(ServiceValidationError, match="già in corso"):
+            await coordinator.async_recupera_storico(DA_AGO, A_AGO)
+
+        assert coordinator.api.request_export.await_count == 1
+        assert coordinator.pending_ticket == "TICKET-1"
+        assert not coordinator._background_task.done()
+        sblocca.set()
+        await hass.async_block_till_done()
+
+
+async def test_recupera_storico_altro_periodo_sostituisce_quello_in_corso(
+    hass, make_pcf_coordinator
+):
+    """Un periodo diverso sostituisce il recupero in corso; l'annullamento del
+    vecchio task non deve azzerare lo stato del nuovo ticket."""
+    coordinator = make_pcf_coordinator()
+    with freeze_time(OGGI):
+        sblocca = await _storico_in_attesa(hass, coordinator, DA_AGO, A_AGO)
+        vecchio = coordinator._background_task
+        coordinator.api.request_export.return_value = "TICKET-2"
+        await coordinator.async_recupera_storico(date(2026, 7, 1), A_AGO)
+        await hass.async_block_till_done(wait_background_tasks=False)
+
+        assert vecchio.cancelled()
+        assert coordinator.pending_ticket == "TICKET-2"
+        assert coordinator.pending_since is not None
+        assert coordinator._entry.data[CONF_PENDING_TICKET] == "TICKET-2"
+        sblocca.set()
+        await hass.async_block_till_done()
+
+
+async def test_recupera_storico_rifiutato_lascia_proseguire_quello_in_corso(
+    hass, make_pcf_coordinator
+):
+    """Se la nuova requestExport viene rifiutata, il recupero già in corso
+    continua: lo si annulla solo quando il nuovo ticket c'è davvero."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    coordinator = make_pcf_coordinator()
+    with freeze_time(OGGI):
+        sblocca = await _storico_in_attesa(hass, coordinator, DA_AGO, A_AGO)
+        vecchio = coordinator._background_task
+        coordinator.api.request_export.side_effect = PcfApiError("bloccata dal WAF")
+        with pytest.raises(HomeAssistantError):
+            await coordinator.async_recupera_storico(date(2026, 7, 1), A_AGO)
+        await hass.async_block_till_done(wait_background_tasks=False)
+
+        assert not vecchio.done()
+        assert coordinator.pending_ticket == "TICKET-1"
+        sblocca.set()
+        await hass.async_block_till_done()

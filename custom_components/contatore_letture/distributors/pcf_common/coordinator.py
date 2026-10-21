@@ -325,14 +325,16 @@ class PcfCoordinator(DataUpdateCoordinator):
                 f"periodi consecutivi."
             )
 
-        if self._background_task and not self._background_task.done():
-            _LOGGER.warning(
-                "Annullo il recupero in corso (ticket %s) per avviare lo storico %s - %s",
-                self.pending_ticket or "sconosciuto",
-                data_da,
-                data_a,
+        in_corso = self._background_task is not None and not self._background_task.done()
+        if in_corso and self._periodo_pendente() == (data_da, data_a):
+            # Stesso periodo già in coda: una nuova requestExport butterebbe
+            # via il ticket su cui il distributore sta già lavorando (e il
+            # file può richiedere ore) per ricominciare da capo.
+            raise ServiceValidationError(
+                f"Il recupero del periodo {data_da} - {data_a} è già in corso "
+                f"(ticket {self.pending_ticket or 'sconosciuto'}): il file può "
+                "richiedere anche diverse ore, non serve ripetere l'azione."
             )
-            self._background_task.cancel()
 
         _LOGGER.info("Recupero storico avviato manualmente: %s - %s", data_da, data_a)
 
@@ -367,6 +369,18 @@ class PcfCoordinator(DataUpdateCoordinator):
                 "riguarda questa richiesta: riprova cambiando le date."
             ) from err
 
+        # Il recupero in corso si annulla solo ora che il nuovo ticket c'è:
+        # se requestExport fosse stata rifiutata, quello precedente avrebbe
+        # continuato indisturbato.
+        if self._background_task and not self._background_task.done():
+            _LOGGER.warning(
+                "Annullo il recupero in corso (ticket %s) per avviare lo storico %s - %s",
+                self.pending_ticket or "sconosciuto",
+                data_da,
+                data_a,
+            )
+            self._background_task.cancel()
+
         self.pending_since = dt_util.utcnow()
         self.pending_ticket = ticket
         self.hass.config_entries.async_update_entry(
@@ -383,6 +397,14 @@ class PcfCoordinator(DataUpdateCoordinator):
             self._poll_and_import(ticket, data_da, data_a, fase=FASE_STORICO),
             name=f"{DOMAIN}_recupero_storico_{data_da}_{data_a}",
         )
+
+    def _periodo_pendente(self) -> tuple[date, date] | None:
+        """Periodo del ticket pendente salvato nella config entry, se c'è."""
+        da = self._entry.data.get(CONF_PENDING_DATA_DA)
+        a = self._entry.data.get(CONF_PENDING_DATA_A)
+        if not da or not a:
+            return None
+        return date.fromisoformat(da), date.fromisoformat(a)
 
     def _fase_da_entry(self) -> str:
         """Legge la fase del ticket pendente dalla config entry.
@@ -618,9 +640,13 @@ class PcfCoordinator(DataUpdateCoordinator):
             # ticket resta salvato e verrà ripreso. CancelledError non deriva
             # da Exception, quindi senza questo ramo sfuggirebbe alla gestione
             # sotto lasciando pending_since valorizzato per sempre.
+            # Se nel frattempo è partito un altro ticket (l'annullamento
+            # arriva dopo che l'azione manuale ha già impostato il nuovo)
+            # non va azzerato lo stato di quello.
             _LOGGER.debug("Polling del ticket %s annullato", ticket)
-            self.pending_since = None
-            self.pending_ticket = None
+            if self.pending_ticket == ticket:
+                self.pending_since = None
+                self.pending_ticket = None
             raise
         except PcfAuthError as err:
             # Le credenziali non c'entrano con la validità del ticket:
