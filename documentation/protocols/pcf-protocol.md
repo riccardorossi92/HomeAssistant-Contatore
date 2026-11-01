@@ -60,11 +60,17 @@ Ogni ciclo (una volta al giorno):
   condividono quel mese (c'è un solo slot `CONF_PENDING_TICKET`, e ogni
   `requestResult` può restare in coda per ore: N export separati
   significherebbero attese seriali);
-- quando il file arriva, ogni POD del gruppo per cui contiene dati avanza
-  il cursore al mese successivo; gli altri restano fermi e vengono
-  riprovati. **Nessun abbandono automatico** (scelta deliberata, come
-  Areti): un mese mai pubblicato blocca il cursore di quel POD finché non
-  arriva. L'escape è `contatore_letture.recupera_storico`;
+- quando il file arriva, un POD del gruppo avanza il cursore al mese
+  successivo solo se la serie importata arriva fino all'ultimo giorno del
+  mese; altrimenti il cursore resta e il mese viene richiesto di nuovo al
+  ciclo dopo (il distributore pubblica il mese a poco a poco: il 1/11/2026
+  su Unareti ottobre arrivava fino al 30/10). Un mese ancora parziale
+  all'inizio del secondo mese successivo avanza comunque con un warning
+  (valvola di sicurezza, come `_mese_da_considerare_chiuso` di Areti): un
+  giorno mai pubblicato non blocca i mesi seguenti. **Nessun abbandono
+  automatico** per un mese del tutto vuoto (scelta deliberata, come Areti):
+  un mese mai pubblicato blocca il cursore di quel POD finché non arriva.
+  L'escape è `contatore_letture.recupera_storico`;
 - primo avvio (o POD aggiunto dalle opzioni): il cursore parte dal mese
   corrente, nessun backfill automatico;
 - se le external statistics coprono già il mese del cursore (cursore
