@@ -94,7 +94,7 @@ async def test_file_fermo_prima_dell_ultimo_giorno_non_avanza_il_cursore(
     pcf_io.parse_zip.return_value = curva(date(2026, 8, 1), date(2026, 8, 15), date(2026, 8, 30))
     coordinator = make_pcf_coordinator(data={CONF_MESE_DA_IMPORTARE: {POD_TEST: MESE_CHIUSO}})
 
-    with freeze_time(OGGI), caplog.at_level(logging.INFO):
+    with freeze_time("2026-09-01 12:00:00") as tempo, caplog.at_level(logging.INFO):
         await _aggiorna(hass, coordinator)
 
         assert coordinator.last_update_success is True
@@ -103,14 +103,46 @@ async def test_file_fermo_prima_dell_ultimo_giorno_non_avanza_il_cursore(
         assert "arriva solo fino al 2026-08-30" in caplog.text
 
         # Le statistiche ora arrivano al 30: il ciclo successivo deve chiedere
-        # di nuovo il mese invece di considerarlo già coperto.
+        # di nuovo il mese (non considerarlo già coperto), ma solo dal 29: una
+        # richiesta identica alla prima restituirebbe lo stesso ticket e lo
+        # stesso file fermo al 30.
         pcf_io.ultima_data.return_value = date(2026, 8, 30)
         await _aggiorna(hass, coordinator)
 
-    assert coordinator.api.request_export.await_count == 2
+        # Il file non avanza ancora: la richiesta cambia comunque, partendo
+        # un giorno più indietro, così non coincide con la precedente.
+        tempo.move_to("2026-09-02 12:00:00")
+        await _aggiorna(hass, coordinator)
+
+    periodi = [c.args[:2] for c in coordinator.api.request_export.await_args_list]
+    assert periodi == [
+        (DA_AGO, A_AGO),
+        (date(2026, 8, 29), A_AGO),
+        (date(2026, 8, 28), A_AGO),
+    ]
+    assert _cursori(coordinator) == {POD_TEST: MESE_CHIUSO}
+
+
+async def test_gruppo_con_un_pod_senza_dati_nel_mese_chiede_il_mese_intero(
+    hass, make_pcf_coordinator, pcf_io
+):
+    """Se anche un solo POD del gruppo non ha ancora nulla nel mese, il
+    ripiego sul range ristretto non vale: si chiede il mese intero."""
+    pods = [{"pod": POD_A, "df": DF_TEST}, {"pod": POD_B, "df": DF_TEST}]
+    pcf_io.parse_zip.return_value = curva(date(2026, 8, 1), date(2026, 8, 30), pod=POD_A)
+    coordinator = make_pcf_coordinator(
+        pods=pods,
+        data={CONF_MESE_DA_IMPORTARE: {POD_A: MESE_CHIUSO, POD_B: MESE_CHIUSO}},
+    )
+    pcf_io.ultima_data.side_effect = lambda hass, pod: (
+        date(2026, 8, 30) if pod == POD_A else None
+    )
+
+    with freeze_time("2026-09-01 12:00:00"):
+        await _aggiorna(hass, coordinator)
+
     da, a = coordinator.api.request_export.await_args.args[:2]
     assert (da, a) == (DA_AGO, A_AGO)
-    assert _cursori(coordinator) == {POD_TEST: MESE_CHIUSO}
 
 
 async def test_file_fino_all_ultimo_giorno_avanza_il_cursore_al_ciclo_successivo(
