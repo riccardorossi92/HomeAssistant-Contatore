@@ -20,10 +20,12 @@ from datetime import date
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import CoreState, HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.start import async_at_started
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import CONF_CLIENT_ID, CONF_PODS, CONF_SECRET_ID, DOMAIN
 from .distributors import DISTRIBUTOR_REGISTRY
@@ -191,6 +193,60 @@ async def _async_registra_servizi(hass: HomeAssistant) -> None:
     )
 
 
+async def _async_primo_aggiornamento(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator: DataUpdateCoordinator,
+    display_name: str,
+    *,
+    riprova_se_fallisce: bool = False,
+) -> None:
+    """Esegue il primo aggiornamento del coordinator senza bloccare l'avvio di HA.
+
+    Il primo aggiornamento importa le curve di consumo nelle statistiche e
+    per leggere la serie gia' presente aspetta che il recorder svuoti la
+    coda (statistics_common.leggi_serie_esistente). All'avvio di Home
+    Assistant il recorder e' ancora impegnato: attenderlo dentro
+    async_setup_entry tiene fermo il bootstrap fino al timeout globale
+    dello stage 2 (issue #16). Finche' HA non e' partito il primo
+    aggiornamento viene quindi rimandato in background a EVENT_HOMEASSISTANT_STARTED;
+    se la entry viene aggiunta o ricaricata a HA gia' avviato si aspetta
+    invece subito, come prima.
+
+    riprova_se_fallisce: solo se si attende subito, un fallimento solleva
+    ConfigEntryNotReady (HA riprova il setup da solo) invece di limitarsi a
+    un avviso. Lo usa E-Distribuzione, il cui refresh_token e' appena stato
+    ottenuto nel config flow: un fallimento immediato segnala verosimilmente
+    un problema reale. Con il rinvio all'avvio il setup e' gia' concluso, e
+    il coordinator riprova al giro successivo.
+    """
+
+    async def _aggiorna() -> None:
+        await coordinator.async_refresh()
+        if not coordinator.last_update_success:
+            _LOGGER.warning(
+                "Primo aggiornamento dati non riuscito per %s (l'autenticazione però funziona): "
+                "l'integrazione resta attiva e riproverà automaticamente. Ultimo errore: %s",
+                display_name,
+                coordinator.last_exception,
+            )
+
+    if hass.state is CoreState.running:
+        if riprova_se_fallisce:
+            await coordinator.async_config_entry_first_refresh()
+        else:
+            await _aggiorna()
+        return
+
+    @callback
+    def _al_termine_avvio(_hass: HomeAssistant) -> None:
+        entry.async_create_background_task(
+            hass, _aggiorna(), f"{DOMAIN} primo aggiornamento {display_name}"
+        )
+
+    entry.async_on_unload(async_at_started(hass, _al_termine_avvio))
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Inizializza l'integrazione a partire da una config entry."""
     distributor_key = entry.data["distributor"]
@@ -215,14 +271,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
         await _async_registra_servizi(hass)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-        await coordinator.async_refresh()
-        if not coordinator.last_update_success:
-            _LOGGER.warning(
-                "Primo aggiornamento dati non riuscito per %s (l'autenticazione però funziona): "
-                "l'integrazione resta attiva e riproverà automaticamente. Ultimo errore: %s",
-                info["display_name"],
-                coordinator.last_exception,
-            )
+        await _async_primo_aggiornamento(hass, entry, coordinator, info["display_name"])
         return True
 
     if info["kind"] == "edistribuzione" and e_manuale(entry):
@@ -241,7 +290,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # bene, dato che il refresh_token e' stato appena ottenuto nel config
         # flow e un fallimento immediato segnala verosimilmente un problema
         # reale (non il tipo di blocco WAF intermittente visto su Duereti).
-        await coordinator.async_config_entry_first_refresh()
+        await _async_primo_aggiornamento(
+            hass, entry, coordinator, info["display_name"], riprova_se_fallisce=True
+        )
         return True
 
     if info["kind"] == "areti":
@@ -255,14 +306,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # mese ancora senza dati NON e' un fallimento qui - il
         # coordinator lo gestisce restando semplicemente fermo sul suo
         # cursore, senza sollevare (vedi coordinator.py).
-        await coordinator.async_refresh()
-        if not coordinator.last_update_success:
-            _LOGGER.warning(
-                "Primo aggiornamento dati non riuscito per %s (l'autenticazione però funziona): "
-                "l'integrazione resta attiva e riproverà automaticamente. Ultimo errore: %s",
-                info["display_name"],
-                coordinator.last_exception,
-            )
+        await _async_primo_aggiornamento(hass, entry, coordinator, info["display_name"])
         return True
 
     if info["kind"] in ("ireti", "setdistribuzione"):
@@ -276,14 +320,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # POD appena associato non e' un fallimento - il coordinator
         # importa semplicemente quello che trova nella finestra scorrevole
         # (vedi coordinator.py).
-        await coordinator.async_refresh()
-        if not coordinator.last_update_success:
-            _LOGGER.warning(
-                "Primo aggiornamento dati non riuscito per %s (l'autenticazione però funziona): "
-                "l'integrazione resta attiva e riproverà automaticamente. Ultimo errore: %s",
-                info["display_name"],
-                coordinator.last_exception,
-            )
+        await _async_primo_aggiornamento(hass, entry, coordinator, info["display_name"])
         return True
 
     # Nessun altro "kind" atteso: se arriviamo qui e' un bug del registry.
