@@ -117,7 +117,10 @@ punti dell'orchestratore condiviso.
 - `__init__.py`:
   - `async_setup_entry`: nuovo branch `if info["kind"] == "<nome>": ...`
     (crea il coordinator, registra i servizi condivisi se pertinente,
-    fa il primo refresh).
+    fa il primo refresh con `_async_primo_aggiornamento`, che durante
+    l'avvio di Home Assistant lo rimanda in background invece di
+    attenderlo: il primo refresh può aspettare il recorder e bloccare il
+    bootstrap, vedi issue #16).
   - `async_unload_entry`: se il nuovo coordinator deve influenzare la
     rimozione dei servizi condivisi (`recupera_storico`), aggiorna i
     controlli `pcf_rimasti`/`edistribuzione_rimasti` per includere anche
