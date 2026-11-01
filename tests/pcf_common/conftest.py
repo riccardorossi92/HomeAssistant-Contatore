@@ -29,6 +29,7 @@ from custom_components.contatore_letture.distributors.pcf_common.api import (
     CurvaPunto,
     RisultatoLetture,
 )
+from custom_components.contatore_letture.distributors.pcf_common.const import CONF_ORARIO_RICHIESTA
 
 POD_TEST = "IT001E00000001"
 DF_TEST = "RSSMRA80A01H501U"
@@ -115,7 +116,9 @@ def make_pcf_coordinator(hass):
                 "pods": pods,
                 **(data or {}),
             },
-            options=options or {},
+            # Orario a mezzanotte: i test che non riguardano l'orario di
+            # richiesta non devono dipendere dall'ora fissata con freeze_time.
+            options={CONF_ORARIO_RICHIESTA: "00:00", **(options or {})},
         )
         entry.add_to_hass(hass)
         coordinator = duereti.create_coordinator(

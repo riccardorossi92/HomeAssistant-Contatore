@@ -16,6 +16,7 @@ from freezegun import freeze_time
 from custom_components.contatore_letture.distributors.pcf_common.api import PcfApiError
 from custom_components.contatore_letture.distributors.pcf_common.const import (
     CONF_MESE_DA_IMPORTARE,
+    CONF_ORARIO_RICHIESTA,
     CONF_PENDING_DATA_A,
     CONF_PENDING_DATA_DA,
     CONF_PENDING_IS_BACKFILL,
@@ -102,23 +103,24 @@ async def test_file_fermo_prima_dell_ultimo_giorno_non_avanza_il_cursore(
         assert _cursori(coordinator) == {POD_TEST: MESE_CHIUSO}
         assert "arriva solo fino al 2026-08-30" in caplog.text
 
-        # Le statistiche ora arrivano al 30: il ciclo successivo deve chiedere
-        # di nuovo il mese (non considerarlo già coperto), ma solo dal 29: una
-        # richiesta identica alla prima restituirebbe lo stesso ticket e lo
+        # Le statistiche ora arrivano al 30: il giorno dopo il mese va chiesto
+        # di nuovo (non considerato già coperto), ma da un periodo diverso dal
+        # primo: una richiesta identica restituirebbe lo stesso ticket e lo
         # stesso file fermo al 30.
         pcf_io.ultima_data.return_value = date(2026, 8, 30)
+        tempo.move_to("2026-09-02 12:00:00")
         await _aggiorna(hass, coordinator)
 
         # Il file non avanza ancora: la richiesta cambia comunque, partendo
         # un giorno più indietro, così non coincide con la precedente.
-        tempo.move_to("2026-09-02 12:00:00")
+        tempo.move_to("2026-09-03 12:00:00")
         await _aggiorna(hass, coordinator)
 
     periodi = [c.args[:2] for c in coordinator.api.request_export.await_args_list]
     assert periodi == [
         (DA_AGO, A_AGO),
-        (date(2026, 8, 29), A_AGO),
         (date(2026, 8, 28), A_AGO),
+        (date(2026, 8, 27), A_AGO),
     ]
     assert _cursori(coordinator) == {POD_TEST: MESE_CHIUSO}
 
@@ -153,14 +155,17 @@ async def test_file_fino_all_ultimo_giorno_avanza_il_cursore_al_ciclo_successivo
     pcf_io.parse_zip.return_value = curva(date(2026, 8, 1), date(2026, 8, 30))
     coordinator = make_pcf_coordinator(data={CONF_MESE_DA_IMPORTARE: {POD_TEST: MESE_CHIUSO}})
 
-    with freeze_time(OGGI):
+    with freeze_time(OGGI) as tempo:
         await _aggiorna(hass, coordinator)
         assert _cursori(coordinator) == {POD_TEST: MESE_CHIUSO}
 
+        tempo.move_to("2026-09-16 12:00:00")
         pcf_io.ultima_data.return_value = date(2026, 8, 30)
         pcf_io.parse_zip.return_value = curva(date(2026, 8, 1), A_AGO)
         await _aggiorna(hass, coordinator)
         assert _cursori(coordinator) == {POD_TEST: "2026-09"}
+
+        tempo.move_to("2026-09-17 12:00:00")
 
         # Settembre è ancora aperto: il ciclo successivo non chiede nulla.
         await _aggiorna(hass, coordinator)
@@ -214,12 +219,13 @@ async def test_file_vuoto_lascia_il_cursore_fermo_e_riprova(
     pcf_io.parse_zip.return_value = {}
     coordinator = make_pcf_coordinator(data={CONF_MESE_DA_IMPORTARE: {POD_TEST: MESE_CHIUSO}})
 
-    with freeze_time(OGGI):
+    with freeze_time(OGGI) as tempo:
         await _aggiorna(hass, coordinator)
         assert _cursori(coordinator) == {POD_TEST: MESE_CHIUSO}
         assert coordinator.last_update_success is True
         assert CONF_PENDING_TICKET not in coordinator._entry.data
 
+        tempo.move_to("2026-09-16 12:00:00")
         await _aggiorna(hass, coordinator)
 
     assert coordinator.api.request_export.await_count == 2
@@ -406,3 +412,77 @@ async def test_recupera_storico_rifiutato_lascia_proseguire_quello_in_corso(
         assert coordinator.pending_ticket == "TICKET-1"
         sblocca.set()
         await hass.async_block_till_done()
+
+
+async def test_prima_dell_orario_non_chiede_nulla(hass, make_pcf_coordinator, pcf_io):
+    """Il mese da importare c'è, ma prima dell'orario scelto per l'installazione
+    il ciclo non interroga il distributore: il dato del giorno prima è
+    pubblicato nel pomeriggio."""
+    pcf_io.parse_zip.return_value = curva(date(2026, 8, 1), A_AGO)
+    coordinator = make_pcf_coordinator(
+        data={CONF_MESE_DA_IMPORTARE: {POD_TEST: MESE_CHIUSO}},
+        options={CONF_ORARIO_RICHIESTA: "19:30"},
+    )
+
+    with freeze_time("2026-09-01 19:29:00") as tempo:
+        await _aggiorna(hass, coordinator)
+        assert coordinator.api.request_export.await_count == 0
+        assert _cursori(coordinator) == {POD_TEST: MESE_CHIUSO}
+
+        tempo.move_to("2026-09-01 19:30:00")
+        await _aggiorna(hass, coordinator)
+
+    assert coordinator.api.request_export.await_count == 1
+    assert _cursori(coordinator) == {POD_TEST: "2026-09"}
+
+
+async def test_una_sola_richiesta_al_giorno(hass, make_pcf_coordinator, pcf_io):
+    """Il ciclo gira ogni ora: dopo una richiesta riuscita, anche se il file
+    era parziale e il cursore è rimasto, fino a domani non se ne fanno altre
+    (con lo stesso periodo si riavrebbe lo stesso ticket e lo stesso file)."""
+    pcf_io.parse_zip.return_value = curva(date(2026, 8, 1), date(2026, 8, 30))
+    coordinator = make_pcf_coordinator(data={CONF_MESE_DA_IMPORTARE: {POD_TEST: MESE_CHIUSO}})
+
+    with freeze_time("2026-09-01 18:00:00") as tempo:
+        await _aggiorna(hass, coordinator)
+        pcf_io.ultima_data.return_value = date(2026, 8, 30)
+        for ora in ("19:00:00", "20:00:00", "23:00:00"):
+            tempo.move_to(f"2026-09-01 {ora}")
+            await _aggiorna(hass, coordinator)
+        assert coordinator.api.request_export.await_count == 1
+
+        tempo.move_to("2026-09-02 18:00:00")
+        await _aggiorna(hass, coordinator)
+
+    assert coordinator.api.request_export.await_count == 2
+    assert _cursori(coordinator) == {POD_TEST: MESE_CHIUSO}
+
+
+async def test_orario_mancante_viene_scelto_a_caso_tra_le_18_e_le_22(
+    hass, make_pcf_coordinator
+):
+    """Una entry senza orario (creata prima, o mai avviata) ne riceve uno
+    casuale nella fascia serale, salvato nelle opzioni: resta lo stesso ai
+    riavvii."""
+    coordinator = make_pcf_coordinator(options={CONF_ORARIO_RICHIESTA: None})
+    hass.config_entries.async_update_entry(coordinator._entry, options={})
+
+    coordinator._assicura_orario_richiesta()
+
+    salvato = coordinator._entry.options[CONF_ORARIO_RICHIESTA]
+    ore, minuti = (int(x) for x in salvato.split(":"))
+    assert 18 * 60 <= ore * 60 + minuti <= 22 * 60
+
+    coordinator._assicura_orario_richiesta()
+    assert coordinator._entry.options[CONF_ORARIO_RICHIESTA] == salvato
+
+
+async def test_orario_non_valido_usa_un_ripiego_senza_toccare_le_opzioni(
+    hass, make_pcf_coordinator
+):
+    coordinator = make_pcf_coordinator(options={CONF_ORARIO_RICHIESTA: "boh"})
+
+    orario = coordinator._orario_richiesta
+
+    assert 18 <= orario.hour <= 22
+    assert coordinator._entry.options[CONF_ORARIO_RICHIESTA] == "boh"

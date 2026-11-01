@@ -53,7 +53,17 @@ fino a ieri, ma l'integrazione importa solo `MODE_CURVE`.
 Di conseguenza `pcf_common` usa lo **stesso modello di Areti**: un
 **cursore mensile persistito per POD** su `entry.data`
 (`CONF_MESE_DA_IMPORTARE = {pod: "YYYY-MM"}` = prossimo mese da importare).
-Ogni ciclo (una volta al giorno):
+Il ciclo gira ogni ora, ma chiede al distributore **al massimo una volta
+al giorno** e solo dopo un orario scelto a caso per installazione tra le
+18:00 e le 22:00 (`CONF_ORARIO_RICHIESTA` nelle opzioni): il dato del
+giorno prima è pubblicato nel pomeriggio, intorno alle 16 (verificato), e a
+fine mese serve che il primo ciclo dopo la chiusura trovi già l'ultimo
+giorno. Una richiesta identica a una già evasa restituirebbe lo stesso
+ticket, perciò dopo una richiesta riuscita non se ne fanno altre fino al
+giorno dopo (il limite è in memoria: dopo un riavvio la richiesta può
+ripartire con lo stesso periodo, senza danni).
+
+Ad ogni richiesta:
 
 - si prende il più vecchio tra i cursori che puntano a un **mese già
   chiuso** e si fa **una** `requestExport` per il gruppo di POD che
@@ -84,9 +94,9 @@ Ogni ciclo (una volta al giorno):
   perso, import fatto a mano) il ciclo avanza il cursore senza rifare la
   richiesta.
 
-Non c'è più un "orario della richiesta" configurabile per Duereti/Unareti
-(la voce resta solo per E-Distribuzione, che pubblica ancora giorno per
-giorno). Gli helper di mese puri stanno in `pcf_common/date_utils.py`
+L'orario di richiesta è salvato nelle opzioni ma per Duereti/Unareti non
+c'è (ancora) una voce nel menu per cambiarlo, a differenza di
+E-Distribuzione. Gli helper di mese puri stanno in `pcf_common/date_utils.py`
 (nessun import da `homeassistant`, così `api.py` li può usare per la
 verifica del POD in configurazione).
 

@@ -4,6 +4,10 @@ BASE_URL e DOMAIN NON stanno qui: BASE_URL è specifico di ogni distributore
 (vedi distributors/duereti.py, distributors/unareti.py), DOMAIN è unificato
 a livello di contatore_letture (vedi const.py principale).
 """
+import random
+from collections.abc import Mapping
+from datetime import time
+from typing import Any
 
 CONF_CLIENT_ID = "client_id"
 CONF_SECRET_ID = "secret_id"
@@ -65,13 +69,49 @@ RESULT_POLL_INTERVAL_SECONDS = 1800  # 30 minuti
 RESULT_POLL_MAX_ATTEMPTS = 12  # ~6 ore totali di attesa massima
 
 # I dati si pubblicano a mese solare chiuso, non giorno per giorno: la
-# granularità utile è mensile, quindi un controllo al giorno è sufficiente
-# (come per Areti). Ogni ciclo, per ciascun POD, il coordinator guarda il
-# suo cursore: se punta a un mese già chiuso lo chiede, altrimenti resta
-# fermo. Il polling del file di un ticket già ottenuto è su un task in
-# background a parte (RESULT_POLL_INTERVAL_SECONDS), indipendente da questo
-# intervallo.
-DEFAULT_SCAN_INTERVAL_HOURS = 24
+# granularità utile è mensile (come per Areti). Ogni ciclo, per ciascun POD,
+# il coordinator guarda il suo cursore: se punta a un mese già chiuso lo
+# chiede, altrimenti resta fermo. Il ciclo gira ogni ora ma chiede al
+# distributore al massimo una volta al giorno, dopo l'orario scelto (vedi
+# CONF_ORARIO_RICHIESTA): un'unica scadenza di 24 ore dal caricamento
+# dell'integrazione farebbe cadere la richiesta in un'ora qualunque, anche
+# prima che il distributore abbia pubblicato il giorno prima. Il polling del
+# file di un ticket già ottenuto è su un task in background a parte
+# (RESULT_POLL_INTERVAL_SECONDS), indipendente da questo intervallo.
+DEFAULT_SCAN_INTERVAL_HOURS = 1
+
+# Orario "HH:MM" (locale), nelle opzioni della entry, dopo il quale il ciclo
+# può chiedere un mese al distributore. Scelto a caso una volta per
+# installazione tra le 18:00 e le 22:00 (estremi compresi): il distributore
+# pubblica il dato del giorno prima nel pomeriggio, intorno alle 16
+# (verificato), quindi la sera ha margine. Serve soprattutto a fine mese: il
+# primo ciclo dopo la chiusura trova così anche l'ultimo giorno. Il caso
+# comune è un mese già pubblicato per intero; se manca ancora un giorno, la
+# richiesta viene ripetuta il giorno dopo (vedi _inizio_richiesta nel
+# coordinator). Casuale per non far interrogare il distributore da tutte le
+# installazioni nello stesso momento.
+CONF_ORARIO_RICHIESTA = "orario_richiesta"
+ORARIO_CASUALE_DA_MINUTI = 18 * 60
+ORARIO_CASUALE_A_MINUTI = 22 * 60
+
+
+def orario_casuale() -> str:
+    """Orario "HH:MM" casuale tra ORARIO_CASUALE_DA_MINUTI e
+    ORARIO_CASUALE_A_MINUTI, estremi compresi."""
+    minuti = random.randint(ORARIO_CASUALE_DA_MINUTI, ORARIO_CASUALE_A_MINUTI)
+    return f"{minuti // 60:02d}:{minuti % 60:02d}"
+
+
+def orario_da_opzioni(opzioni: Mapping[str, Any]) -> time | None:
+    """Orario salvato nelle opzioni (CONF_ORARIO_RICHIESTA); None se assente
+    o non valido."""
+    valore = opzioni.get(CONF_ORARIO_RICHIESTA)
+    if valore is None:
+        return None
+    try:
+        return time.fromisoformat(str(valore)).replace(second=0, microsecond=0)
+    except ValueError:
+        return None
 
 ESITO_OK = 0
 # Non usata: il codice verifica esito != ESITO_OK. Documentata per

@@ -342,7 +342,12 @@ abbandonare un mese in attesa. Per **Areti**, che completa i mesi chiusi
 qualche giorno alla volta, si passa al mese successivo solo quando quello
 in attesa è arrivato completo: fino ad allora la parte disponibile viene
 importata e riaggiornata ogni giorno. Un POD nuovo parte dal mese corrente:
-niente backfill automatico.
+niente backfill automatico. Per Duereti, Unareti, RetiPiù e Reti Valtellina
+Valchiavenna la richiesta parte **la sera, a un orario scelto a caso tra le
+18:00 e le 22:00** al momento della configurazione (diverso per ogni
+installazione), perché il dato del giorno prima viene pubblicato nel
+pomeriggio. Se un mese arriva ancora senza l'ultimo giorno, viene richiesto
+di nuovo il giorno dopo.
 
 **E-Distribuzione** invece pubblica giorno per giorno: **ogni pomeriggio/sera,
 a un orario scelto a caso tra le 16:00 e le 20:00** al momento della

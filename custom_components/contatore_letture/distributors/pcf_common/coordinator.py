@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
@@ -44,6 +44,7 @@ from .api import (
 )
 from .const import (
     CONF_MESE_DA_IMPORTARE,
+    CONF_ORARIO_RICHIESTA,
     CONF_PENDING_DATA_A,
     CONF_PENDING_DATA_DA,
     CONF_PENDING_IS_BACKFILL,
@@ -56,6 +57,8 @@ from .const import (
     MAX_DATE_RANGE_MONTHS,
     MINUTI_ATTESA_SUGGERITI,
     MODE_CURVE,
+    orario_casuale,
+    orario_da_opzioni,
 )
 from .date_utils import (
     mese_e_chiuso,
@@ -93,8 +96,11 @@ def _inizio_n_mesi_prima(fine: date, n_mesi: int) -> date:
 class PcfCoordinator(DataUpdateCoordinator):
     """Coordina il download mensile delle curve e il loro import come statistiche.
 
-    Il ciclo automatico, una volta al giorno (la granularità utile è
-    mensile), per ciascun POD guarda il suo cursore 'mese_da_importare':
+    Il ciclo automatico gira ogni ora, ma chiede al distributore al massimo
+    una volta al giorno e solo dopo l'orario scelto per l'installazione
+    (CONF_ORARIO_RICHIESTA, tra le 18 e le 22: il dato del giorno prima è
+    pubblicato nel pomeriggio). Per ciascun POD guarda il suo cursore
+    'mese_da_importare':
 
     - se punta a un mese GIÀ CHIUSO, il coordinator sceglie il più vecchio
       tra tutti i cursori arretrati e chiede quel mese per il gruppo di POD
@@ -162,6 +168,13 @@ class PcfCoordinator(DataUpdateCoordinator):
         # account da un problema di recupero dati: le entità del
         # dispositivo "Account API" si basano su questo.
         self.token_ok: bool = True
+        # Giorno in cui è partita l'ultima requestExport del ciclo
+        # automatico: solo in memoria. Dopo un riavvio la richiesta può
+        # ripartire nello stesso giorno, con lo stesso periodo: costa una
+        # chiamata e non cambia nulla.
+        self._ultima_richiesta_il: date | None = None
+        self._orario_ripiego: time | None = None
+        self._assicura_orario_richiesta()
 
         # Se la entry viene smontata (reload, riavvio, rimozione) mentre il
         # polling in background è a metà, lo cancelliamo invece di lasciarlo
@@ -169,6 +182,36 @@ class PcfCoordinator(DataUpdateCoordinator):
         # (vedi _async_update_data), quindi la prossima istanza del
         # coordinator lo riprende comunque in modo pulito.
         entry.async_on_unload(self._annulla_task_in_background)
+
+    def _assicura_orario_richiesta(self) -> None:
+        """Entry senza orario (create prima, o in un modo che non lo imposta):
+        ne sceglie uno casuale e lo salva nelle opzioni, così resta lo stesso
+        ai riavvii. Non si tocca un orario già presente."""
+        opzioni = self._entry.options
+        if CONF_ORARIO_RICHIESTA in opzioni:
+            return
+        orario = orario_casuale()
+        self.hass.config_entries.async_update_entry(
+            self._entry, options={**opzioni, CONF_ORARIO_RICHIESTA: orario}
+        )
+        _LOGGER.info("Orario della richiesta giornaliera scelto a caso: %s", orario)
+
+    @property
+    def _orario_richiesta(self) -> time:
+        """Orario (locale) dopo il quale il ciclo può chiedere un mese."""
+        orario = orario_da_opzioni(self._entry.options)
+        if orario is not None:
+            return orario
+        # Valore rovinato: uno casuale per questo avvio, senza salvarlo,
+        # per non sovrascrivere quello che c'è nelle opzioni.
+        if self._orario_ripiego is None:
+            self._orario_ripiego = dt_util.parse_time(orario_casuale())
+            _LOGGER.warning(
+                "Orario richiesta non valido nelle opzioni (%r): uso le %s",
+                self._entry.options.get(CONF_ORARIO_RICHIESTA),
+                self._orario_ripiego.strftime("%H:%M"),
+            )
+        return self._orario_ripiego
 
     @callback
     def _annulla_task_in_background(self) -> None:
@@ -511,6 +554,27 @@ class PcfCoordinator(DataUpdateCoordinator):
                 self.data or {"stato": f"mese {mese} già coperto dai dati esistenti"}
             )
 
+        # Da qui in poi si chiede al distributore: una sola volta al giorno
+        # e solo dopo l'orario scelto, quando il dato del giorno prima è già
+        # stato pubblicato. Con la stessa richiesta ripetuta nello stesso
+        # giorno si riavrebbe lo stesso ticket e lo stesso file.
+        adesso = dt_util.now()
+        if adesso.time() < self._orario_richiesta:
+            _LOGGER.debug(
+                "Mese %s da importare, ma prima dell'orario di richiesta (%s)",
+                mese,
+                self._orario_richiesta.strftime("%H:%M"),
+            )
+            return await self._con_ultime_date(
+                self.data
+                or {"stato": f"in attesa dell'orario ({self._orario_richiesta:%H:%M})"}
+            )
+        if self._ultima_richiesta_il == adesso.date():
+            _LOGGER.debug("Mese %s già richiesto oggi, riprovo domani", mese)
+            return await self._con_ultime_date(
+                self.data or {"stato": "mese già richiesto oggi"}
+            )
+
         data_da = await self._inizio_richiesta(data_da, data_a, codici_gruppo)
 
         # Prima la chiamata di autenticazione: il suo esito determina lo stato
@@ -540,6 +604,7 @@ class PcfCoordinator(DataUpdateCoordinator):
             # comunque contatore_letture.recupera_storico.
             raise UpdateFailed(f"Errore chiamando requestExport: {err}") from err
 
+        self._ultima_richiesta_il = adesso.date()
         self.pending_since = dt_util.utcnow()
         self.pending_ticket = ticket
 
