@@ -104,7 +104,8 @@ class PcfCoordinator(DataUpdateCoordinator):
     - quando il file arriva, un POD avanza il suo cursore al mese
       successivo solo se la serie importata arriva fino all'ultimo giorno
       del mese; altrimenti il cursore resta e il mese viene richiesto di
-      nuovo al ciclo dopo (il distributore pubblica il mese a poco a poco).
+      nuovo al ciclo dopo (il distributore pubblica il mese a poco a poco),
+      con un periodo diverso da quello già evaso (vedi _inizio_richiesta).
       Un mese ancora parziale all'inizio del secondo mese successivo avanza
       comunque, con un warning (valvola di sicurezza come per Areti).
       Nessun abbandono automatico per un mese senza dati.
@@ -510,6 +511,8 @@ class PcfCoordinator(DataUpdateCoordinator):
                 self.data or {"stato": f"mese {mese} già coperto dai dati esistenti"}
             )
 
+        data_da = await self._inizio_richiesta(data_da, data_a, codici_gruppo)
+
         # Prima la chiamata di autenticazione: il suo esito determina lo stato
         # del dispositivo "Account API", distinto da quello dei POD.
         try:
@@ -562,6 +565,29 @@ class PcfCoordinator(DataUpdateCoordinator):
                 "fase": fase,
             }
         )
+
+    async def _inizio_richiesta(self, primo: date, data_a: date, pods: list[str]) -> date:
+        """Primo giorno da chiedere per il mese del cursore.
+
+        Se il mese è già stato importato in parte (il distributore lo pubblica
+        a poco a poco), non si richiede di nuovo il mese intero: una
+        requestExport con gli stessi parametri di una già evasa restituisce
+        lo stesso ticket, quindi lo stesso file fermo al giorno di prima
+        (verificato su Duereti). Si riparte invece dall'ultima data già nelle
+        statistiche, arretrata di tanti giorni quanti ne sono passati dalla
+        fine del mese: la richiesta cambia a ogni ciclo, anche se il file
+        non avanza per più giorni, e copre un ultimo giorno pubblicato a
+        metà. Con più POD nel gruppo vale la data più indietro; se per uno
+        non c'è nulla nel mese si chiede il mese intero.
+        """
+        indietro = timedelta(days=max((dt_util.now().date() - data_a).days, 1))
+        inizi: list[date] = []
+        for pod in pods:
+            data_disp = await async_get_ultima_data_disponibile(self.hass, pod)
+            if data_disp is None or data_disp < primo:
+                return primo
+            inizi.append(max(primo, min(data_disp, data_a) - indietro))
+        return min(inizi, default=primo)
 
     async def _periodo_gia_coperto(self, data_a: date, pods: list[str]) -> bool:
         """True se TUTTI i POD indicati hanno già dati persistenti (nelle

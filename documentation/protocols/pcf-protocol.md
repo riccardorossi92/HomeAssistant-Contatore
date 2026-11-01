@@ -64,7 +64,14 @@ Ogni ciclo (una volta al giorno):
   successivo solo se la serie importata arriva fino all'ultimo giorno del
   mese; altrimenti il cursore resta e il mese viene richiesto di nuovo al
   ciclo dopo (il distributore pubblica il mese a poco a poco: il 1/11/2026
-  su Unareti ottobre arrivava fino al 30/10). Un mese ancora parziale
+  su Unareti ottobre arrivava fino al 30/10). La nuova richiesta **non
+  ripete il mese intero**: una `requestExport` con gli stessi parametri di
+  una già evasa restituisce lo stesso ticket e quindi lo stesso file fermo
+  al giorno di prima (verificato su Duereti). Si chiede perciò da
+  `ultima data nelle statistiche − giorni trascorsi dalla fine del mese`
+  fino a fine mese (`_inizio_richiesta`): il periodo cambia a ogni ciclo
+  anche se il file non avanza, e copre un ultimo giorno pubblicato a metà.
+  Un mese ancora parziale
   all'inizio del secondo mese successivo avanza comunque con un warning
   (valvola di sicurezza, come `_mese_da_considerare_chiuso` di Areti): un
   giorno mai pubblicato non blocca i mesi seguenti. **Nessun abbandono
