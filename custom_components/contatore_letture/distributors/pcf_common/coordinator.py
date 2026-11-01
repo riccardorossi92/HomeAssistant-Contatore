@@ -10,9 +10,9 @@ fino al mese appena concluso" e non "relative al mese corrente": il dato
 non è più giornaliero. Non essendoci un ritardo fisso da cui dedurre
 quale mese chiedere ad ogni ciclo, il coordinator tiene su entry.data un
 cursore {pod: "YYYY-MM"} = prossimo mese da importare per quel POD, e lo
-avanza solo quando quel mese è stato importato con successo (stesso
-schema del coordinator Areti). Un mese mai pubblicato blocca il cursore
-di quel POD finché non arriva: nessun abbandono automatico, l'escape è
+avanza solo quando quel mese è stato importato per intero, fino all'ultimo
+giorno (stesso schema del coordinator Areti). Un mese mai pubblicato blocca
+il cursore di quel POD finché non arriva: nessun abbandono automatico, l'escape è
 l'azione contatore_letture.recupera_storico.
 """
 from __future__ import annotations
@@ -101,9 +101,13 @@ class PcfCoordinator(DataUpdateCoordinator):
       che lo condividono (una sola requestExport per ciclo: c'è un solo
       slot per il ticket pendente, e ogni requestResult può restare in coda
       per ore);
-    - quando il file arriva, ogni POD per cui contiene dati avanza il suo
-      cursore al mese successivo; gli altri restano fermi e vengono
-      riprovati al ciclo dopo. Nessun abbandono automatico.
+    - quando il file arriva, un POD avanza il suo cursore al mese
+      successivo solo se la serie importata arriva fino all'ultimo giorno
+      del mese; altrimenti il cursore resta e il mese viene richiesto di
+      nuovo al ciclo dopo (il distributore pubblica il mese a poco a poco).
+      Un mese ancora parziale all'inizio del secondo mese successivo avanza
+      comunque, con un warning (valvola di sicurezza come per Areti).
+      Nessun abbandono automatico per un mese senza dati.
     - primo avvio (o POD aggiunto dopo): il cursore parte dal mese corrente,
       nessun backfill automatico. Per lo storico c'è
       contatore_letture.recupera_storico.
@@ -750,9 +754,12 @@ class PcfCoordinator(DataUpdateCoordinator):
                 if ultima is not None:
                     date_importate[pod] = ultima.isoformat()
 
-            # Solo il ciclo automatico tocca i cursori: ogni POD del gruppo
-            # per cui il file contiene dati avanza al mese successivo; gli
-            # altri restano dove sono e vengono riprovati al ciclo dopo.
+            # Solo il ciclo automatico tocca i cursori. Un POD avanza al mese
+            # successivo solo se la serie importata arriva fino all'ultimo
+            # giorno del mese richiesto: il distributore pubblica il mese a
+            # poco a poco, e al 1° del mese dopo può mancare ancora l'ultimo
+            # giorno (Unareti, 1/11/2026: ottobre fermo al 30/10). Avanzare su
+            # un file parziale perderebbe quel giorno per sempre.
             if fase == FASE_AUTOMATICA:
                 mese = mese_str(data_da)
                 cursori = self._entry.data.get(CONF_MESE_DA_IMPORTARE) or {}
@@ -760,15 +767,42 @@ class PcfCoordinator(DataUpdateCoordinator):
                     pod = pod_conf["pod"]
                     if cursori.get(pod) != mese:
                         continue
-                    if risultati.get(pod) and risultati[pod].punti:
-                        self._avanza_cursore(pod)
-                    else:
+                    fine_serie = date_importate.get(pod)  # ISO, None se nel file nessun dato
+                    if fine_serie is None:
                         _LOGGER.info(
                             "POD %s: il file per %s non contiene dati, cursore fermo, "
                             "riprovo al prossimo ciclo",
                             pod,
                             mese,
                         )
+                    elif date.fromisoformat(fine_serie) < data_a:
+                        # Valvola di sicurezza, come _mese_da_considerare_chiuso di
+                        # Areti: un giorno mai pubblicato (es. un guasto del
+                        # contatore) non deve bloccare per sempre i mesi seguenti.
+                        # Dal secondo mese successivo si smette di aspettarlo.
+                        secondo_successivo = primo_giorno_mese(
+                            mese_successivo(mese_successivo(mese))
+                        )
+                        if dt_util.now().date() >= secondo_successivo:
+                            _LOGGER.warning(
+                                "POD %s: il mese %s arriva ancora solo fino al %s a più di un "
+                                "mese dalla sua fine, si passa comunque al successivo. I giorni "
+                                "mancanti si possono recuperare con l'azione recupera_storico",
+                                pod,
+                                mese,
+                                fine_serie,
+                            )
+                            self._avanza_cursore(pod)
+                        else:
+                            _LOGGER.info(
+                                "POD %s: il file per %s arriva solo fino al %s, cursore fermo, "
+                                "riprovo al prossimo ciclo",
+                                pod,
+                                mese,
+                                fine_serie,
+                            )
+                    else:
+                        self._avanza_cursore(pod)
         except Exception as err:  # noqa: BLE001
             _LOGGER.exception(
                 "Errore elaborando il file ricevuto per il ticket %s: %s. Il ticket viene "
