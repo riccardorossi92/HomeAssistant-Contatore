@@ -44,10 +44,11 @@ import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from ...const import DOMAIN
+from ...coordinator_riprova import CoordinatorRiprovaDopoErrore
 from .api import AretiApiClient, AretiApiError
 from .auth import AretiAuraContext, AretiAuthClient, AretiAuthError, async_create_session
 from .const import (
@@ -122,7 +123,7 @@ def _mesi_nel_periodo(data_da: date, data_a: date) -> list[str]:
     return mesi
 
 
-class AretiCoordinator(DataUpdateCoordinator[dict]):
+class AretiCoordinator(CoordinatorRiprovaDopoErrore):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
             hass,
@@ -222,7 +223,7 @@ class AretiCoordinator(DataUpdateCoordinator[dict]):
     # Ciclo di polling automatico
     # ------------------------------------------------------------------
 
-    async def _async_update_data(self) -> dict:
+    async def _async_aggiorna(self) -> dict:
         api = await self._async_login()
 
         by_pod: dict[str, dict] = {}

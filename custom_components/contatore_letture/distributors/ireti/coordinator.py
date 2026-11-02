@@ -48,10 +48,11 @@ from homeassistant.exceptions import (
     ServiceValidationError,
 )
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from ...const import DOMAIN
+from ...coordinator_riprova import CoordinatorRiprovaDopoErrore
 from .api import IretiApiClient, IretiApiError
 from .auth import IretiAuthClient, IretiAuthError, IretiInvalidCredentials
 from .const import (
@@ -205,7 +206,7 @@ def _pod_type_da_history(storia: Any, end_iso: str) -> str | None:
     return max(periodi, key=lambda periodo: _data(periodo.get("startDate")) or minimo)["podType"]
 
 
-class IretiCoordinator(DataUpdateCoordinator[dict]):
+class IretiCoordinator(CoordinatorRiprovaDopoErrore):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
             hass,
@@ -411,7 +412,7 @@ class IretiCoordinator(DataUpdateCoordinator[dict]):
     # Ciclo di polling automatico
     # ------------------------------------------------------------------
 
-    async def _async_update_data(self) -> dict:
+    async def _async_aggiorna(self) -> dict:
         api = await self._async_login()
         tax_code = await self._async_customer_tax_code_vat(api)
 
