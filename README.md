@@ -2,7 +2,7 @@
 
 Unofficial meta-integration for Italian electricity distributor meter data in Home Assistant
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz)
 [![Validate](https://github.com/riccardorossi92/HomeAssistant-Contatore/actions/workflows/validate.yml/badge.svg)](https://github.com/riccardorossi92/HomeAssistant-Contatore/actions/workflows/validate.yml)
 
 > **Disclaimer:** This is an unofficial integration and is not affiliated with or endorsed by ARERA, Duereti, Unareti, RetiPiù, Reti Valtellina Valchiavenna, E-Distribuzione, Areti, Ireti, SET Distribuzione, or any other distributor in any way.
@@ -293,11 +293,15 @@ dal wizard invece di procedere a vuoto.
 
 ## Installazione
 
-### Tramite HACS (custom repository)
+### Tramite HACS
 
-1. HACS → menu (⋮) → **Repository personalizzate**
-2. Aggiungi l'URL di questo repository, categoria **Integrazione**
-3. Installa "Contatore Letture" e riavvia Home Assistant
+1. In HACS cerca **Contatore Letture**
+2. Scarica l'integrazione e riavvia Home Assistant
+
+Per provare una versione non ancora rilasciata (per esempio una correzione
+che ti è stata annunciata in una issue), aggiungi questo repository come
+repository personalizzato: HACS → menu (⋮) → **Repository personalizzate**,
+URL di questo repository, categoria **Integrazione**.
 
 ### Manuale
 
