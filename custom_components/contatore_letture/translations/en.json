@@ -1,0 +1,340 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Find your distributor - Region",
+        "data": {
+          "regione": "Region"
+        }
+      },
+      "provincia": {
+        "title": "Find your distributor - Province",
+        "data": {
+          "provincia": "Province"
+        }
+      },
+      "comune": {
+        "title": "Find your distributor - Municipality",
+        "data": {
+          "comune": "Municipality of the supply"
+        }
+      },
+      "choose_distributor": {
+        "title": "Multiple distributors found",
+        "data": {
+          "distributor": "Select the distributor"
+        }
+      },
+      "manual_select": {
+        "title": "Select the distributor manually",
+        "description": "{description}",
+        "data": {
+          "distributor": "Distributor"
+        }
+      },
+      "distributor_info": {
+        "title": "Distributor found: {distributor}",
+        "description": "To complete the setup with {distributor} you will need:\n\n{requirements}\n\nContinue to proceed."
+      },
+      "pcf_credentials": {
+        "title": "{distributor} - API credentials",
+        "description": "If you don't have a Client ID and Secret ID yet, here is how to request them from {distributor}:\n\n{guida}",
+        "data": {
+          "client_id": "Client ID",
+          "secret_id": "Secret ID"
+        }
+      },
+      "pcf_add_pod": {
+        "title": "{distributor} - Add POD",
+        "description": "{pod_conflitto}",
+        "data": {
+          "pod": "POD/PDR code",
+          "df": "Associated tax code (CF or VAT number)",
+          "aggiungi_altro": "Add another POD"
+        }
+      },
+      "edistribuzione_user": {
+        "title": "E-Distribuzione - Sign in",
+        "description": "Use the same credentials as the official E-Distribuzione app or website. After signing in you will be asked for an OTP code, received by email or SMS: it will be sent by this setup, so do not use codes generated on the website or in the app. If the app or the website is open, sign out there first: E-Distribuzione limits the number of simultaneous sessions per account.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "edistribuzione_otp": {
+        "title": "E-Distribuzione - OTP code",
+        "description": "Enter the OTP code received by email or SMS. {avviso}",
+        "data": {
+          "otp": "OTP code",
+          "richiedi_nuovo_codice": "Request a new code (leave the field above empty)"
+        }
+      },
+      "edistribuzione_pod": {
+        "title": "E-Distribuzione - Select PODs",
+        "description": "You can select more than one POD if you want to monitor several of them with this same setup.",
+        "data": {
+          "pods": "PODs"
+        }
+      },
+      "reauth_confirm": {
+        "title": "{distributor} - Update credentials",
+        "description": "The saved credentials are no longer valid. Enter a new Client ID/Secret ID, which you can request from the Portale Clienti Finali (end-customer portal): {portal_url}",
+        "data": {
+          "client_id": "Client ID",
+          "secret_id": "Secret ID"
+        }
+      },
+      "edistribuzione_reauth_user": {
+        "title": "E-Distribuzione - Sign in again",
+        "description": "The saved credentials are no longer valid for these PODs: {pod_correnti}. Sign in again with your email and password.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "edistribuzione_reauth_otp": {
+        "title": "E-Distribuzione - OTP code",
+        "description": "Enter the OTP code received by email or SMS. {avviso}",
+        "data": {
+          "otp": "OTP code",
+          "richiedi_nuovo_codice": "Request a new code (leave the field above empty)"
+        }
+      },
+      "areti_user": {
+        "title": "Areti - Sign in",
+        "description": "Use the same credentials as the Areti customer area (areariservataclienti.areti.it). No OTP code is required.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "areti_add_pod": {
+        "title": "Areti - Add POD",
+        "description": "{pod_conflitto}",
+        "data": {
+          "pod": "POD code",
+          "aggiungi_altro": "Add another POD"
+        }
+      },
+      "areti_reauth_user": {
+        "title": "Areti - Sign in again",
+        "description": "The saved credentials are no longer valid for these PODs: {pod_correnti}. Sign in again with your email and password.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "ireti_user": {
+        "title": "Ireti - Sign in",
+        "description": "Use the same credentials as the SmartPOD portal (smartpod.ireti.it). No OTP code is required.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "ireti_pod": {
+        "title": "Ireti - Select PODs",
+        "description": "You can select more than one POD if you want to monitor several of them with this same setup.",
+        "data": {
+          "pods": "PODs"
+        }
+      },
+      "ireti_reauth_user": {
+        "title": "Ireti - Sign in again",
+        "description": "The saved credentials are no longer valid for these PODs: {pod_correnti}. Sign in again with your username and password.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "setdistribuzione_user": {
+        "title": "SET Distribuzione - Sign in",
+        "description": "Use the same credentials as the mySET customer area (myset.setdistribuzione.it). No OTP code is required.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "setdistribuzione_pod": {
+        "title": "SET Distribuzione - Select PODs",
+        "description": "You can select more than one POD if you want to monitor several of them with this same setup.",
+        "data": {
+          "pods": "PODs"
+        }
+      },
+      "setdistribuzione_reauth_user": {
+        "title": "SET Distribuzione - Sign in again",
+        "description": "The saved credentials are no longer valid for these PODs: {pod_correnti}. Sign in again with your email and password.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "edistribuzione_modalita": {
+        "title": "Distributor found: E-Distribuzione",
+        "description": "Choose how to import the consumption of your POD.\n\n**Automatic download, sign-in from the browser**: sign in once on the official E-Distribuzione website from the browser of a computer, open an authorization link and paste here the address it returns. From then on the integration renews the access and downloads the data by itself every day. Your password never goes through Home Assistant. This is an unofficial access: E-Distribuzione may block it at any time.\n\n**Manual load of load curves**: you download the load curve from the E-Distribuzione website (CSV file) and upload it to Home Assistant from the integration options, whenever you want to update the data. Only the POD code is needed, no credentials.\n\n**Automatic download with password and OTP**: the integration signs in by itself with email, password and OTP code. Since October 2026 E-Distribuzione blocks this access, so it is not available for now.",
+        "data": {
+          "modalita": "Mode"
+        }
+      },
+      "edistribuzione_manuale_pod": {
+        "title": "E-Distribuzione - Manual load",
+        "description": "Enter the POD code (it starts with IT and you can find it on your bill). After creating the setup, open **Configure** to upload the load curve file downloaded from the E-Distribuzione website.",
+        "data": {
+          "pod": "POD"
+        }
+      },
+      "edistribuzione_browser": {
+        "title": "E-Distribuzione - Sign-in from the browser",
+        "description": "1. From a **computer**, open [the E-Distribuzione website]({login_url}) and sign in with the account of your PODs, OTP code included, until you reach the customer area. If the browser is already signed in with a different account, sign out first; if you are already signed in with the right one, go to step 2. Do not use a phone with the E-Distribuzione app installed: the app would open the final address in your place.\n\n2. In the **same window**, **before** opening the authorization link, open the developer tools (**F12**, or **⌥⌘I** on Mac), go to the **Network** tab and tick **Preserve log**. Then open [the authorization link]({url}). If a page with **Consenti** (Allow) appears, press it. The page stays blank or shows an error, and the address bar does not change: this is normal, the final address is meant for the app. The authorization link is valid only for this setup.\n\n3. In the **Network** tab look for the row with status **302**, click it and, under **Headers** → **Response Headers**, copy the value of **Location**, which starts with `eneldist://redirect`. Alternatively, in the **Console** tab a red line `Failed to launch 'eneldist://redirect…'` may appear: copying that whole line is fine too. If the browser asks to open an app, cancel: the address has to be copied, not opened.\n\nYour password never goes through Home Assistant: it only receives the access tokens, which it renews by itself.",
+        "data": {
+          "redirect": "eneldist://redirect address (Location value or Console line)"
+        }
+      },
+      "edistribuzione_reauth": {
+        "title": "E-Distribuzione - Sign in again",
+        "description": "The saved access is no longer valid for these PODs: {pod_correnti}. Sign in again: PODs, options and history are kept.",
+        "menu_options": {
+          "edistribuzione_reauth_browser": "Sign-in from the browser (recommended)",
+          "edistribuzione_reauth_user": "Email, password and OTP (blocked since October 2026)"
+        }
+      },
+      "edistribuzione_reauth_browser": {
+        "title": "E-Distribuzione - Sign in again from the browser",
+        "description": "1. From a **computer**, open [the E-Distribuzione website]({login_url}) and sign in with the account of your PODs, OTP code included, until you reach the customer area. If the browser is already signed in with a different account, sign out first; if you are already signed in with the right one, go to step 2. Do not use a phone with the E-Distribuzione app installed: the app would open the final address in your place.\n\n2. In the **same window**, **before** opening the authorization link, open the developer tools (**F12**, or **⌥⌘I** on Mac), go to the **Network** tab and tick **Preserve log**. Then open [the authorization link]({url}). If a page with **Consenti** (Allow) appears, press it. The page stays blank or shows an error, and the address bar does not change: this is normal, the final address is meant for the app. The authorization link is valid only for this setup.\n\n3. In the **Network** tab look for the row with status **302**, click it and, under **Headers** → **Response Headers**, copy the value of **Location**, which starts with `eneldist://redirect`. Alternatively, in the **Console** tab a red line `Failed to launch 'eneldist://redirect…'` may appear: copying that whole line is fine too. If the browser asks to open an app, cancel: the address has to be copied, not opened.\n\nYour password never goes through Home Assistant: it only receives the access tokens, which it renews by itself.",
+        "data": {
+          "redirect": "eneldist://redirect address (Location value or Console line)"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid Client ID or Secret ID",
+      "invalid_auth_email": "Invalid email or password",
+      "invalid_auth_username": "Invalid username or password",
+      "cannot_connect": "Unable to reach the distributor's API",
+      "pod_duplicato": "This POD is already configured in: {pod_conflitto}",
+      "pod_non_valido": "POD or tax code not recognized by the distributor. Check the POD code (it starts with IT and you can find it on your bill) and the tax code or VAT number of the account holder of the supply.",
+      "areti_pod_non_valido": "POD not recognized on this Areti account. Check the code (it starts with IT and you can find it on your bill) and that it is associated with the account you signed in with.",
+      "invalid_otp": "Wrong or expired OTP code. It must be the code sent by this setup: one generated on the website or in the app belongs to a different login session and is always rejected.",
+      "otp_mancante": "Enter the OTP code, or tick \"Request a new code\" to have a new one sent",
+      "bloccato_antibot": "E-Distribuzione blocked the request with its anti-bot protection before even showing the login, both on the main website and on the alternative address. It does not depend on your credentials: go back and choose the sign-in from the browser.",
+      "errore_tecnico_portale": "E-Distribuzione replied with a generic \"Errore Tecnico\" (technical error): it does not accept the automatic login on the alternative address the integration uses when the main website blocks it. It does not depend on your credentials: go back and choose the sign-in from the browser.",
+      "troppe_sessioni": "E-Distribuzione refused the sign-in because the account has too many sessions open at the same time. Sign out of the official app and website, wait a few minutes and try again: in this state no OTP code is sent.",
+      "nessun_pod_selezionato": "Select at least one POD",
+      "automatico_non_disponibile": "The automatic login with password and OTP has been blocked by E-Distribuzione since October 2026. Choose the sign-in from the browser or the manual load.",
+      "pod_formato_non_valido": "Invalid POD code: it must have the form IT001E12345678 (IT, 3 digits, E, 8 characters).",
+      "redirect_mancante": "The pasted text does not contain any address starting with eneldist://redirect. The address in the browser bar (for example …/AuthorizationPage) is not the right one: open the developer tools (F12) with the Network tab and \"Preserve log\" enabled **before** opening the authorization link or pressing Consenti (Allow), then copy the Location value of the row with status 302. If after signing in you ended up in the customer area, this is normal: open the authorization link now in the same window.",
+      "redirect_negato": "E-Distribuzione refused the authorization: {dettaglio}. Reopen the authorization link; if it happens again, try later.",
+      "redirect_altro_tentativo": "The address belongs to a different authorization link, for example from a previous attempt. Open the authorization link on this page and paste the new address.",
+      "redirect_token_mancanti": "The address is missing some data ({dettaglio}): it was probably copied only in part. Copy all of it, up to the end of the line.",
+      "app_bloccata": "E-Distribuzione refuses the official app client the integration signs in with (app_blocked). It does not depend on your credentials: try again later.",
+      "altro_account": "The account you signed in with does not see any of the PODs of this setup. Sign out of the portal in the browser, sign in with the right account and reopen the authorization link."
+    },
+    "abort": {
+      "reauth_successful": "Credentials updated successfully",
+      "reauth_not_supported": "This distributor does not yet support re-entering credentials from this flow",
+      "no_pods_found": "No POD found for this account",
+      "edistribuzione_supplies_failed": "Unexpected error while retrieving the PODs from the account. Start the setup again.",
+      "edistribuzione_otp_exchange_failed": "The OTP code was accepted but completing the sign-in failed. Start the setup again (login + OTP included).",
+      "edistribuzione_password_scaduta": "E-Distribuzione asks you to change the account password before completing the sign-in. Sign in to the official website or app, set a new password and then repeat the setup using the new one.",
+      "ireti_pods_failed": "Unexpected error while retrieving the PODs from the SmartPOD account. Start the setup again.",
+      "no_ireti_pods_associated": "Your SmartPOD account does not have any POD associated yet. Sign in to the portal (smartpod.ireti.it), use \"Aggiungi POD\" (Add POD) with the code of your supply, then try this setup again.",
+      "setdistribuzione_pods_failed": "Unexpected error while retrieving the supplies from the mySET account. Start the setup again.",
+      "no_setdistribuzione_pods": "Your mySET account has no electricity supply associated. Sign in to the customer area (myset.setdistribuzione.it), check that the supply appears among your utilities, then try this setup again."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Manage PODs",
+        "menu_options": {
+          "aggiungi_pod": "Add a POD",
+          "rimuovi_pod": "Remove a POD",
+          "edistribuzione_aggiungi_pod": "Add a POD",
+          "edistribuzione_rimuovi_pod": "Remove a POD",
+          "areti_aggiungi_pod": "Add a POD",
+          "areti_rimuovi_pod": "Remove a POD",
+          "orario": "Change the time of the daily request"
+        }
+      },
+      "aggiungi_pod": {
+        "title": "Add POD",
+        "description": "PODs currently configured: {pod_correnti}",
+        "data": {
+          "pod": "POD/PDR code",
+          "df": "Associated tax code (CF or VAT number)"
+        }
+      },
+      "rimuovi_pod": {
+        "title": "Remove POD",
+        "description": "Select the PODs to remove. Historical data already imported into the external statistics is not deleted.",
+        "data": {
+          "pods_da_rimuovere": "PODs to remove"
+        }
+      },
+      "edistribuzione_aggiungi_pod": {
+        "title": "Add POD",
+        "description": "PODs currently configured: {pod_correnti}. Below are the ones available on your account that have not been added to this setup yet.",
+        "data": {
+          "pods_da_aggiungere": "PODs to add"
+        }
+      },
+      "edistribuzione_rimuovi_pod": {
+        "title": "Remove POD",
+        "description": "Select the PODs to remove. Historical data already imported into the external statistics is not deleted.",
+        "data": {
+          "pods_da_rimuovere": "PODs to remove"
+        }
+      },
+      "orario": {
+        "title": "Time of the daily request",
+        "description": "From what time to ask the distributor for the previous day's data. Currently: {orario_attuale}.\n\nThe initial time was chosen at random between 16:00 and 20:00, so that installations do not all query the distributor at the same moment; the one set here replaces it. The request is made at the first update (one per hour) after this time.\n\nThe time at which the data is published is not documented and may vary: if you notice that data is often not returned, try moving it later. A day that was not obtained is not lost anyway: it goes into the queue of days to retry.",
+        "data": {
+          "orario_richiesta": "Time"
+        }
+      },
+      "areti_aggiungi_pod": {
+        "title": "Add POD",
+        "description": "PODs currently configured: {pod_correnti}",
+        "data": {
+          "pod": "POD code"
+        }
+      },
+      "areti_rimuovi_pod": {
+        "title": "Remove POD",
+        "description": "Select the PODs to remove. Historical data already imported into the external statistics is not deleted.",
+        "data": {
+          "pods_da_rimuovere": "PODs to remove"
+        }
+      },
+      "edistribuzione_importa_file": {
+        "title": "Upload the load curve",
+        "description": "Upload the CSV file of the load curve of POD {pod}, downloaded from the E-Distribuzione website: sign in and open the [Curve di carico]({url_curve}) (load curves) page, choose the period and export the file. The portal exports one month per file, for the last 18 months and up to yesterday: for several months, upload one file at a time.\n\nDays already imported are overwritten: you can upload the same period again without creating duplicates.",
+        "data": {
+          "file": "CSV file"
+        }
+      }
+    },
+    "error": {
+      "pod_duplicato": "This POD is already configured in: {pod_conflitto}",
+      "non_puoi_rimuoverli_tutti": "You cannot remove all the PODs from here: remove the integration directly if you want to empty it completely",
+      "pod_non_valido": "POD or tax code not recognized by the distributor. Check the POD code (it starts with IT and you can find it on your bill) and the tax code or VAT number of the account holder of the supply.",
+      "areti_pod_non_valido": "POD not recognized on this Areti account. Check the code (it starts with IT and you can find it on your bill) and that it is associated with the account you signed in with.",
+      "cannot_connect": "Unable to reach the distributor's API",
+      "csv_non_valido": "File not recognized: {dettaglio}.",
+      "import_fallito": "Import failed because of an unexpected error: check the Home Assistant logs.",
+      "file_non_disponibile": "The uploaded file is no longer available: upload it again."
+    },
+    "abort": {
+      "nessun_pod": "There are no configured PODs to remove",
+      "options_not_supported": "This distributor does not have configurable options yet",
+      "nessun_pod_selezionato": "Select at least one POD to add",
+      "nessun_pod_da_aggiungere": "All the PODs of your account are already configured here",
+      "edistribuzione_refresh_failed": "It was not possible to renew the access to E-Distribuzione. Try again later; if the problem persists, Home Assistant will ask for a new sign-in (from the browser) in Settings → Devices & services.",
+      "edistribuzione_supplies_failed": "Unexpected error while retrieving the PODs from the account. Try again later.",
+      "areti_login_failed": "It was not possible to sign in to Areti with the saved credentials. Try again later; if the problem persists a new login may be needed (remove and reconfigure the integration).",
+      "csv_importato": "Import completed for POD {pod}: {giorni} days, from {data_da} to {data_a}, for {kwh} kWh. The data is visible in the Energy dashboard.",
+      "voce_non_caricata": "The setup is not loaded: restart it and try again."
+    }
+  }
+}

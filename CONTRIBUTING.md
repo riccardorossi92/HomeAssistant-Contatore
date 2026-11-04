@@ -58,7 +58,7 @@ Finali"** di Duereti/Unareti (Client ID + Secret ID, export a ticket) —
 
 **Cosa NON serve toccare**: `config_flow.py` (i suoi step "pcf" sono già
 generici, parametrizzati sul `DISTRIBUTOR_REGISTRY`), `__init__.py`
-(stesso discorso), `strings.json`/`translations/it.json` (gli step "pcf"
+(stesso discorso), `strings.json`/`translations/*.json` (gli step "pcf"
 riusano le stesse chiavi), `sensor.py` dispatcher, i servizi
 `recupera_storico`/`recupera_ticket` (funzionano già per qualunque
 `PcfCoordinator`).
@@ -131,7 +131,8 @@ punti dell'orchestratore condiviso.
     `isinstance(coordinator, EdistribuzioneCoordinator)` (da estendere o
     generalizzare se i distributori "con parametro pod opzionale"
     diventano più di uno).
-- `strings.json` **e** `translations/it.json` (vanno tenuti identici,
+- `strings.json` **e** `translations/it.json` (vanno tenuti identici) e
+  `translations/en.json` (traduzione inglese, stesse chiavi e segnaposto,
   vedi sotto): nuove chiavi per ogni nuovo step di config flow/options
   flow, sotto `config.step`/`config.error`/`options.step`/`options.abort`
   a seconda di cosa aggiungi.
@@ -180,10 +181,14 @@ con fixture basate su payload **reali**, non inventati, dove possibile).
   `documentation/protocols/areti-protocol.md`). Il "Gotcha TLS" (intermedio DigiCert
   mancante, `auth.build_ssl_context`) va verificato di nuovo se cambia il
   certificato del sito.
-- **`strings.json`/`translations/it.json`**: vanno sempre tenuti
-  **identici** (l'italiano è al momento l'unica lingua supportata,
-  duplicata in entrambi i file). Se aggiungi/cambi una chiave in uno,
-  copiala nell'altro nello stesso commit.
+- **`strings.json`/`translations/it.json`/`translations/en.json`**:
+  `strings.json` e `it.json` vanno sempre tenuti **identici**; `en.json` è
+  la traduzione inglese e deve avere le **stesse chiavi e gli stessi
+  segnaposto** (`{pod}`, `{url}`, …). Le integrazioni custom leggono i
+  testi solo da `translations/`, con `en.json` come fallback per chi ha
+  Home Assistant in una lingua senza traduzione. Se aggiungi/cambi una
+  chiave, aggiornala in tutti e tre nello stesso commit: i test in
+  `tests/test_translations.py` lo verificano.
 
 ## Checklist prima di aprire una PR
 
