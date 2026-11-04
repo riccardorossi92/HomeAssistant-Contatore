@@ -319,14 +319,20 @@ URL di questo repository, categoria **Integrazione**.
 4. Inserisci le credenziali del tuo distributore (vedi
    [Prerequisiti](#prerequisiti) sopra)
 
-Dopo la configurazione, puoi aggiungere/rimuovere POD in qualsiasi momento
-da **Configura** sull'integrazione (Opzioni) — per Duereti/Unareti/
-RetiPiù/Reti Valtellina Valchiavenna/E-Distribuzione/Areti. Per **Ireti** e **SET Distribuzione** le opzioni non hanno ancora nessuna
-voce (v1 minimale): per cambiare i POD monitorati, rimuovi e riconfigura
-l'integrazione. Per **E-Distribuzione** puoi anche cambiare l'orario della
-richiesta giornaliera (per Duereti/Unareti/RetiPiù/Reti Valtellina
-Valchiavenna/Areti non serve: importano a
-mese chiuso, vedi sotto; Ireti e SET Distribuzione nemmeno, vedi sotto).
+Dopo la configurazione puoi cambiare i POD monitorati in qualsiasi momento
+da **Configura** sull'integrazione (Opzioni). Cosa trovi dipende dal
+distributore:
+
+| Distributore | Aggiungere/rimuovere POD | Orario della richiesta giornaliera |
+| --- | :---: | :---: |
+| Duereti, Unareti, RetiPiù, Reti Valtellina Valchiavenna | sì | no (importano a mese chiuso, vedi sotto) |
+| Areti | sì | no (importa a mese chiuso, vedi sotto) |
+| E-Distribuzione | sì | sì |
+| Ireti, SET Distribuzione | no | no (vedi sotto) |
+
+Per **Ireti** e **SET Distribuzione** le opzioni non hanno ancora nessuna
+voce: per cambiare i POD monitorati rimuovi l'integrazione e configurala
+di nuovo.
 
 ## Cosa fa una volta configurata
 
