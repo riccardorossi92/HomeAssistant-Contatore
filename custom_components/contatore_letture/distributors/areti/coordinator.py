@@ -43,14 +43,25 @@ from datetime import date, timedelta
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from ...const import DOMAIN
 from ...coordinator_riprova import CoordinatorRiprovaDopoErrore
 from .api import AretiApiClient, AretiApiError
-from .auth import AretiAuraContext, AretiAuthClient, AretiAuthError, async_create_session
+from .auth import (
+    AretiAuraContext,
+    AretiAuthClient,
+    AretiAuthError,
+    AretiInvalidCredentials,
+    async_chiudi_sessione,
+    async_create_session,
+)
 from .const import (
     COMPONENTE_ENERGIA_DEFAULT,
     CONF_EMAIL,
@@ -152,7 +163,7 @@ class AretiCoordinator(CoordinatorRiprovaDopoErrore):
 
     async def _async_close_session(self) -> None:
         if self._session is not None:
-            await self._session.close()
+            await async_chiudi_sessione(self._session)
 
     async def _async_login(self) -> AretiApiClient:
         """Login da zero su una sessione NUOVA (cookie jar vuota), ogni
@@ -171,13 +182,15 @@ class AretiCoordinator(CoordinatorRiprovaDopoErrore):
         recupera_storico manuale): irrilevante a questa cadenza.
         """
         if self._session is not None:
-            await self._session.close()
+            await async_chiudi_sessione(self._session)
         self._session = await async_create_session(self.hass)
         auth = AretiAuthClient(self._session)
         try:
             contesto: AretiAuraContext = await auth.async_login(
                 self.entry.data[CONF_EMAIL], self.entry.data[CONF_PASSWORD]
             )
+        except AretiInvalidCredentials as err:
+            raise ConfigEntryAuthFailed(f"Credenziali Areti non valide: {err}") from err
         except AretiAuthError as err:
             raise UpdateFailed(f"Login Areti fallito: {err}") from err
         return AretiApiClient(self._session, contesto)

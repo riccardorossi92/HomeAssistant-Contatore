@@ -59,4 +59,6 @@ async def _async_fetch_live(hass: HomeAssistant) -> ComuniTree:
         resp.raise_for_status()
         grezzo = await resp.read()
 
-    return comuni_csv_to_tree(grezzo.decode(ISTAT_CSV_ENCODING))
+    return await hass.async_add_executor_job(
+        comuni_csv_to_tree, grezzo.decode(ISTAT_CSV_ENCODING)
+    )

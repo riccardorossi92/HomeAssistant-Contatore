@@ -318,9 +318,15 @@ class TestAsyncSeguiPontiLogin:
 class _BusFake:
     def __init__(self) -> None:
         self.listener_registrato: tuple[str, object] | None = None
+        self.listener_rimosso = False
 
-    def async_listen_once(self, evento: str, callback) -> None:
+    def async_listen_once(self, evento: str, callback):
         self.listener_registrato = (evento, callback)
+
+        def _rimuovi() -> None:
+            self.listener_rimosso = True
+
+        return _rimuovi
 
 
 class _HassFake:
@@ -380,6 +386,33 @@ class TestAsyncCreateSession:
         _evento, callback = hass.bus.listener_registrato
         await callback(None)
         assert session.closed
+
+    @pytest.mark.asyncio
+    async def test_chiudi_sessione_chiude_e_toglie_il_listener_di_arresto(self):
+        """Il login giornaliero crea una sessione al giorno: se il listener
+        di arresto restasse registrato se ne accumulerebbe uno al giorno."""
+        hass = _HassFake()
+        session = await auth.async_create_session(hass)
+        await auth.async_chiudi_sessione(session)
+        assert session.closed
+        assert hass.bus.listener_rimosso
+
+    @pytest.mark.asyncio
+    async def test_chiudi_sessione_e_idempotente(self):
+        hass = _HassFake()
+        session = await auth.async_create_session(hass)
+        await auth.async_chiudi_sessione(session)
+        await auth.async_chiudi_sessione(session)
+        assert session.closed
+
+    @pytest.mark.asyncio
+    async def test_dopo_lo_stop_di_ha_il_listener_non_viene_rimosso_due_volte(self):
+        hass = _HassFake()
+        session = await auth.async_create_session(hass)
+        _evento, callback = hass.bus.listener_registrato
+        await callback(None)
+        await auth.async_chiudi_sessione(session)
+        assert not hass.bus.listener_rimosso
 
 
 # ---------------------------------------------------------------------------

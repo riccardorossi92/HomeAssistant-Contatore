@@ -41,6 +41,8 @@ from __future__ import annotations
 import logging
 import re
 import ssl
+import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
 from html import unescape as _unescape_html
 from typing import Any
@@ -125,6 +127,13 @@ def build_ssl_context() -> ssl.SSLContext:
     return ctx
 
 
+# Listener di arresto registrato per ogni sessione, per poterlo rimuovere
+# quando la sessione viene chiusa prima dello spegnimento di Home Assistant.
+_LISTENER_ARRESTO: weakref.WeakKeyDictionary[aiohttp.ClientSession, Callable[[], None]] = (
+    weakref.WeakKeyDictionary()
+)
+
+
 async def async_create_session(hass: Any) -> aiohttp.ClientSession:
     """Sessione aiohttp dedicata con l'intermedio DigiCert aggiunto.
 
@@ -144,10 +153,24 @@ async def async_create_session(hass: Any) -> aiohttp.ClientSession:
     session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context))
 
     async def _chiudi_alla_chiusura_di_hass(_event: Any) -> None:
+        _LISTENER_ARRESTO.pop(session, None)
         await session.close()
 
-    hass.bus.async_listen_once("homeassistant_stop", _chiudi_alla_chiusura_di_hass)
+    _LISTENER_ARRESTO[session] = hass.bus.async_listen_once(
+        "homeassistant_stop", _chiudi_alla_chiusura_di_hass
+    )
     return session
+
+
+async def async_chiudi_sessione(session: aiohttp.ClientSession) -> None:
+    """Chiude una sessione creata da async_create_session e ne toglie il
+    listener di arresto: senza, ogni sessione chiusa prima dello spegnimento
+    di Home Assistant (una al giorno per il login del coordinator) lascerebbe
+    un listener registrato fino allo stop."""
+    rimuovi_listener = _LISTENER_ARRESTO.pop(session, None)
+    if rimuovi_listener is not None:
+        rimuovi_listener()
+    await session.close()
 
 
 class AretiAuthError(Exception):

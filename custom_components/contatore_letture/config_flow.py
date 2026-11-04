@@ -905,6 +905,16 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     # documentation/protocols/areti-protocol.md).
     # ------------------------------------------------------------------
 
+    @callback
+    def async_remove(self) -> None:
+        """Il flow e' finito (o abbandonato): chiude la sessione Areti
+        tenuta aperta tra gli step."""
+        sessione, self._areti_session = self._areti_session, None
+        if sessione is not None:
+            from .distributors.areti.auth import async_chiudi_sessione
+
+            self.hass.async_create_task(async_chiudi_sessione(sessione))
+
     async def async_step_areti_user(self, user_input: dict[str, Any] | None = None):
         errors: dict[str, str] = {}
 
@@ -1018,6 +1028,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 AretiAuthClient,
                 AretiInvalidCredentials,
                 AretiParsingError,
+                async_chiudi_sessione,
                 async_create_session,
             )
             from .distributors.areti.const import CONF_EMAIL, CONF_PASSWORD
@@ -1035,7 +1046,10 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
                 _LOGGER.exception("Errore imprevisto durante il login Areti (reauth)")
                 errors["base"] = "cannot_connect"
-            else:
+            finally:
+                await async_chiudi_sessione(session)
+
+            if not errors:
                 nuovi_dati = {
                     **self._reauth_entry.data,
                     CONF_EMAIL: user_input["email"],
@@ -1991,6 +2005,7 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
         from .distributors.areti.auth import (
             AretiAuthClient,
             AretiAuthError,
+            async_chiudi_sessione,
             async_create_session,
         )
         from .distributors.areti.const import CONF_EMAIL, CONF_PASSWORD
@@ -2023,6 +2038,8 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
                 except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
                     _LOGGER.exception("Errore imprevisto verificando il POD Areti %s", pod)
                     errors["pod"] = "cannot_connect"
+                finally:
+                    await async_chiudi_sessione(session)
 
                 if not errors:
                     pods.append(pod)
