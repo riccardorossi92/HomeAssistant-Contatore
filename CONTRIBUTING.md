@@ -19,7 +19,7 @@ Funziona: è così che **Ireti** è passato da "in ricerca" a supportato
 dell'endpoint di misura, mancante da un account come il mio, senza POD
 associati. Lo stesso per **SET Distribuzione** (cattura del 13/10/2026
 da un account con POD attivo). Per i distributori ancora in questa fase (login/anagrafica
-verificati, consumi da confermare — Edyna, Deval,
+verificati, consumi da confermare — Deval,
 V-Reti, AcegasApsAmga alla data di questa nota) vedi le rispettive schede
 in [`documentation/protocols/`](documentation/protocols/), o il README
 (sezione "Cercasi contributori").

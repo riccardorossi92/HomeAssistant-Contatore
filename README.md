@@ -58,12 +58,13 @@ uno di quelli supportati, o si ferma con un messaggio chiaro altrimenti.
 > mancante.**
 
 <details>
-<summary><b>Edyna</b> (Alto Adige / Südtirol, gruppo Alperia) — non è ancora noto se espone i consumi</summary>
+<summary><b>Edyna</b> (Alto Adige / Südtirol, gruppo Alperia) — curve orarie confermate, mancano login e navigazione</summary>
 
-Non è ancora noto se il portale esponga consumi/curve di carico —
-l'unica cattura disponibile è di un account senza POD associato, quindi
-non arriva a nessuna pagina di fornitura. Se hai un'utenza Edyna con un
-POD attivo puoi aiutare — vedi
+Una cattura da un account con POD attivo conferma che il portale espone
+le curve orarie e al quarto d'ora per POD, più i consumi mensili. La
+cattura però non comprende il login né i passi per arrivarci. Se hai
+un'utenza Edyna con un POD attivo puoi aiutare con una cattura che parta
+dalla pagina di login — vedi
 [documentation/protocols/edyna-protocol.md](documentation/protocols/edyna-protocol.md).
 
 </details>
