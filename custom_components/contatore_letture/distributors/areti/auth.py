@@ -59,6 +59,9 @@ _USER_AGENT = (
     "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 )
 
+# Azione del form della pagina "Aggiorna password" (vedi AretiPasswordDaCambiare).
+_MARCATORE_CAMBIO_PASSWORD = "ARIA_ResetPasswordVF"
+
 # Pagina di atterraggio dopo il login: qualunque pagina valida del
 # portale va bene (verificato con questa), non deve necessariamente
 # essere la home.
@@ -190,6 +193,18 @@ class AretiInvalidCredentials(AretiAuthError):
     """
 
 
+class AretiPasswordDaCambiare(AretiAuthError):
+    """Il login riesce ma Areti impone prima di cambiare la password.
+
+    Osservato su un account reale il 05/11/2026: dopo il login, la catena
+    di redirect (loginFlowOnly -> ARIA_MaintenanceFlow) non porta alla home
+    Lightning ma alla pagina "Aggiorna password", un form su
+    /portaleareti/ARIA_ResetPasswordVF. Finche' la password non viene
+    cambiata dal sito non c'e' nessun fwuid ne' aura.token, quindi nessuna
+    chiamata dati puo' funzionare.
+    """
+
+
 class AretiParsingError(AretiAuthError):
     """La pagina scaricata non conteneva quello che ci aspettavamo.
 
@@ -312,6 +327,11 @@ class AretiAuthClient:
             url_attuale = str(resp.url)
 
         html = await self._async_segui_ponti_login(headers, html, url_attuale)
+
+        if _MARCATORE_CAMBIO_PASSWORD in html and '"fwuid"' not in html:
+            raise AretiPasswordDaCambiare(
+                "Areti chiede di cambiare la password prima di dare accesso ai dati."
+            )
 
         fwuid = _estrai_fwuid(html)
         loaded_app_id = _estrai_loaded_app_id(html)

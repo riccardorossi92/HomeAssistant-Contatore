@@ -8,7 +8,10 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.contatore_letture import config_flow as cf
 from custom_components.contatore_letture.const import DOMAIN
-from custom_components.contatore_letture.distributors.areti.auth import AretiInvalidCredentials
+from custom_components.contatore_letture.distributors.areti.auth import (
+    AretiInvalidCredentials,
+    AretiPasswordDaCambiare,
+)
 from custom_components.contatore_letture.distributors.areti.const import (
     CONF_EMAIL,
     CONF_PASSWORD,
@@ -82,3 +85,35 @@ async def test_reauth_chiude_la_sessione_anche_con_credenziali_errate(hass):
     assert risultato["type"] is FlowResultType.FORM
     assert risultato["errors"] == {"base": "invalid_auth_email"}
     chiudi.assert_awaited_once_with(sessione)
+
+
+async def test_reauth_con_password_da_cambiare_mostra_l_errore_dedicato(hass):
+    flow = await _reauth_flow(hass)
+    auth = Mock()
+    auth.async_login = AsyncMock(side_effect=AretiPasswordDaCambiare("pagina"))
+
+    with (
+        patch(f"{AUTH}.async_create_session", AsyncMock(return_value=_sessione())),
+        patch(f"{AUTH}.AretiAuthClient", Mock(return_value=auth)),
+        patch(f"{AUTH}.async_chiudi_sessione", AsyncMock()),
+    ):
+        risultato = await flow.async_step_areti_reauth_user({"email": "n@b.it", "password": "x"})
+
+    assert risultato["type"] is FlowResultType.FORM
+    assert risultato["errors"] == {"base": "areti_password_da_cambiare"}
+
+
+async def test_primo_login_con_password_da_cambiare_mostra_l_errore_dedicato(hass):
+    flow = cf.ContatoreLettureConfigFlow()
+    flow.hass = hass
+    auth = Mock()
+    auth.async_login = AsyncMock(side_effect=AretiPasswordDaCambiare("pagina"))
+
+    with (
+        patch(f"{AUTH}.async_create_session", AsyncMock(return_value=_sessione())),
+        patch(f"{AUTH}.AretiAuthClient", Mock(return_value=auth)),
+    ):
+        risultato = await flow.async_step_areti_user({"email": "n@b.it", "password": "x"})
+
+    assert risultato["type"] is FlowResultType.FORM
+    assert risultato["errors"] == {"base": "areti_password_da_cambiare"}

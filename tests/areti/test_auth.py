@@ -463,3 +463,49 @@ class TestAsyncLoginCredenzialiSbagliate:
         client = auth.AretiAuthClient(_SessioneLoginFake())
         with pytest.raises(auth.AretiInvalidCredentials, match="Email o password non valida."):
             await client.async_login("test@example.com", "password-sbagliata")
+
+
+# ---------------------------------------------------------------------------
+# Pagina "Aggiorna password" al posto della home (osservata il 05/11/2026)
+# ---------------------------------------------------------------------------
+
+_PAGINA_AGGIORNA_PASSWORD = (
+    '<form id="j_id0:form" name="j_id0:form" method="post" '
+    'action="/portaleareti/ARIA_ResetPasswordVF" '
+    'enctype="application/x-www-form-urlencoded">'
+    "<h2>Aggiorna password</h2><p>Inserisci la nuova password</p>"
+    '<input type="password" name="j_id0:form:pwd" />'
+    "<p>La tua password deve avere: Da 12 a 20 caratteri</p></form>"
+)
+
+
+class TestPasswordDaCambiare:
+    @pytest.mark.asyncio
+    async def test_la_pagina_aggiorna_password_solleva_un_errore_dedicato(self):
+        client = auth.AretiAuthClient(_SessioneFake([_PAGINA_AGGIORNA_PASSWORD]))
+        with pytest.raises(auth.AretiPasswordDaCambiare, match="cambiare la password"):
+            await client._async_carica_contesto_aura()
+
+    @pytest.mark.asyncio
+    async def test_e_un_errore_di_autenticazione_ma_non_di_parsing(self):
+        client = auth.AretiAuthClient(_SessioneFake([_PAGINA_AGGIORNA_PASSWORD]))
+        with pytest.raises(auth.AretiAuthError) as exc_info:
+            await client._async_carica_contesto_aura()
+        assert not isinstance(exc_info.value, auth.AretiParsingError)
+        assert not isinstance(exc_info.value, auth.AretiInvalidCredentials)
+
+    @pytest.mark.asyncio
+    async def test_la_home_vera_che_nomina_la_pagina_non_e_scambiata_per_essa(self):
+        """Se la home Lightning contiene fwuid il marcatore da solo non basta:
+        il parsing prosegue (e qui fallisce sul passo successivo, non sul
+        cambio password)."""
+        pagina = _PAGINA_VERA + " link: /portaleareti/ARIA_ResetPasswordVF"
+        client = auth.AretiAuthClient(_SessioneFake([pagina]))
+        with pytest.raises(auth.AretiParsingError):
+            await client._async_carica_contesto_aura()
+
+    @pytest.mark.asyncio
+    async def test_una_pagina_diversa_senza_fwuid_resta_un_errore_di_parsing(self):
+        client = auth.AretiAuthClient(_SessioneFake(["<html>manutenzione</html>"]))
+        with pytest.raises(auth.AretiParsingError):
+            await client._async_carica_contesto_aura()

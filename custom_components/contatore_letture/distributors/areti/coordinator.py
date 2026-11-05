@@ -59,6 +59,7 @@ from .auth import (
     AretiAuthClient,
     AretiAuthError,
     AretiInvalidCredentials,
+    AretiPasswordDaCambiare,
     async_chiudi_sessione,
     async_create_session,
 )
@@ -191,6 +192,11 @@ class AretiCoordinator(CoordinatorRiprovaDopoErrore):
             )
         except AretiInvalidCredentials as err:
             raise ConfigEntryAuthFailed(f"Credenziali Areti non valide: {err}") from err
+        except AretiPasswordDaCambiare as err:
+            raise ConfigEntryAuthFailed(
+                "Areti chiede di cambiare la password: cambiala sul sito "
+                "areariservataclienti.areti.it e inserisci quella nuova."
+            ) from err
         except AretiAuthError as err:
             raise UpdateFailed(f"Login Areti fallito: {err}") from err
         return AretiApiClient(self._session, contesto)

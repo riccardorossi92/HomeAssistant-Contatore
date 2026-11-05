@@ -923,6 +923,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 AretiAuthClient,
                 AretiInvalidCredentials,
                 AretiParsingError,
+                AretiPasswordDaCambiare,
                 async_create_session,
             )
 
@@ -939,6 +940,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 contesto = await auth.async_login(user_input["email"], user_input["password"])
             except AretiInvalidCredentials:
                 errors["base"] = "invalid_auth_email"
+            except AretiPasswordDaCambiare:
+                errors["base"] = "areti_password_da_cambiare"
             except AretiParsingError:
                 _LOGGER.exception("Parsing della pagina di login Areti fallito")
                 errors["base"] = "cannot_connect"
@@ -1028,6 +1031,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 AretiAuthClient,
                 AretiInvalidCredentials,
                 AretiParsingError,
+                AretiPasswordDaCambiare,
                 async_chiudi_sessione,
                 async_create_session,
             )
@@ -1040,6 +1044,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await auth.async_login(user_input["email"], user_input["password"])
             except AretiInvalidCredentials:
                 errors["base"] = "invalid_auth_email"
+            except AretiPasswordDaCambiare:
+                errors["base"] = "areti_password_da_cambiare"
             except AretiParsingError:
                 _LOGGER.exception("Parsing della pagina di login Areti fallito (reauth)")
                 errors["base"] = "cannot_connect"
@@ -2005,6 +2011,7 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
         from .distributors.areti.auth import (
             AretiAuthClient,
             AretiAuthError,
+            AretiPasswordDaCambiare,
             async_chiudi_sessione,
             async_create_session,
         )
@@ -2032,6 +2039,8 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
                     await api.async_get_configurations(pod)
                 except AretiApiError:
                     errors["pod"] = "areti_pod_non_valido"
+                except AretiPasswordDaCambiare:
+                    return self.async_abort(reason="areti_password_da_cambiare")
                 except AretiAuthError:
                     _LOGGER.exception("Login Areti fallito nelle opzioni (aggiungi POD)")
                     return self.async_abort(reason="areti_login_failed")

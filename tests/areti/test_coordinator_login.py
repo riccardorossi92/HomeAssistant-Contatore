@@ -22,6 +22,7 @@ from custom_components.contatore_letture.distributors.areti.auth import (
     AretiAuthError,
     AretiInvalidCredentials,
     AretiParsingError,
+    AretiPasswordDaCambiare,
 )
 from custom_components.contatore_letture.distributors.areti.const import CONF_PODS
 
@@ -78,4 +79,10 @@ async def test_credenziali_rifiutate_non_abbassano_l_intervallo_di_riprova(coord
 async def test_altri_errori_di_login_restano_update_failed(coordinator, errore):
     sessione, auth = _login_che_solleva(errore)
     with sessione, auth, pytest.raises(UpdateFailed, match="Login Areti fallito"):
+        await coordinator._async_login()
+
+
+async def test_password_da_cambiare_avvia_il_reauth_con_un_messaggio_chiaro(coordinator):
+    sessione, auth = _login_che_solleva(AretiPasswordDaCambiare("pagina Aggiorna password"))
+    with sessione, auth, pytest.raises(ConfigEntryAuthFailed, match="cambiare la password"):
         await coordinator._async_login()
