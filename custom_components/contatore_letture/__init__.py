@@ -32,6 +32,7 @@ from .distributors import DISTRIBUTOR_REGISTRY
 from .distributors.areti.coordinator import AretiCoordinator
 from .distributors.edistribuzione.coordinator import EdistribuzioneCoordinator
 from .distributors.edistribuzione.manuale import EdistribuzioneManuale, e_manuale
+from .distributors.edyna.coordinator import EdynaCoordinator
 from .distributors.ireti.coordinator import IretiCoordinator
 from .distributors.pcf_common.coordinator import PcfCoordinator
 from .distributors.setdistribuzione.coordinator import SetDistribuzioneCoordinator
@@ -47,6 +48,7 @@ _COORDINATOR_CON_POD = (
     AretiCoordinator,
     IretiCoordinator,
     SetDistribuzioneCoordinator,
+    EdynaCoordinator,
 )
 
 SERVICE_RECUPERA_TICKET = "recupera_ticket"
@@ -103,8 +105,8 @@ def _risolvi_coordinator_e_pod_da_device(hass: HomeAssistant, device_id: str):
     POD E-Distribuzione, al POD specifico.
 
     Gli identifiers dei device sono sempre (DOMAIN, f"{entry_id}_{pod}")
-    per i dispositivi per-POD (pcf_common, edistribuzione, areti, ireti e
-    setdistribuzione, stesso formato in tutti - vedi rispettivi sensor.py),
+    per i dispositivi per-POD (pcf_common, edistribuzione, areti, ireti,
+    setdistribuzione ed edyna, stesso formato in tutti - vedi rispettivi sensor.py),
     o (DOMAIN, entry_id)
     per il dispositivo "account" di pcf_common (senza POD specifico: il
     recupero PCF vale sempre per l'intera configurazione insieme).
@@ -200,6 +202,7 @@ async def _async_primo_aggiornamento(
     display_name: str,
     *,
     riprova_se_fallisce: bool = False,
+    sempre_in_background: bool = False,
 ) -> None:
     """Esegue il primo aggiornamento del coordinator senza bloccare l'avvio di HA.
 
@@ -219,6 +222,11 @@ async def _async_primo_aggiornamento(
     ottenuto nel config flow: un fallimento immediato segnala verosimilmente
     un problema reale. Con il rinvio all'avvio il setup e' gia' concluso, e
     il coordinator riprova al giro successivo.
+
+    sempre_in_background: il primo aggiornamento parte in background anche a
+    HA gia' avviato. Lo usa Edyna, il cui portale e' cosi' lento (oltre 100 s
+    per una singola richiesta, qualche minuto per un primo ciclo) che
+    attenderlo terrebbe fermo il config flow e il setup della entry.
     """
 
     async def _aggiorna() -> None:
@@ -232,7 +240,11 @@ async def _async_primo_aggiornamento(
             )
 
     if hass.state is CoreState.running:
-        if riprova_se_fallisce:
+        if sempre_in_background:
+            entry.async_create_background_task(
+                hass, _aggiorna(), f"{DOMAIN} primo aggiornamento {display_name}"
+            )
+        elif riprova_se_fallisce:
             await coordinator.async_config_entry_first_refresh()
         else:
             await _aggiorna()
@@ -309,7 +321,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await _async_primo_aggiornamento(hass, entry, coordinator, info["display_name"])
         return True
 
-    if info["kind"] in ("ireti", "setdistribuzione"):
+    if info["kind"] in ("ireti", "setdistribuzione", "edyna"):
         coordinator = modulo.create_coordinator(hass, entry)
         hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
         await _async_registra_servizi(hass)
@@ -320,7 +332,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # POD appena associato non e' un fallimento - il coordinator
         # importa semplicemente quello che trova nella finestra scorrevole
         # (vedi coordinator.py).
-        await _async_primo_aggiornamento(hass, entry, coordinator, info["display_name"])
+        await _async_primo_aggiornamento(
+            hass,
+            entry,
+            coordinator,
+            info["display_name"],
+            sempre_in_background=info["kind"] == "edyna",
+        )
         return True
 
     # Nessun altro "kind" atteso: se arriviamo qui e' un bug del registry.

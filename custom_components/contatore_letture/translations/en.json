@@ -170,6 +170,29 @@
           "password": "Password"
         }
       },
+      "edyna_user": {
+        "title": "Edyna - Sign in",
+        "description": "Use the same credentials as the Edyna portal (portaledistributore.edyna.net): the **username**, not the email address, and the password. No OTP code is required.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "edyna_pod": {
+        "title": "Edyna - Select PODs",
+        "description": "You can select more than one POD to monitor several of them with this same configuration.",
+        "data": {
+          "pods": "POD"
+        }
+      },
+      "edyna_reauth_user": {
+        "title": "Edyna - Sign in again",
+        "description": "The saved credentials are no longer valid for these PODs: {pod_correnti}. Sign in again with your username and password.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
       "edistribuzione_modalita": {
         "title": "Distributor found: E-Distribuzione",
         "description": "Choose how to import the consumption of your POD.\n\n**Automatic download, sign-in from the browser**: sign in once on the official E-Distribuzione website from the browser of a computer, open an authorization link and paste here the address it returns. From then on the integration renews the access and downloads the data by itself every day. Your password never goes through Home Assistant. This is an unofficial access: E-Distribuzione may block it at any time.\n\n**Manual load of load curves**: you download the load curve from the E-Distribuzione website (CSV file) and upload it to Home Assistant from the integration options, whenever you want to update the data. Only the POD code is needed, no credentials.\n\n**Automatic download with password and OTP**: the integration signs in by itself with email, password and OTP code. Since October 2026 E-Distribuzione blocks this access, so it is not available for now.",
@@ -241,7 +264,9 @@
       "ireti_pods_failed": "Unexpected error while retrieving the PODs from the SmartPOD account. Start the setup again.",
       "no_ireti_pods_associated": "Your SmartPOD account does not have any POD associated yet. Sign in to the portal (smartpod.ireti.it), use \"Aggiungi POD\" (Add POD) with the code of your supply, then try this setup again.",
       "setdistribuzione_pods_failed": "Unexpected error while retrieving the supplies from the mySET account. Start the setup again.",
-      "no_setdistribuzione_pods": "Your mySET account has no electricity supply associated. Sign in to the customer area (myset.setdistribuzione.it), check that the supply appears among your utilities, then try this setup again."
+      "no_setdistribuzione_pods": "Your mySET account has no electricity supply associated. Sign in to the customer area (myset.setdistribuzione.it), check that the supply appears among your utilities, then try this setup again.",
+      "edyna_pods_failed": "Unexpected error while retrieving the supplies from the Edyna portal. Start the setup again.",
+      "no_edyna_pods": "Your Edyna account has no electricity withdrawal supply associated. Sign in to the portal (portaledistributore.edyna.net), check that the supply appears among the Utenze, then try this setup again."
     }
   },
   "options": {

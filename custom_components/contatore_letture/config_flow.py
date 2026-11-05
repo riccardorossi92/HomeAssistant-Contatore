@@ -197,6 +197,12 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._set_email: str | None = None
         self._set_password: str | None = None
         self._set_pods: list[dict] = []
+        # Stato del ramo Edyna
+        self._edyna_session = None
+        self._edyna_api = None
+        self._edyna_username: str | None = None
+        self._edyna_password: str | None = None
+        self._edyna_pods: list[dict] = []
 
     # ------------------------------------------------------------------
     # Wizard ARERA: regione -> provincia -> comune -> lookup
@@ -354,6 +360,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_ireti_user()
             if info["kind"] == "setdistribuzione":
                 return await self.async_step_setdistribuzione_user()
+            if info["kind"] == "edyna":
+                return await self.async_step_edyna_user()
             return await self.async_step_edistribuzione_user()
 
         return self.async_show_form(
@@ -1426,6 +1434,171 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     # ------------------------------------------------------------------
+    # Ramo Edyna: login nome utente/password sul portale Terranova PUF
+    # (nessun OTP) -> POD scoperti dalla griglia Utenze. La sessione è un
+    # cookie, non un token: il client di navigazione resta in self._edyna_api
+    # finché il flow dura.
+    # ------------------------------------------------------------------
+
+    def _nuova_sessione_edyna(self):
+        from .distributors.edyna.auth import nuovo_cookie_jar
+
+        return async_create_clientsession(self.hass, cookie_jar=nuovo_cookie_jar())
+
+    async def _async_edyna_login(self, session, username: str, password: str):
+        """(pagina, None) se il login riesce, (None, chiave d'errore)
+        altrimenti. Condiviso da onboarding e reauth."""
+        from .distributors.edyna.auth import (
+            EdynaAuthClient,
+            EdynaAuthError,
+            EdynaInvalidCredentials,
+        )
+
+        try:
+            pagina = await EdynaAuthClient(session).async_login(username, password)
+        except EdynaInvalidCredentials:
+            return None, "invalid_auth_username"
+        except EdynaAuthError:
+            _LOGGER.exception("Login Edyna fallito")
+            return None, "cannot_connect"
+        except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+            _LOGGER.exception("Errore imprevisto durante il login Edyna")
+            return None, "cannot_connect"
+        return pagina, None
+
+    async def async_step_edyna_user(self, user_input: dict[str, Any] | None = None):
+        from .distributors.edyna.api import EdynaApiClient
+
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            if self._edyna_session is None:
+                self._edyna_session = self._nuova_sessione_edyna()
+            pagina, errore = await self._async_edyna_login(
+                self._edyna_session, user_input["username"], user_input["password"]
+            )
+            if errore:
+                errors["base"] = errore
+            else:
+                self._edyna_username = user_input["username"]
+                self._edyna_password = user_input["password"]
+                self._edyna_api = EdynaApiClient(self._edyna_session, pagina)
+                return await self.async_step_edyna_pod()
+
+        return self.async_show_form(
+            step_id="edyna_user",
+            data_schema=vol.Schema({
+                vol.Required("username"): str,
+                vol.Required("password"): str,
+            }),
+            errors=errors,
+        )
+
+    async def async_step_edyna_pod(self, user_input: dict[str, Any] | None = None):
+        from .distributors.edyna.api import EdynaApiError
+        from .distributors.edyna.const import (
+            CONF_ORARIO_RICHIESTA,
+            CONF_PASSWORD,
+            CONF_PODS,
+            CONF_USERNAME,
+            orario_casuale,
+        )
+
+        if not self._edyna_pods:
+            try:
+                self._edyna_pods = await self._edyna_api.async_get_pod_account()
+            except EdynaApiError:
+                _LOGGER.exception("Errore nel recupero dei POD Edyna")
+                return self.async_abort(reason="edyna_pods_failed")
+            except Exception:  # noqa: BLE001 - vedi commento in edistribuzione_user
+                _LOGGER.exception("Errore imprevisto nel recupero dei POD Edyna")
+                return self.async_abort(reason="edyna_pods_failed")
+
+        pod_codes = [p["pod"] for p in self._edyna_pods]
+        if not pod_codes:
+            # Account registrato ma senza forniture elettriche di prelievo
+            # (la situazione della cattura di login del 05/11/2026).
+            return self.async_abort(reason="no_edyna_pods")
+
+        def crea_entry(pods: list[str]):
+            titolo = pods[0] if len(pods) == 1 else f"{len(pods)} POD"
+            return self.async_create_entry(
+                title=f"Edyna ({titolo})",
+                data={
+                    "distributor": "edyna",
+                    "comune": self._comune_name,
+                    CONF_USERNAME: self._edyna_username,
+                    CONF_PASSWORD: self._edyna_password,
+                    CONF_PODS: pods,
+                },
+                # Orario casuale per installazione, come gli altri distributori.
+                options={CONF_ORARIO_RICHIESTA: orario_casuale()},
+            )
+
+        if len(pod_codes) == 1:
+            return crea_entry(pod_codes)
+
+        if user_input is not None:
+            scelti = user_input[CONF_PODS]
+            if not scelti:
+                return self.async_show_form(
+                    step_id="edyna_pod",
+                    data_schema=self._schema_edyna_pod(),
+                    errors={"pods": "nessun_pod_selezionato"},
+                )
+            return crea_entry(scelti)
+
+        return self.async_show_form(step_id="edyna_pod", data_schema=self._schema_edyna_pod())
+
+    def _schema_edyna_pod(self) -> vol.Schema:
+        from .distributors.edyna.const import CONF_PODS
+
+        opzioni = [
+            {"value": p["pod"], "label": f"{p['pod']} ({p['nome']})" if p["nome"] else p["pod"]}
+            for p in self._edyna_pods
+        ]
+        return vol.Schema({
+            vol.Required(CONF_PODS, default=[p["pod"] for p in self._edyna_pods]): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=opzioni, multiple=True)
+            )
+        })
+
+    async def async_step_edyna_reauth_user(self, user_input: dict[str, Any] | None = None):
+        """Reauth Edyna: stesso login dell'onboarding, niente riselezione POD -
+        aggiorna nome utente e password sulla entry esistente."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            from .distributors.edyna.const import CONF_PASSWORD, CONF_USERNAME
+
+            _, errore = await self._async_edyna_login(
+                self._nuova_sessione_edyna(), user_input["username"], user_input["password"]
+            )
+            if errore:
+                errors["base"] = errore
+            else:
+                nuovi_dati = {
+                    **self._reauth_entry.data,
+                    CONF_USERNAME: user_input["username"],
+                    CONF_PASSWORD: user_input["password"],
+                }
+                self.hass.config_entries.async_update_entry(self._reauth_entry, data=nuovi_dati)
+                await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="edyna_reauth_user",
+            data_schema=vol.Schema({
+                vol.Required("username"): str,
+                vol.Required("password"): str,
+            }),
+            errors=errors,
+            description_placeholders={
+                "pod_correnti": ", ".join(self._reauth_entry.data.get(CONF_PODS, []))
+            },
+        )
+
+    # ------------------------------------------------------------------
     # Reauth E-Distribuzione: stesso login+OTP dell'onboarding iniziale,
     # ma niente selezione POD (la entry esistente ha gia' i suoi) - alla
     # fine aggiorna il refresh_token sulla entry esistente invece di
@@ -1643,6 +1816,8 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_ireti_reauth_user()
         if kind == "setdistribuzione":
             return await self.async_step_setdistribuzione_reauth_user()
+        if kind == "edyna":
+            return await self.async_step_edyna_reauth_user()
         return self.async_abort(reason="reauth_not_supported")
 
     async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None):

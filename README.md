@@ -5,7 +5,7 @@ Unofficial meta-integration for Italian electricity distributor meter data in Ho
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz)
 [![Validate](https://github.com/riccardorossi92/HomeAssistant-Contatore/actions/workflows/validate.yml/badge.svg)](https://github.com/riccardorossi92/HomeAssistant-Contatore/actions/workflows/validate.yml)
 
-> **Disclaimer:** This is an unofficial integration and is not affiliated with or endorsed by ARERA, Duereti, Unareti, RetiPiù, Reti Valtellina Valchiavenna, E-Distribuzione, Areti, Ireti, SET Distribuzione, or any other distributor in any way.
+> **Disclaimer:** This is an unofficial integration and is not affiliated with or endorsed by ARERA, Duereti, Unareti, RetiPiù, Reti Valtellina Valchiavenna, E-Distribuzione, Areti, Ireti, SET Distribuzione, Edyna, or any other distributor in any way.
 
 Integrazione per Home Assistant che, dato il tuo comune, individua
 automaticamente il distributore elettrico competente (interrogando
@@ -28,6 +28,7 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | Areti | Email + password | `recupera_storico` | |
 | Ireti | Username + password | `recupera_storico` | Giorno da 25 ore (25/10/2026) da ricontrollare; ora di pubblicazione del giorno precedente da misurare; POD di produzione non supportati |
 | SET Distribuzione | Email + password | `recupera_storico` | Verificato da un solo utente con POD attivo, che ha confermato i dati e importato lo storico; giorni di cambio ora (dopo il 25/10/2026) e ora di pubblicazione del giorno precedente da verificare |
+| Edyna | Nome utente + password | `recupera_storico` | Catena di navigazione verificata su una cattura reale, **non ancora provato in un Home Assistant reale**. Portale lentissimo (richieste da oltre 100 s): il primo aggiornamento può durare minuti. Ritardo dei dati (oltre 10 giorni nella cattura) e giorno da 23 ore da verificare |
 
 > [!WARNING]
 > **E-Distribuzione: login automatico bloccato, accesso dal browser**
@@ -58,19 +59,6 @@ uno di quelli supportati, o si ferma con un messaggio chiaro altrimenti.
 > mancante.**
 
 <details>
-<summary><b>Edyna</b> (Alto Adige / Südtirol, gruppo Alperia) — curve orarie e login confermati, manca la navigazione</summary>
-
-Una cattura da un account con POD attivo conferma che il portale espone
-le curve orarie e al quarto d'ora per POD, più i consumi mensili. La
-cattura però non comprende i passi per arrivarci; il login (nome utente
-e password, senza 2FA) è confermato da un account di prova. Se hai
-un'utenza Edyna con un POD attivo puoi aiutare con una cattura di
-Utenze → Curve → un mese — vedi
-[documentation/protocols/edyna-protocol.md](documentation/protocols/edyna-protocol.md).
-
-</details>
-
-<details>
 <summary><b>Deval</b> (Valle d'Aosta) — login con 2FA verificato, da confermare Letture/Curve</summary>
 
 Login completo verificato con una cattura reale (credenziali + 2FA via
@@ -78,7 +66,7 @@ app authenticator, sempre obbligatorio — un vincolo che nessun altro
 distributore già supportato ha), ma da un account senza POD associato:
 manca ancora la conferma delle sezioni Letture/Curve, che il manuale
 pubblico del portale PUF descrive come letture mensili e curve orarie
-per POD. Stesso tipo di portale ASP.NET WebForms di Edyna (probabilmente
+per POD. Stesso tipo di portale ASP.NET WebForms di Edyna (già supportato) (probabilmente
 stesso vendor, Terranova). Se hai una fornitura Deval con un'utenza
 registrata sul PUF puoi aiutare — vedi
 [documentation/protocols/deval-protocol.md](documentation/protocols/deval-protocol.md).
@@ -289,6 +277,30 @@ dal wizard invece di procedere a vuoto.
 
 </details>
 
+<details>
+<summary><b>Edyna (nome utente + password)</b></summary>
+
+Nessuna richiesta di abilitazione preventiva e **nessun OTP**: servono le
+credenziali del [portale Edyna](https://portaledistributore.edyna.net/),
+con il **nome utente** (non l'indirizzo email) e la password. I POD si
+scoprono automaticamente dall'account (solo le forniture elettriche di
+prelievo): se ce n'è più di uno potrai selezionarne uno o più. Un account
+registrato ma senza forniture associate viene segnalato dal wizard invece
+di procedere a vuoto.
+
+> [!WARNING]
+> Il portale Edyna non ha un'API: l'integrazione lo naviga come un browser
+> (login, Utenze, Curve, mese) e legge le tabelle della pagina. Login e
+> formato dei dati sono verificati su due catture reali, ma l'integrazione
+> non è ancora stata provata in un Home Assistant reale. Il portale è molto
+> lento (alcune richieste superano i 100 secondi e la prima risposta delle
+> curve è vuota, quindi si ripete): il primo import parte in background e
+> può richiedere alcuni minuti. Se la configurazione o il primo import falliscono, apri una issue con il log
+> (livello debug per `custom_components.contatore_letture`): il messaggio
+> d'errore indica a quale passo ci si è fermati.
+
+</details>
+
 ## Installazione
 
 ### Tramite HACS
@@ -326,9 +338,9 @@ distributore:
 | Duereti, Unareti, RetiPiù, Reti Valtellina Valchiavenna | sì | no (importano a mese chiuso, vedi sotto) |
 | Areti | sì | no (importa a mese chiuso, vedi sotto) |
 | E-Distribuzione | sì | sì |
-| Ireti, SET Distribuzione | no | no (vedi sotto) |
+| Ireti, SET Distribuzione, Edyna | no | no (vedi sotto) |
 
-Per **Ireti** e **SET Distribuzione** le opzioni non hanno ancora nessuna
+Per **Ireti**, **SET Distribuzione** ed **Edyna** le opzioni non hanno ancora nessuna
 voce: per cambiare i POD monitorati rimuovi l'integrazione e configurala
 di nuovo.
 
@@ -347,6 +359,7 @@ Ogni distributore pubblica i dati a modo suo, e l'integrazione si adatta:
 | Areti | Un mese solare chiuso alla volta, completato qualche giorno alla volta | Una volta al giorno |
 | E-Distribuzione | Il giorno precedente | Ogni giorno, a un orario scelto a caso tra le 16:00 e le 20:00 al momento della configurazione (diverso per ogni installazione, modificabile dalle opzioni) |
 | Ireti | Una curva a 15 minuti | Una volta al giorno, senza un orario fisso |
+| Edyna | Un mese per volta, un giorno per riga (oltre 10 giorni di ritardo nella cattura del 05/11/2026) | Una volta al giorno, a un orario scelto a caso tra le 06:00 e le 22:00 al momento della configurazione (diverso per ogni installazione, non modificabile dalle opzioni) |
 | SET Distribuzione | Il giorno precedente, con il dettaglio orario (e i quarti d'ora) | Ogni sera, a un orario scelto a caso tra le 18:00 e le 22:00 al momento della configurazione (diverso per ogni installazione, non modificabile dalle opzioni) |
 
 **Mese solare chiuso** (Duereti, Unareti, RetiPiù, Reti Valtellina
@@ -381,6 +394,17 @@ riprovato nei giorni successivi, così non si creano buchi.
   verificare login e POD. Se ieri è già importato il portale non viene
   nemmeno contattato. Si richiede un giorno per volta, quindi un arretrato
   si recupera un giorno alla volta.
+
+**Edyna** non ha una coda di giorni da riprovare: il portale mostra un
+mese per volta e nella cattura l'ultimo giorno disponibile aveva oltre 10
+giorni di ritardo, di cui non si conosce la regola. A ogni richiesta (al
+massimo una al giorno) l'integrazione rilegge il mese dell'ultimo dato
+importato, ripartendo da una settimana prima, fino al mese in corso, e
+importa tutto quello che c'è di nuovo: un buco si chiude da solo appena il
+portale lo riempie. Al primo avvio legge gli ultimi due mesi; se si è
+rimasti indietro di più mesi ne recupera tre per volta, un giro orario
+dopo l'altro. Un giorno con celle vuote o a zero in tutte le ore (non
+ancora pubblicato) non viene importato.
 
 **Storico pregresso**: per tutti i distributori non viene recuperato
 automaticamente. Si richiede con l'azione `recupera_storico` (vedi
@@ -451,6 +475,19 @@ invece di giornaliera (vedi [Cosa fa una volta configurata](#cosa-fa-una-volta-c
 </details>
 
 <details>
+<summary><b>Entità esposte — Edyna</b></summary>
+
+| Entità | Dispositivo | Cosa mostra |
+|---|---|---|
+| POD configurati | Account | Quanti e quali POD in questa istanza |
+| Ultima data disponibile | POD | Ultimo giorno per cui esistono dati importati |
+| Consumo ultimo giorno importato | POD | kWh dell'ultimo giorno ricevuto nell'ultima richiesta |
+
+Stessa struttura di SET Distribuzione, Ireti ed E-Distribuzione.
+
+</details>
+
+<details>
 <summary><b>Entità esposte — SET Distribuzione</b></summary>
 
 | Entità | Dispositivo | Cosa mostra |
@@ -491,7 +528,8 @@ che attraversa e per ciascuno si importa il mese intero. Per Ireti
 blocchi da un mese circa, la dimensione dell'unica richiesta finora
 confermata su dati reali. Per SET Distribuzione (limite auto-imposto: 366
 giorni) si fa una richiesta per ogni giorno del periodo: un anno intero
-richiede qualche minuto.
+richiede qualche minuto. Per Edyna (limite auto-imposto: 36 mesi) si legge un
+mese per volta, e ogni mese costa diverse richieste al portale.
 
 **`contatore_letture.recupera_ticket`** — solo Duereti/Unareti/RetiPiù/Reti
 Valtellina Valchiavenna (gli altri

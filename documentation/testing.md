@@ -48,6 +48,14 @@ tests/
     test_api.py                         # non richiede HA
     test_statistics.py                  # ore -> bucket UTC, giorni di cambio ora
     test_coordinator.py                 # giorni da chiedere, coda, recupera_storico
+  edyna/
+    dati_reali.py                       # markup reale della cattura del 05/11/2026, anonimizzato
+    test_parse.py                       # form, griglia Utenze, mesi, curva oraria (funzioni pure)
+    test_auth.py                        # login a postback su sessione finta
+    test_api.py                         # catena Utenze -> Curve -> mese su portale finto
+    test_statistics.py                  # 25 colonne -> bucket UTC, giorni di cambio ora
+    test_coordinator.py                 # quando chiedere, quali mesi, recupera_storico
+    test_registro.py                    # P.IVA ARERA -> Edyna
 ```
 
 ## Test senza Home Assistant installato

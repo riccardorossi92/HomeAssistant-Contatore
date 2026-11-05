@@ -1,12 +1,39 @@
-# Edyna — stato della ricerca (dati di misura confermati, supporto non ancora implementato)
+# Edyna — implementato, catena verificata su una cattura reale
 
 **Edyna S.r.l.** (distributore dell'Alto Adige / Südtirol, gruppo
-Alperia) — portale `portaledistributore.edyna.net`. **Non ancora
-supportato**, ma dal 05/11/2026 ([issue #19](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/19))
-c'è una cattura da un account **con un POD attivo** che conferma che il
-portale espone le **curve orarie e al quarto d'ora** e i consumi mensili
-per POD. Il login è confermato (nome utente e password, senza 2FA); resta
-da catturare la navigazione tra Utenze e curva (vedi [Cosa manca](#cosa-manca)).
+Alperia, P.IVA `02689370217` confermata dalla ricerca ARERA per Bolzano e
+Salorno) — portale `portaledistributore.edyna.net`. **Supportato** da
+`distributors/edyna/`. Il login è verificato su una cattura (account di prova
+senza POD); l'intera catena Utenze → Curve → anno → mese su una seconda
+(account con POD, 05/11/2026), rigiocata contro il client vero con un
+portale finto che risponde con le pagine registrate. **Non ancora provato in
+un Home Assistant reale.** Origine: [issue #19](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/19).
+Il portale espone le **curve orarie e al quarto d'ora** e i consumi mensili
+per POD.
+
+## Implementazione
+
+| File | Cosa fa |
+|---|---|
+| `auth.py` | Login in 4 passi (GET modulo, POST UpdatePanel, GET `Single.tws`, `SecondPostback`) |
+| `parse.py` | Funzioni pure sull'HTML: campi del form come li invia il browser, griglia Utenze, selettore Anno, link dei mesi, griglia oraria |
+| `api.py` | Navigazione: ogni passo è un POST con tutto il form della pagina corrente; se la pagina non porta il contenuto atteso prova `SecondPostback` (al massimo due volte) e poi solleva un errore che nomina il passo; se la tabella dei mesi arriva vuota ripete lo stesso postback una volta. Timeout di 300 s per richiesta |
+| `statistics.py` | 25 colonne → bucket orari UTC, con il mapping dei giorni da 23 e 25 ore |
+| `coordinator.py` | Una lettura al giorno dopo un orario casuale (06–22), un mese per volta; il primo ciclo parte in background (può durare minuti) |
+
+Scelte di progetto:
+
+- **Nessuna coda di retry.** Nella cattura l'ultimo giorno era 11 giorni
+  prima, con una regola ignota. A ogni richiesta si rilegge il mese
+  dell'ultimo dato importato (da una settimana prima) fino a quello in corso
+  e si importa tutto ciò che c'è: l'import è idempotente e un buco si chiude
+  da solo.
+- **Controlli prima di importare**: il mese e il POD riportati dalla pagina
+  devono coincidere con quelli chiesti; un giorno con celle vuote, con un
+  numero di ore che non torna o a zero in tutte le ore (non pubblicato) non
+  viene importato.
+- **Solo prelievo elettrico**: immissione, produzione e gas sono ignorati.
+- Il parsing HTML gira in un executor.
 
 ## Quadro generale
 
@@ -158,6 +185,43 @@ ricerca) con `Content-Type: application/x-www-form-urlencoded`, senza
 header `X-MicrosoftAjax`: **postback completo, non UpdatePanel**, e la
 risposta è la pagina intera.
 
+### Il portale è lentissimo, e la prima richiesta risponde vuota
+
+Dalla cattura del 05/11/2026 (tempi di risposta del server):
+
+| Passo | Durata |
+|---|---|
+| Login, menu Utenze | 0,4 s, 3,5 s |
+| Apertura tab Curve (`btnCurve`) | **104 s**, risposta con "Nessun risultato" |
+| Stesso postback ripetuto | 84 s, risposta con i 10 mesi dell'anno |
+| Click sul mese | 44 s (2026), 38 s (2025) |
+| Cambio anno (`ddlAnno`) | **101 s**, "Nessun risultato"; ripetuto: 75 s, 12 mesi |
+| Click sul giorno (quarti d'ora) | 1 s |
+
+Quindi: (1) la **prima richiesta di Curve o di un anno nuovo restituisce la
+tabella dei mesi vuota** (`<div class="alert alert-danger">Nessun
+risultato</div>` al posto dei link) e il **secondo postback identico porta i
+dati**; il browser dell'utente l'ha ripetuto a mano. Il client lo ripete una
+volta e, se la tabella resta vuota, considera l'anno senza dati. (2) Una
+singola richiesta può superare i 100 secondi: timeout a 300 s, primo
+aggiornamento in background. Un primo ciclo con due mesi in anni diversi può
+quindi durare diversi minuti. Il click sul mese, invece, ha funzionato alla
+prima richiesta.
+
+La sequenza completa vista, con il tab Curve aperto:
+
+1. `…mMenu1$FirstLevelMenuRepeater$ctl01$lnkLevelMenu` (Utenze) → pagina
+   senza contenuto; `body_ctl00_SecondPostback` → griglia Utenze;
+2. `…gvUtenze$ctl02$btnCurve` → tab Curve (vuoto), ripetuto → pieno;
+3. `…gvCurveAttiva$ctl02$btnCurve10` → tab Curve orarie del mese;
+4. `…TCurve$cCurve$ddlAnno` (postback sul select, valore nuovo nel form) →
+   vuoto, ripetuto → pieno; poi di nuovo il mese;
+5. facoltativi: `…gvCurveOrarieEE$ctl02$btnCurve` (quarti d'ora del primo
+   giorno), `…cCurveOrarie$btnClose` ("Chiudi"),
+   `…btnExportQuartiGiornalieri` (immagine, `.x`/`.y`): risponde con un
+   file Excel (`application/ms-excel`, un `.xlsx` di circa 7 KB) con i quarti
+   d'ora del giorno.
+
 ### Cose osservate sui dati
 
 - **Granularità**: oraria e al quarto d'ora; più che sufficiente per le
@@ -173,6 +237,13 @@ risposta è la pagina intera.
   probabilmente è la seconda occorrenza di quell'ora messa in coda, ma
   va verificato con i consumi reali di quel giorno prima di assegnare i
   valori. Il giorno da 23 ore (29/03) non è nella cattura.
+  Il codice assume, per il giorno da 25 ore, che la colonna 25 sia la
+  seconda 02-03 (mapping in `statistics.py`): il valore della cattura (0,26
+  kWh, come le altre ore notturne e non come quelle serali) lo supporta, e
+  la seconda cattura lo conferma sul 26/10/2025 (colonna 25 a 0,223 kWh,
+  come le ore notturne; nei giorni normali vale 0,0). Resta da vedere il
+  giorno da 23 ore, mai osservato (29/03/2026 non è in nessuna cattura): si importa solo se l'Ora 3 è
+  a zero.
 - **Formato numerico**: virgola decimale, nessun separatore delle
   migliaia nei valori catturati.
 - **Fasce**: il riepilogo F1/F2/F3 è calcolato dal portale; non serve per
@@ -180,25 +251,31 @@ risposta è la pagina intera.
 
 ## Cosa manca
 
-1. **I passi di navigazione tra login e curva**, con un account con POD:
-   `Utenze → Curve → mese`, incluso come si cambia anno o mese (`ddlAnno`
-   provoca un postback?) e se servono i due postback consecutivi visti su
-   DEA. Gli identificativi dei controlli sono noti, mancano le
-   risposte intermedie che portano `__VIEWSTATE` ed `__EVENTVALIDATION`.
-2. **Il comportamento a sessione scaduta** (cookie rifiutato, risposta
+1. **Una prova in un Home Assistant reale.** La catena è verificata su una
+   cattura, non ancora dal vivo: restano i tempi (richieste da oltre 100 s,
+   timeout a 300 s) e il primo ciclo in background.
+2. **Due mesi di fila nello stesso anno** (il click sul mese seguente col
+   tab Curve orarie ancora aperto): la cattura ha un solo mese per anno. Se
+   il link manca il client riapre Curve, ma costa due richieste lente.
+3. **Il comportamento a sessione scaduta** (cookie rifiutato, risposta
    diversa dal login?).
-3. **Cosa restituiscono gli export Excel** (curva mensile, quarti,
-   esportazione massiva): un file scaricabile permetterebbe di evitare il
-   parsing HTML e di coprire un intervallo ampio in una richiesta.
-4. **Più POD e POD di produzione/immissione**: la cattura ha un solo POD
+4. **Gli export Excel**: `btnExportQuartiGiornalieri` restituisce un
+   `.xlsx` con i quarti d'ora del giorno; contenuto non analizzato (la
+   cattura lo contiene in base64, non anonimizzabile). Un export mensile
+   eviterebbe il parsing HTML.
+5. **Il giorno da 23 ore** (ultima domenica di marzo) e la **regola del
+   ritardo** dei dati (25/10 visibile il 05/11).
+6. **Più POD e POD di produzione/immissione**: le catture hanno un solo POD
    di prelievo.
 
 ## Come contribuire
 
-Serve chi ha un'utenza Edyna con una fornitura attiva (POD associato).
-Cattura HAR manuale: login →
-Utenze → Curve → un mese → un giorno, poi (se possibile) un export
-Excel. Vedi
+Serve chi ha un'utenza Edyna con una fornitura attiva (POD associato):
+configura l'integrazione. Se il wizard o il primo import falliscono, il
+messaggio d'errore nomina il passo a cui ci si è fermati (es. "passo
+'Curve'"): apri una issue con quel messaggio e il log a livello debug per
+`custom_components.contatore_letture`. Una cattura HAR (login → Utenze →
+Curve → un mese → un giorno) resta la strada più rapida; vedi
 [Aiutare senza scrivere codice](../../CONTRIBUTING.md#aiutare-senza-scrivere-codice-raccolta-dati)
 in CONTRIBUTING.md: **non allegare la HAR grezza a una issue
 pubblica** (contiene token di sessione e dati personali in chiaro) —

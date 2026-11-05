@@ -21,7 +21,7 @@ caso per caso.
 | ASM Terni S.p.A. (TDE — Terni Distribuzione Elettrica) | Terni | portale `distribuzione.asmtde.it` (pagine `.aspx` con `idn=00AE`, stesso parametro `idn` del PUF): letture solo per utenti MT, curve orarie su richiesta via PEC — nessun PUF per BT trovato |
 | DEA — Distribuzione Elettrica Adriatica | Osimo/Recanati, Ortona, Sanremo, Bresciano | [dea-protocol.md](dea-protocol.md) — login ok, nessun POD |
 | Deval | Valle d'Aosta | [deval-protocol.md](deval-protocol.md) — login con 2FA, nessun POD |
-| Edyna | Alto Adige | [edyna-protocol.md](edyna-protocol.md) — **prima cattura con POD (05/11/2026)**: curve orarie e al quarto d'ora confermate; login verificato (nome utente, senza 2FA); navigazione da catturare |
+| Edyna | Alto Adige | [edyna-protocol.md](edyna-protocol.md) — **supportato** (`distributors/edyna/`): prima cattura con POD (05/11/2026), curve orarie e al quarto d'ora; login verificato (nome utente, senza 2FA); catena Utenze → Curve → anno → mese verificata su una cattura reale (portale lentissimo, prima risposta delle curve vuota), non ancora provata in HA |
 | Odoardo Zecca S.r.l. | Ortona (CH) | ramo distribuzione **ceduto a DEA nel 2023**: i suoi clienti stanno ora sul portale DEA |
 | RetiPiù (gruppo A2A) | elettricità: solo Seregno (MB), ~26.000 utenze; gas in molti comuni della Brianza | **nessun PUF Terranova**: l'area clienti è `areaclienti.retipiu.it/ClientiRPiuWeb`, stessa piattaforma "Portale Clienti Finali" di Unareti (`/ClientiWeb`) e Duereti (`/ClientiDueRetiWeb`) — **supportato** via `pcf_common` (`distributors/retipiu.py`), vedi sotto |
 | SIEC — Società per l'Illuminazione Elettrica in Chiavenna | Chiavenna e Prata Camportaccio (SO), ~8.000 utenze | portale clienti non trovato |

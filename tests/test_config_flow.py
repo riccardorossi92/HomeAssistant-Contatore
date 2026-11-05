@@ -49,6 +49,15 @@ from custom_components.contatore_letture.distributors.edistribuzione.const impor
     CONF_ORARIO_RICHIESTA,
     CONF_REFRESH_TOKEN,
 )
+from custom_components.contatore_letture.distributors.edyna import api as edyna_api
+from custom_components.contatore_letture.distributors.edyna import auth as edyna_auth
+from custom_components.contatore_letture.distributors.edyna.auth import EdynaInvalidCredentials
+from custom_components.contatore_letture.distributors.edyna.const import (
+    CONF_PASSWORD as EDYNA_CONF_PASSWORD,
+)
+from custom_components.contatore_letture.distributors.edyna.const import (
+    CONF_USERNAME as EDYNA_CONF_USERNAME,
+)
 from custom_components.contatore_letture.distributors.ireti import api as ireti_api
 from custom_components.contatore_letture.distributors.ireti import auth as ireti_auth
 from custom_components.contatore_letture.distributors.ireti.auth import (
@@ -997,6 +1006,151 @@ async def test_set_reauth_credenziali_non_valide(hass, set_mocks):
 
 async def test_set_opzioni_non_supportate(hass):
     entry = _entry_set(hass)
+    res = await hass.config_entries.options.async_init(entry.entry_id)
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "options_not_supported"
+
+
+# --- ramo Edyna (login nome utente/password su portale Terranova PUF -> POD dalle Utenze) ---
+
+EDYNA_POD_1 = {"pod": "IT000E00000001", "nome": "Attivo"}
+EDYNA_POD_2 = {"pod": "IT000E00000003", "nome": ""}
+
+
+@pytest.fixture
+def edyna_mocks(monkeypatch):
+    """Sostituisce EdynaAuthClient / EdynaApiClient e le sessioni aiohttp.
+    Default: login ok, un solo POD sull'account."""
+    auth = Mock()
+    auth.async_login = AsyncMock(return_value=Mock())
+
+    api = Mock()
+    api.async_get_pod_account = AsyncMock(return_value=[EDYNA_POD_1])
+
+    monkeypatch.setattr(edyna_auth, "EdynaAuthClient", Mock(return_value=auth))
+    monkeypatch.setattr(edyna_api, "EdynaApiClient", Mock(return_value=api))
+    monkeypatch.setattr(cf, "async_create_clientsession", lambda *a, **k: Mock())
+    return SimpleNamespace(auth=auth, api=api)
+
+
+async def _fino_a_edyna_user(hass):
+    res = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"regione": "Lombardia"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"provincia": "Milano"})
+    res = await hass.config_entries.flow.async_configure(res["flow_id"], {"comune": "Vimodrone"})
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"distributor": "edyna"}
+    )
+    return await hass.config_entries.flow.async_configure(res["flow_id"], {})
+
+
+async def test_edyna_credenziali_non_valide(hass, _arera_sconosciuto, edyna_mocks):
+    edyna_mocks.auth.async_login.side_effect = EdynaInvalidCredentials("no")
+    res = await _fino_a_edyna_user(hass)
+    assert res["step_id"] == "edyna_user"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "mario", "password": "sbagliata"}
+    )
+    assert res["type"] == FlowResultType.FORM
+    assert res["errors"] == {"base": "invalid_auth_username"}
+
+
+async def test_edyna_un_solo_pod_crea_entry_subito(hass, _arera_sconosciuto, edyna_mocks):
+    res = await _fino_a_edyna_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "mario", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.CREATE_ENTRY
+    assert res["title"] == "Edyna (IT000E00000001)"
+    assert res["data"]["distributor"] == "edyna"
+    assert res["data"][EDYNA_CONF_USERNAME] == "mario"
+    assert res["data"][EDYNA_CONF_PASSWORD] == "x"
+    assert res["data"][CONF_PODS] == ["IT000E00000001"]
+    # Orario casuale per installazione.
+    assert "06:00" <= res["options"]["orario_richiesta"] <= "22:00"
+
+
+async def test_edyna_account_senza_forniture_abortisce(hass, _arera_sconosciuto, edyna_mocks):
+    edyna_mocks.api.async_get_pod_account.return_value = []
+    res = await _fino_a_edyna_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "mario", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "no_edyna_pods"
+
+
+async def test_edyna_recupero_pod_fallito_abortisce(hass, _arera_sconosciuto, edyna_mocks):
+    edyna_mocks.api.async_get_pod_account.side_effect = RuntimeError("boom")
+    res = await _fino_a_edyna_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "mario", "password": "x"}
+    )
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "edyna_pods_failed"
+
+
+async def test_edyna_piu_pod_si_scelgono(hass, _arera_sconosciuto, edyna_mocks):
+    edyna_mocks.api.async_get_pod_account.return_value = [EDYNA_POD_1, EDYNA_POD_2]
+    res = await _fino_a_edyna_user(hass)
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "mario", "password": "x"}
+    )
+    assert res["step_id"] == "edyna_pod"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {CONF_PODS: ["IT000E00000003"]}
+    )
+    assert res["type"] == FlowResultType.CREATE_ENTRY
+    assert res["data"][CONF_PODS] == ["IT000E00000003"]
+
+
+def _entry_edyna(hass):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "distributor": "edyna",
+            EDYNA_CONF_USERNAME: "mario",
+            EDYNA_CONF_PASSWORD: "vecchia",
+            CONF_PODS: ["IT000E00000001"],
+        },
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def test_edyna_reauth_aggiorna_credenziali(hass, edyna_mocks):
+    entry = _entry_edyna(hass)
+    res = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "reauth", "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    assert res["step_id"] == "edyna_reauth_user"
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "mario", "password": "nuova"}
+    )
+    assert res["type"] == FlowResultType.ABORT
+    assert res["reason"] == "reauth_successful"
+    assert entry.data[EDYNA_CONF_PASSWORD] == "nuova"
+
+
+async def test_edyna_reauth_credenziali_non_valide(hass, edyna_mocks):
+    entry = _entry_edyna(hass)
+    edyna_mocks.auth.async_login.side_effect = EdynaInvalidCredentials("no")
+    res = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "reauth", "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    res = await hass.config_entries.flow.async_configure(
+        res["flow_id"], {"username": "mario", "password": "sbagliata"}
+    )
+    assert res["type"] == FlowResultType.FORM
+    assert res["errors"] == {"base": "invalid_auth_username"}
+
+
+async def test_edyna_opzioni_non_supportate(hass):
+    entry = _entry_edyna(hass)
     res = await hass.config_entries.options.async_init(entry.entry_id)
     assert res["type"] == FlowResultType.ABORT
     assert res["reason"] == "options_not_supported"

@@ -75,6 +75,40 @@ async def test_a_hass_gia_avviato_il_refresh_e_atteso_subito(hass):
     coordinator.async_refresh.assert_awaited_once()
 
 
+async def test_sempre_in_background_non_blocca_il_setup_a_hass_avviato(hass):
+    # Edyna: un primo ciclo dura minuti, non va atteso dentro async_setup_entry.
+    hass.set_state(CoreState.running)
+    coordinator = _coordinator()
+    fermo = hass.loop.create_future()
+
+    async def _lento():
+        await fermo
+
+    coordinator.async_refresh = AsyncMock(side_effect=_lento)
+
+    await _async_primo_aggiornamento(
+        hass, _entry(hass), coordinator, "Edyna", sempre_in_background=True
+    )
+
+    # La funzione e' tornata mentre il refresh e' ancora in corso.
+    await hass.async_block_till_done(wait_background_tasks=False)
+    coordinator.async_refresh.assert_awaited_once()
+    assert not fermo.done()
+    fermo.set_result(None)
+    await hass.async_block_till_done()
+
+
+async def test_sempre_in_background_durante_l_avvio_resta_rimandato(hass):
+    hass.set_state(CoreState.starting)
+    coordinator = _coordinator()
+
+    await _async_primo_aggiornamento(
+        hass, _entry(hass), coordinator, "Edyna", sempre_in_background=True
+    )
+
+    coordinator.async_refresh.assert_not_called()
+
+
 async def test_refresh_fallito_non_solleva_e_scrive_un_avviso(hass, caplog):
     hass.set_state(CoreState.running)
     coordinator = _coordinator(successo=False)

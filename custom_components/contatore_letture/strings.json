@@ -170,6 +170,29 @@
           "password": "Password"
         }
       },
+      "edyna_user": {
+        "title": "Edyna - Accedi",
+        "description": "Usa le stesse credenziali del portale Edyna (portaledistributore.edyna.net): il **nome utente**, non l'indirizzo email, e la password. Nessun codice OTP richiesto.",
+        "data": {
+          "username": "Nome utente",
+          "password": "Password"
+        }
+      },
+      "edyna_pod": {
+        "title": "Edyna - Seleziona POD",
+        "description": "Puoi selezionare più di un POD se vuoi monitorarne diversi con questa stessa configurazione.",
+        "data": {
+          "pods": "POD"
+        }
+      },
+      "edyna_reauth_user": {
+        "title": "Edyna - Accedi di nuovo",
+        "description": "Le credenziali salvate non sono più valide per i POD: {pod_correnti}. Accedi di nuovo con nome utente e password.",
+        "data": {
+          "username": "Nome utente",
+          "password": "Password"
+        }
+      },
       "edistribuzione_modalita": {
         "title": "Distributore individuato: E-Distribuzione",
         "description": "Scegli come importare i consumi del tuo POD.\n\n**Scaricamento automatico, accesso dal browser**: accedi una volta sul sito ufficiale E-Distribuzione dal browser di un computer, apri un link di autorizzazione e incolli qui l'indirizzo che ti restituisce. Da lì l'integrazione rinnova l'accesso e scarica i dati ogni giorno da sola. La password non passa da Home Assistant. È un accesso non ufficiale: E-Distribuzione può bloccarlo in qualsiasi momento.\n\n**Caricamento manuale curve**: scarichi la curva di carico dal sito E-Distribuzione (file CSV) e la carichi in Home Assistant dalle opzioni dell'integrazione, ogni volta che vuoi aggiornare i dati. Serve solo il codice POD, nessuna credenziale.\n\n**Scaricamento automatico con password e OTP**: l'integrazione accede da sola con email, password e codice OTP. Da ottobre 2026 E-Distribuzione blocca questo accesso, quindi per ora non è disponibile.",
@@ -241,7 +264,9 @@
       "ireti_pods_failed": "Errore imprevisto nel recupero dei POD dall'account SmartPOD. Riprova la configurazione da capo.",
       "no_ireti_pods_associated": "Il tuo account SmartPOD non ha ancora nessun POD associato. Accedi al portale (smartpod.ireti.it), usa \"Aggiungi POD\" con il codice della tua fornitura, poi riprova questa configurazione.",
       "setdistribuzione_pods_failed": "Errore imprevisto nel recupero delle forniture dall'account mySET. Riprova la configurazione da capo.",
-      "no_setdistribuzione_pods": "Il tuo account mySET non ha nessuna fornitura elettrica associata. Accedi all'area riservata (myset.setdistribuzione.it), verifica che la fornitura compaia tra le tue utenze, poi riprova questa configurazione."
+      "no_setdistribuzione_pods": "Il tuo account mySET non ha nessuna fornitura elettrica associata. Accedi all'area riservata (myset.setdistribuzione.it), verifica che la fornitura compaia tra le tue utenze, poi riprova questa configurazione.",
+      "edyna_pods_failed": "Errore imprevisto nel recupero delle forniture dal portale Edyna. Riprova la configurazione da capo.",
+      "no_edyna_pods": "Il tuo account Edyna non ha nessuna fornitura elettrica di prelievo associata. Accedi al portale (portaledistributore.edyna.net), verifica che la fornitura compaia tra le Utenze, poi riprova questa configurazione."
     }
   },
   "options": {

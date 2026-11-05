@@ -2,7 +2,7 @@
 
 ```
 contatore_letture/
-  config_flow.py         # orchestratore: wizard ARERA + step "pcf"/"edistribuzione"/"areti"/"ireti"/"setdistribuzione" + reauth + options
+  config_flow.py         # orchestratore: wizard ARERA + step "pcf"/"edistribuzione"/"areti"/"ireti"/"setdistribuzione"/"edyna" + reauth + options
   __init__.py             # setup/unload, dispatch per distributore, servizi condivisi
   sensor.py                # dispatch verso il modulo del distributore
   istat_comuni.py           # elenco comuni: fetch live + fallback snapshot
@@ -50,6 +50,14 @@ contatore_letture/
       sensor.py                        # entita' diagnostiche per POD (ultima data disponibile, consumo giorno)
       statistics.py                     # import external statistics (curva oraria)
       const.py                            # costanti di protocollo
+    edyna/                          # pacchetto a se', portale Terranova PUF (WebForms), nessun OTP
+      auth.py                       # login UpdatePanel (nome utente) -> cookie -> secondo postback
+      parse.py                       # funzioni pure sull'HTML: form, griglia Utenze, mesi, curva oraria
+      api.py                          # navigazione a postback Utenze -> Curve -> anno -> mese
+      coordinator.py                   # una lettura al giorno, mese per mese, senza coda di retry
+      sensor.py                         # entita' diagnostiche per POD (ultima data disponibile, consumo giorno)
+      statistics.py                      # import external statistics (25 colonne orarie, cambio ora)
+      const.py                            # costanti di protocollo
 ```
 
 Ogni distributore (o gruppo di distributori che condividono un
@@ -68,7 +76,8 @@ Per i dettagli specifici di ciascun protocollo, vedi
 [`edistribuzione-protocol.md`](protocols/edistribuzione-protocol.md),
 [`areti-protocol.md`](protocols/areti-protocol.md),
 [`ireti-protocol.md`](protocols/ireti-protocol.md) e
-[`set-distribuzione-protocol.md`](protocols/set-distribuzione-protocol.md).
+[`set-distribuzione-protocol.md`](protocols/set-distribuzione-protocol.md) e
+[`edyna-protocol.md`](protocols/edyna-protocol.md).
 
 ## Prima di usarlo su un'installazione reale
 

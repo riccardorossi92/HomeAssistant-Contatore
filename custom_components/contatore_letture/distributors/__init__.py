@@ -14,11 +14,23 @@ dall'account come edistribuzione, finestra scorrevole invece di
 coda/cursore) - vedi distributors/ireti/. SET Distribuzione e' un quinto
 pacchetto (login Azure AD B2C con PKCE, nessun OTP, POD scoperti
 dall'account, coda giornaliera come edistribuzione) - vedi
-distributors/setdistribuzione/.
+distributors/setdistribuzione/. Edyna e' un sesto pacchetto (portale Terranova
+PUF ASP.NET WebForms: login con nome utente e password, nessun OTP, dati letti
+dall'HTML a postback, un mese per volta) - vedi distributors/edyna/.
 """
 from __future__ import annotations
 
-from . import areti, duereti, edistribuzione, ireti, retipiu, revv, setdistribuzione, unareti
+from . import (
+    areti,
+    duereti,
+    edistribuzione,
+    edyna,
+    ireti,
+    retipiu,
+    revv,
+    setdistribuzione,
+    unareti,
+)
 
 # "kind" distingue il tipo di flow che il distributore usa nel config flow:
 # "pcf" ha credenziali client_id/secret_id + lista POD (Duereti/Unareti/RetiPiù/RE.V.V.,
@@ -29,7 +41,8 @@ from . import areti, duereti, edistribuzione, ireti, retipiu, revv, setdistribuz
 # login username/password (nessun OTP) + POD scoperti dall'account (come
 # edistribuzione, non inseriti a mano come areti), "setdistribuzione" ha
 # login email/password su Azure AD B2C (nessun OTP) + POD scoperti
-# dall'account, come ireti.
+# dall'account, come ireti. "edyna" ha login username/password sul portale
+# Terranova PUF (nessun OTP) + POD scoperti dalla griglia Utenze.
 DISTRIBUTOR_REGISTRY: dict[str, dict] = {
     "duereti": {
         "display_name": duereti.DISPLAY_NAME,
@@ -98,6 +111,17 @@ DISTRIBUTOR_REGISTRY: dict[str, dict] = {
         "required_info": [
             "Email e password dell'area riservata mySET (myset.setdistribuzione.it)",
             "Almeno una fornitura elettrica attiva visibile nel tuo account mySET",
+        ],
+    },
+    "edyna": {
+        "display_name": edyna.DISPLAY_NAME,
+        "piva": edyna.PIVA,
+        "kind": "edyna",
+        "module": edyna,
+        "required_info": [
+            "Nome utente (non l'email) e password del portale Edyna "
+            "(portaledistributore.edyna.net)",
+            "Almeno un POD elettrico di prelievo già associato al tuo account sul portale",
         ],
     },
 }
