@@ -5,8 +5,8 @@ Alperia) — portale `portaledistributore.edyna.net`. **Non ancora
 supportato**, ma dal 05/11/2026 ([issue #19](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/19))
 c'è una cattura da un account **con un POD attivo** che conferma che il
 portale espone le **curve orarie e al quarto d'ora** e i consumi mensili
-per POD. Resta da catturare il percorso di login e di navigazione (vedi
-[Cosa manca](#cosa-manca)).
+per POD. Il login è confermato (nome utente e password, senza 2FA); resta
+da catturare la navigazione tra Utenze e curva (vedi [Cosa manca](#cosa-manca)).
 
 ## Quadro generale
 
@@ -36,21 +36,50 @@ HTML, e ogni passo di navigazione è un `POST` che rimanda tutto il form.
 > POD associato**: quello che si impara qui vale con buona probabilità
 > anche per le altre.
 
-## Login
+## Login — verificato con cattura reale (05/11/2026)
 
-**Non catturato per Edyna.** La cattura del 05/11/2026 parte con la
-sessione già aperta (cookie presenti nella prima richiesta), e quella del
-04/09/2026 conteneva una sola richiesta `Single.tws`. Per le istanze sorelle senza 2FA
-([V-Reti](v-reti-protocol.md#login--verificato-con-cattura-reale-14092026),
-[DEA](dea-protocol.md#login--verificato-con-cattura-reale-04102026)) il
-login è un `POST` UpdatePanel su `Page/Login.tws?ReturnUrl=...` seguito
-da `GET Single.tws` e da un secondo postback
-`__EVENTTARGET=body_ctl00_SecondPostback`; per Edyna si assume lo
-stesso schema (stesso prodotto, versione `6.5.0.0` nei path dei
-plugin) ma **non è verificato**. Nella cattura compaiono questi cookie:
-`Idn`, `GDPR…`, `IDT…`, `ASP.NET_SessionId` e uno con **nome a forma di
-GUID** e valore esadecimale lungo — il cookie di
-sessione vero, come su DEA e V-Reti.
+Cattura fatta con un **account di prova senza POD**, dall'inizio del login.
+È identico a [V-Reti](v-reti-protocol.md#login--verificato-con-cattura-reale-14092026)
+e [DEA](dea-protocol.md#login--verificato-con-cattura-reale-04102026):
+
+1. `POST /EIPPUF/EIPPUF/it-IT/dD4/Page/Login.tws?ReturnUrl=%2fEIPPUF%2fEIPPUF%2fit-IT%2fdD4%2fPage%2fSingle.tws`
+   come UpdatePanel ASP.NET (`X-MicrosoftAjax: Delta=true`,
+   `X-Requested-With: XMLHttpRequest`, `Content-Type:
+   application/x-www-form-urlencoded; charset=utf-8`) con
+   `ctl00$ctl00$SManager=ctl00$ctl00$body$body$cLogin$upLogin|ctl00$ctl00$body$body$cLogin$btnLogin`,
+   `__VIEWSTATE`, `__VIEWSTATEGENERATOR`, `__PREVIOUSPAGE`,
+   `__EVENTVALIDATION` (letti dalla pagina `Login.tws`, che nella
+   cattura non c'è: era già caricata),
+   `ctl00$ctl00$body$body$cLogin$txtUser`,
+   `ctl00$ctl00$body$body$cLogin$txtPassword`, `__ASYNCPOST=true`,
+   `ctl00$ctl00$body$body$cLogin$btnLogin=Accedi`.
+2. Se le credenziali sono giuste, la risposta (formato delta
+   `1|#||4|52|pageRedirect||%2fEIPPUF%2f...Single.tws|`) contiene un
+   `pageRedirect` verso `Single.tws` e un `Set-Cookie` HttpOnly, `Path=/`,
+   con **nome a forma di GUID** e valore esadecimale lungo (circa 2400
+   caratteri): è l'unico cookie di sessione.
+3. `GET .../Page/Single.tws` con quel cookie.
+4. Secondo postback automatico `POST .../Page/Single.tws` con
+   `__EVENTTARGET=body_ctl00_SecondPostback` e i campi vuoti della
+   ricerca "utenti finali mandanti"; la risposta contiene menu e home.
+
+**Il campo è un nome utente, non un'email.** Due tentativi con
+l'indirizzo e-mail dell'account sono falliti; il terzo, con il nome
+utente, è riuscito. Il fallimento ha risposta `200` **senza** `Set-Cookie`
+e senza `pageRedirect`, con il messaggio *"Errore Autenticazione: Credenziali
+di accesso non valide"* dentro il pannello `cMessageBox` (la stessa
+stringa compare anche negli script della pagina anche quando il login
+riesce, quindi per riconoscere l'errore non basta cercarla: serve
+controllare la presenza di `pageRedirect`).
+
+**Nessun 2FA**: né codice via SMS/e-mail, né app authenticator, né altri
+passaggi dopo la password. La sessione è un cookie, non un token.
+
+Menu dopo il login (`mMenu1$FirstLevelMenuRepeater$ctlNN$lnkLevelMenu`):
+`ctl01` **Utenze**, `ctl02` Sportello On-Line Elettrico, `ctl03`
+Comunicazioni, `ctl04` Comunicazioni utenti MT, `ctl05` TICA, `ctl06`
+Modulistica. Con un account senza POD la pagina di atterraggio non mostra
+la griglia Utenze.
 
 ## Navigazione e dati — verificati su cattura reale (05/11/2026)
 
@@ -151,13 +180,13 @@ risposta è la pagina intera.
 
 ## Cosa manca
 
-1. **Il login di Edyna**: una cattura HAR che parta dalla pagina di login
-   (con *Preserve log* attivo prima di aprire il sito) per confermare che
-   sia identico a V-Reti/DEA e vedere che cookie imposta.
-2. **I passi di navigazione tra login e curva**: `Utenze → Curve → mese`,
-   incluso come si cambia anno o mese (`ddlAnno` provoca un postback?), e
-   se servono i due postback consecutivi visti su DEA (il secondo con
-   `body_ctl00_SecondPostback`).
+1. **I passi di navigazione tra login e curva**, con un account con POD:
+   `Utenze → Curve → mese`, incluso come si cambia anno o mese (`ddlAnno`
+   provoca un postback?) e se servono i due postback consecutivi visti su
+   DEA. Gli identificativi dei controlli sono noti, mancano le
+   risposte intermedie che portano `__VIEWSTATE` ed `__EVENTVALIDATION`.
+2. **Il comportamento a sessione scaduta** (cookie rifiutato, risposta
+   diversa dal login?).
 3. **Cosa restituiscono gli export Excel** (curva mensile, quarti,
    esportazione massiva): un file scaricabile permetterebbe di evitare il
    parsing HTML e di coprire un intervallo ampio in una richiesta.
@@ -167,7 +196,7 @@ risposta è la pagina intera.
 ## Come contribuire
 
 Serve chi ha un'utenza Edyna con una fornitura attiva (POD associato).
-Cattura HAR manuale **dall'apertura della pagina di login**: login →
+Cattura HAR manuale: login →
 Utenze → Curve → un mese → un giorno, poi (se possibile) un export
 Excel. Vedi
 [Aiutare senza scrivere codice](../../CONTRIBUTING.md#aiutare-senza-scrivere-codice-raccolta-dati)
