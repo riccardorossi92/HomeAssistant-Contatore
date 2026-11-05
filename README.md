@@ -18,24 +18,16 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 
 ## Distributori supportati
 
-| Distributore | Autenticazione | Azioni |
-|---|---|---|
-| Duereti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
-| Unareti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
-| RetiPiù | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
-| Reti Valtellina Valchiavenna | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` |
-| E-Distribuzione | Accesso dal browser, oppure solo POD (caricamento manuale del CSV) | `recupera_storico` (solo configurazioni automatiche) |
-| Areti | Email + password | `recupera_storico` |
-| Ireti | Username + password | `recupera_storico` |
-| SET Distribuzione | Email + password | `recupera_storico` |
-
-Per Duereti/Unareti/E-Distribuzione/Areti/Ireti: login, lettura dati,
-import nella Energy Dashboard e più POD per configurazione — tutto
-confermato funzionante su installazioni reali. **SET Distribuzione** è
-stato integrato in Home Assistant da un utente con POD attivo, che ha
-confermato i dati e importato lo storico; restano da verificare i giorni
-di cambio ora (dopo il 25/10/2026), quindi segnala in una issue
-eventuali anomalie. Dettagli sulle azioni in [Azioni](#azioni) più sotto.
+| Distributore | Autenticazione | Azioni | Punti aperti |
+|---|---|---|---|
+| Duereti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | |
+| Unareti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | |
+| RetiPiù | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | Non ancora provato con credenziali reali (stesso protocollo di Duereti e Unareti) |
+| Reti Valtellina Valchiavenna | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | Non ancora provato con credenziali reali (stesso protocollo di Duereti e Unareti) |
+| E-Distribuzione | Accesso dal browser, oppure solo POD (caricamento manuale del CSV) | `recupera_storico` (solo configurazioni automatiche) | L'accesso dal browser non è autorizzato da E-Distribuzione e può smettere di funzionare (vedi l'avviso sotto) |
+| Areti | Email + password | `recupera_storico` | Comportamento a sessione scaduta non verificato su una cattura reale |
+| Ireti | Username + password | `recupera_storico` | Giorno da 25 ore (25/10/2026) da ricontrollare; ora di pubblicazione del giorno precedente da misurare; POD di produzione non supportati |
+| SET Distribuzione | Email + password | `recupera_storico` | Verificato da un solo utente con POD attivo, che ha confermato i dati e importato lo storico; giorni di cambio ora (dopo il 25/10/2026) e ora di pubblicazione del giorno precedente da verificare |
 
 > [!WARNING]
 > **E-Distribuzione: login automatico bloccato, accesso dal browser**
@@ -338,55 +330,55 @@ di nuovo.
 
 I dati importati sono visibili come **external statistics**
 (`contatore_letture:<pod>_energia`) in **Impostazioni → Sistema →
-Statistiche**, utilizzabili nella Energy Dashboard, per tutti i
+Statistiche** e utilizzabili nella Energy Dashboard, per tutti i
 distributori supportati.
 
-**Duereti, Unareti, RetiPiù, Reti Valtellina Valchiavenna e Areti**
-pubblicano i dati a **mese solare chiuso**, non giorno per giorno (per
-Duereti/Unareti è un cambio imposto dai distributori a settembre 2026:
-prima si poteva chiedere il singolo giorno; RetiPiù e Reti Valtellina
-Valchiavenna usano lo stesso codice, quindi lo stesso modello). L'integrazione tiene, per ogni POD, il **mese che sta
-aspettando**, e **una volta al giorno** controlla se è disponibile: se sì
-lo importa e passa al successivo, se no riprova al giro dopo — senza mai
-abbandonare un mese in attesa. Per **Areti**, che completa i mesi chiusi
-qualche giorno alla volta, si passa al mese successivo solo quando quello
-in attesa è arrivato completo: fino ad allora la parte disponibile viene
-importata e riaggiornata ogni giorno. Un POD nuovo parte dal mese corrente:
-niente backfill automatico. Per Duereti, Unareti, RetiPiù e Reti Valtellina
-Valchiavenna la richiesta parte **la sera, a un orario scelto a caso tra le
-18:00 e le 22:00** al momento della configurazione (diverso per ogni
-installazione), perché il dato del giorno prima viene pubblicato nel
-pomeriggio. Se un mese arriva ancora senza l'ultimo giorno, viene richiesto
-di nuovo il giorno dopo.
+Ogni distributore pubblica i dati a modo suo, e l'integrazione si adatta:
 
-**E-Distribuzione** invece pubblica giorno per giorno: **ogni pomeriggio/sera,
-a un orario scelto a caso tra le 16:00 e le 20:00** al momento della
-configurazione (diverso per ogni installazione, modificabile dalle
-opzioni: un orario impostato a mano sostituisce quello casuale) viene
-richiesto il giorno precedente; se non è ancora pubblicato finisce in una coda e viene
+| Distributore | Cosa pubblica | Quando li richiede |
+|---|---|---|
+| Duereti, Unareti, RetiPiù, Reti Valtellina Valchiavenna | Un mese solare chiuso alla volta | Una volta al giorno, la sera, a un orario scelto a caso tra le 18:00 e le 22:00 al momento della configurazione (diverso per ogni installazione; il dato del giorno prima esce nel pomeriggio) |
+| Areti | Un mese solare chiuso alla volta, completato qualche giorno alla volta | Una volta al giorno |
+| E-Distribuzione | Il giorno precedente | Ogni giorno, a un orario scelto a caso tra le 16:00 e le 20:00 al momento della configurazione (diverso per ogni installazione, modificabile dalle opzioni) |
+| Ireti | Una curva a 15 minuti | Una volta al giorno, senza un orario fisso |
+| SET Distribuzione | Il giorno precedente, con il dettaglio orario (e i quarti d'ora) | Ogni sera, a un orario scelto a caso tra le 18:00 e le 22:00 al momento della configurazione (diverso per ogni installazione, non modificabile dalle opzioni) |
+
+**Mese solare chiuso** (Duereti, Unareti, RetiPiù, Reti Valtellina
+Valchiavenna e Areti):
+
+- Per Duereti e Unareti è un cambio imposto dai distributori a settembre
+  2026: prima si poteva chiedere il singolo giorno. RetiPiù e Reti
+  Valtellina Valchiavenna usano lo stesso codice, quindi lo stesso modello.
+- L'integrazione tiene, per ogni POD, il **mese che sta aspettando**: una
+  volta al giorno controlla se è disponibile. Se sì lo importa e passa al
+  successivo, se no riprova al giro dopo, senza mai abbandonare un mese in
+  attesa.
+- Se un mese arriva ancora senza l'ultimo giorno, viene richiesto di nuovo
+  il giorno dopo.
+- **Areti** completa i mesi chiusi qualche giorno alla volta: si passa al
+  mese successivo solo quando quello in attesa è arrivato completo. Fino ad
+  allora la parte disponibile viene importata e riaggiornata ogni giorno.
+- Un POD nuovo parte dal mese corrente.
+
+**Giorno per giorno, con coda** (E-Distribuzione, Ireti e SET
+Distribuzione): un giorno non ancora pubblicato finisce in una coda e viene
 riprovato nei giorni successivi, così non si creano buchi.
 
-**Ireti** pubblica una curva a **15 minuti** (non oraria/giornaliera come
-gli altri), con la stessa logica a coda di E-Distribuzione (un giorno non
-ancora disponibile viene riprovato, non perso), ma senza un orario di
-cortesia configurabile: non sappiamo ancora quando Ireti pubblica i dati
-(nessuna osservazione empirica come per E-Distribuzione), quindi si prova
-a ogni ciclo invece di aspettare un'ora precisa. A differenza degli altri,
-l'API accetta un intervallo di date qualsiasi in una sola chiamata: se c'è
-arretrato, un solo ciclo può recuperare più giorni insieme.
+- **E-Distribuzione**: un orario impostato a mano dalle opzioni sostituisce
+  quello casuale.
+- **Ireti** pubblica una curva a 15 minuti (non oraria come gli altri).
+  Non sappiamo ancora a che ora pubblica i dati, quindi a ogni giro si
+  prova invece di aspettare un orario preciso. L'API accetta un intervallo
+  di date qualsiasi in una sola chiamata: se c'è arretrato, un solo giro
+  può recuperare più giorni insieme.
+- **SET Distribuzione**: solo al primo avvio la richiesta parte subito, per
+  verificare login e POD. Se ieri è già importato il portale non viene
+  nemmeno contattato. Si richiede un giorno per volta, quindi un arretrato
+  si recupera un giorno alla volta.
 
-**SET Distribuzione** pubblica il giorno precedente con il dettaglio
-**orario** (e i quarti d'ora), stessa logica a coda di E-Distribuzione e
-stesso principio dell'orario: **ogni sera, a un orario scelto a caso tra
-le 18:00 e le 22:00** al momento della configurazione (diverso per ogni
-installazione), viene richiesto il giorno precedente. Solo al primo avvio
-la richiesta parte subito, per verificare login e POD. Se ieri è già
-importato il portale non viene nemmeno contattato. Un giorno per
-richiesta, quindi un arretrato si recupera un giorno alla volta. A
-differenza di E-Distribuzione l'orario non si cambia ancora dalle opzioni.
-
-Per tutti, **lo storico pregresso non viene recuperato automaticamente**:
-si richiede con l'azione `recupera_storico` (vedi [Azioni](#azioni) sotto).
+**Storico pregresso**: per tutti i distributori non viene recuperato
+automaticamente. Si richiede con l'azione `recupera_storico` (vedi
+[Azioni](#azioni) sotto).
 
 Tutte le entità esposte sono diagnostiche — i consumi stanno nelle
 statistiche, non in un sensore — raggruppate in un dispositivo "Account"
