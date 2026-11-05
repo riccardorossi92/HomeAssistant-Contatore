@@ -203,11 +203,15 @@ Dopo aver scelto il comune, il wizard chiede la modalità.
    pagina resta bianca o mostra un errore e la barra degli indirizzi non
    cambia (per esempio resta su `…/AuthorizationPage`): è normale,
    l'indirizzo finale è pensato per l'app e non compare lì.
-3. Nella scheda **Network** cerca la riga con stato **302**, cliccala e in
-   **Headers** → **Response Headers** copia il valore di **Location**, che
-   inizia con `eneldist://redirect`. In alternativa, nella scheda
+3. Ora serve l'**indirizzo finale**, che si trova solo negli strumenti per
+   sviluppatori. **Non** è il link di autorizzazione che hai appena aperto
+   e **non** è l'indirizzo nella barra del browser: è un testo molto lungo
+   che inizia con `eneldist://redirect`. Nella scheda **Network** cerca la
+   riga con stato **302**, cliccala e in **Headers** → **Response
+   Headers** copia il valore di **Location**. In alternativa, nella scheda
    **Console** può comparire una riga rossa `Failed to launch
-   'eneldist://redirect…'`: va bene anche quella intera. Se gli strumenti
+   'eneldist://redirect…'`: copiala intera. Se il testo copiato non
+   contiene `eneldist://redirect`, non è quello giusto. Se gli strumenti
    per sviluppatori si aprono solo dopo, la riga di solito non c'è più:
    riapri il link di autorizzazione con la scheda Network già aperta. Se il
    browser chiede di aprire un'app, annulla: l'indirizzo va copiato, non
