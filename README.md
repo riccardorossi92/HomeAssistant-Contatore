@@ -25,7 +25,7 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | RetiPiù | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | Non ancora provato con credenziali reali (stesso protocollo di Duereti e Unareti) |
 | Reti Valtellina Valchiavenna | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | Non ancora provato con credenziali reali (stesso protocollo di Duereti e Unareti) |
 | E-Distribuzione | Accesso dal browser, oppure solo POD (caricamento manuale del CSV) | `recupera_storico` (solo configurazioni automatiche) | L'accesso dal browser non è autorizzato da E-Distribuzione e può smettere di funzionare (vedi l'avviso sotto) |
-| Areti | Email + password | `recupera_storico` | Comportamento a sessione scaduta non verificato su una cattura reale |
+| Areti | Email + password | `recupera_storico` | |
 | Ireti | Username + password | `recupera_storico` | Giorno da 25 ore (25/10/2026) da ricontrollare; ora di pubblicazione del giorno precedente da misurare; POD di produzione non supportati |
 | SET Distribuzione | Email + password | `recupera_storico` | Verificato da un solo utente con POD attivo, che ha confermato i dati e importato lo storico; giorni di cambio ora (dopo il 25/10/2026) e ora di pubblicazione del giorno precedente da verificare |
 

@@ -399,9 +399,18 @@ File da toccare in `__init__.py` (oltre al nuovo pacchetto
 
 1. **Comportamento a sessione scaduta** — la forma esatta della risposta
    di `/sfsites/aura` quando `sid`/`aura.token` non sono più validi
-   (redirect? errore strutturato?) resta **non verificata con una
-   cattura reale**. Reso comunque non bloccante da due cambiamenti
-   indipendenti (non richiedono di conoscere quella forma):
+   (redirect? errore strutturato?) resta **non osservata**.
+   `scripts/verify_areti_sessione.py` (05/11/2026) ha fatto una chiamata
+   `getConfigurations` a 1, 2, 5, 10, 15, 30, 45 e 60 minuti dal login: tutte
+   `HTTP 200`, `SUCCESS`, `sid` e cookie del token sempre presenti. Quindi
+   una sessione dura **almeno un'ora**, molto più di un ciclo (login,
+   `getConfigurations`, `getMisurazioni` finiscono in pochi secondi).
+   Attenzione: le chiamate intermedie possono aver rinnovato la scadenza per
+   inattività, quindi non dicono quanto resiste una sessione *ferma*
+   (`--intervalli 60` misurerebbe quello). In pratica non serve: la
+   scadenza non si presenta nel flusso reale, e se si presentasse è già
+   gestita da due cambiamenti indipendenti (non richiedono di conoscere
+   quella forma):
    - il coordinator fa login da zero ad ogni ciclo (mai una sessione
      riusata tra un login e l'altro, vedi `coordinator.py`), quindi una
      sessione che scade lo fa a metà di UN ciclo al massimo, non su
