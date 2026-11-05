@@ -72,6 +72,37 @@ utile per iterare più velocemente di quanto permetta la UI di Home
 Assistant, e come primo controllo se il login smette di funzionare in
 produzione.
 
+## `scripts/verify_areti_sessione.py`
+
+Misura cosa risponde **Areti** quando la sessione non è più valida: il
+punto aperto "comportamento a sessione scaduta" di
+[`areti-protocol.md`](protocols/areti-protocol.md). L'integrazione non lo
+incontra da sola, perché fa un login nuovo a ogni giro; per vederlo bisogna
+aspettare.
+
+Fa il login (riusa le funzioni di `verify_areti_login.py`), poi ripete a
+intervalli crescenti dal login (di default 1, 2, 5, 10, 15, 30, 45 e 60
+minuti, quindi dura un'ora) una chiamata leggera, `getConfigurations` sul
+tuo POD. Per ogni prova registra stato HTTP, eventuale redirect, tipo di
+contenuto, stato dell'azione Aura, un estratto del corpo e se i cookie
+`sid` e del token sono ancora nella sessione. Alla prima prova che non va
+rilegge la home (`/s/`) e ripete la chiamata, per capire se basta un token
+nuovo o serve un nuovo login, poi si ferma.
+
+```bash
+python3 scripts/verify_areti_sessione.py                      # intervalli di default
+python3 scripts/verify_areti_sessione.py --intervalli 60      # una sola prova, a 60 minuti
+```
+
+Ogni chiamata può rinnovare la scadenza per inattività del server: con un
+solo intervallo lungo si misura la durata di una sessione davvero inattiva.
+
+Scrive `areti_sessione_report.json` (file locale, escluso da git). Non
+contiene password, token, valori dei cookie, email né codice POD, ma
+contiene estratti di risposte del portale: controllalo prima di
+condividerlo. Richiede `requests` e, come lo script di login, credenziali
+reali digitate a mano.
+
 ## `scripts/verify_setdistribuzione_login.py`
 
 Testa da terminale il login **SET Distribuzione** (Azure AD B2C), l'elenco

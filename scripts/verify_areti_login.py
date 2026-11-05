@@ -342,15 +342,14 @@ def carica_contesto_aura(sess: requests.Session) -> dict:
 _contatore_r = 0
 
 
-def chiama_apex(
+def invia_apex(
     sess: requests.Session, contesto: dict, classname: str, method: str,
-    params: dict | None = None,
-) -> dict:
+    params: dict | None = None, **kwargs,
+) -> requests.Response:
     """Una chiamata aura://ApexActionController/ACTION$execute (il
-    descriptor generico usato da tutti gli endpoint ARIA_* documentati).
-    Ritorna direttamente il valore di ritorno del metodo Apex (l'involucro
-    '{"returnValue": ..., "cacheable": ...}' di Salesforce viene tolto
-    qui) - solleva se lo stato non e' SUCCESS."""
+    descriptor generico usato da tutti gli endpoint ARIA_* documentati),
+    ritornata grezza: nessun controllo sullo stato HTTP o sul corpo. I
+    kwargs vanno a requests (es. allow_redirects=False)."""
     global _contatore_r
     _contatore_r += 1
 
@@ -390,7 +389,7 @@ def chiama_apex(
         }
     )
 
-    r = sess.post(
+    return sess.post(
         AURA_URL,
         params={"r": _contatore_r, "aura.ApexAction.execute": 1},
         data={
@@ -401,7 +400,18 @@ def chiama_apex(
         },
         headers={**HEADERS_BASE, "Referer": HOME_URL},
         timeout=30,
+        **kwargs,
     )
+
+
+def chiama_apex(
+    sess: requests.Session, contesto: dict, classname: str, method: str,
+    params: dict | None = None,
+) -> dict:
+    """Come invia_apex, ma ritorna direttamente il valore di ritorno del
+    metodo Apex (l'involucro '{"returnValue": ..., "cacheable": ...}' di
+    Salesforce viene tolto qui) - solleva se lo stato non e' SUCCESS."""
+    r = invia_apex(sess, contesto, classname, method, params)
     r.raise_for_status()
     corpo = r.json()
     azione = corpo["actions"][0]
