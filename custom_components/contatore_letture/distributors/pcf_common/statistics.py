@@ -55,11 +55,13 @@ _LOGGER = logging.getLogger(__name__)
 # che finora era sempre stato un segnaposto, e il totale potrebbe essere
 # sovrastimato.
 #
-# Non ancora verificato sui dati reali: il cambio di fine ottobre (ora
-# ripetuta, fuso che passa da CEST a CET). La logica dovrebbe reggere allo
-# stesso modo - lì il flag serve proprio a distinguere le due ore uguali
-# invece di farle collassare - ma non c'è stata occasione di controllarlo su
-# un export che copra quella data.
+# Cambio di fine ottobre (ora ripetuta, fuso che passa da CEST a CET),
+# osservato su Unareti il 25/10/2026: il giorno ha 24 ore e non 25, perché
+# l'export non pubblica l'ora ripetuta (02:00 CET, 01:00 UTC); l'ora 02:00
+# CEST (00:00 UTC) ha un valore normale e non viene sommata a un'altra.
+# Ottobre risulta così di 744 ore e non 745, senza altri buchi e con la
+# somma cumulata coerente. Non è un difetto dell'aggregazione: manca il
+# dato alla fonte. Su Duereti non è stato verificato a parte.
 #
 # Se il flag ha un valore diverso da quelli previsti si ricade sul fuso
 # locale di Home Assistant (comportamento precedente), loggando un warning
