@@ -138,6 +138,81 @@ reale da collegare.
 > l'utente dovrebbe recuperare lui stesso al momento della configurazione
 > (di solito visibile come testo alternativo al QR code).
 
+## App mobile "Deval" — registrazione e login verificati (07/11/2026)
+
+Oltre al portale web esiste un'**app mobile** (iOS, User-Agent
+`Deval/1.2.1`), che parla con un backend **completamente diverso** dal PUF
+Terranova: non ASP.NET WebForms ma un servizio JSON dietro IIS/ARR
+(`X-Powered-By: ARR/3.0`) con sessione **Java** (`JSESSIONID`), su
+`https://appssgdev.devalspa.com/AppInTheMiddle/`. Due catture con un proxy
+(Proxyman), la seconda dalla registrazione di un account nuovo fino
+all'elenco POD. L'account è **senza POD associato**: il flusso di accesso
+è chiaro, i dati no.
+
+Tutte le chiamate sono `POST` con corpo e risposta JSON, sempre HTTP 200
+(l'esito sta in `Code`: `"0"` = ok, `"-1"` = errore, con
+`"Description": "Generic Error"`). Il corpo delle risposte è preceduto da
+righe vuote (`\r\n`) da togliere prima del parse. Cookie `JSESSIONID`
+(`Path=/AppInTheMiddle; HttpOnly`) assegnato alla prima risposta, anche a
+una chiamata fallita.
+
+**Registrazione** (una tantum, 3 chiamate):
+
+| # | Richiesta | Corpo | Risposta |
+|---|---|---|---|
+| 1 | `/Login/` (a vuoto) | `{"AppToken": null, "Email": null}` | `Code -1`, ma con `Set-Cookie: JSESSIONID` |
+| 2 | `/NewLogin/` | `{"Phone": "<cellulare>", "Email": "<email>"}` | `{"Description":"ok","Id":"<JSESSIONID>","Code":"0","ActivationCode":"<4 cifre>"}` |
+| 3 | `/Confirm/` | `{"Email", "Id", "ActivationCode"}` | `{"AppToken":"<ts>\|<hmac>","SessionToken":"<ts>\|<hmac>","Id","Description":"ok","Code":"0"}` |
+
+Il **codice di attivazione a 4 cifre torna nel corpo della risposta di
+`/NewLogin/`**, e l'app lo rispedisce subito a `/Confirm/`: nessun canale
+esterno (SMS o email) lo verifica, almeno in questa cattura. Quindi la
+registrazione è automatizzabile con solo email e numero di telefono e
+senza chiedere nulla all'utente, e **non serve avere una fornitura Deval
+per registrarsi**.
+
+**Accessi successivi** (a ogni apertura dell'app):
+
+| Richiesta | Corpo | Risposta |
+|---|---|---|
+| `/Login/` | `{"AppToken": "<ts>\|<hmac>", "Email": "<email>"}` | `{"Description":"ok","SessionToken":"<ts>\|<hmac>","Id":"<JSESSIONID>","Code":"0"}` |
+| `/GetPods/` | `{"Id": "<JSESSIONID>", "SessionToken": "<ts>\|<hmac>"}` | `{"Description":"ok","SessionToken":"<ts>\|<hmac>","Pods":[],"Code":"0"}` |
+| `/RegisterPushNotification/` | `{"AppToken", "TokenPush": "<token FCM>", "Email"}` | `{"Description":"ok","SessionToken","Id","Code":"0"}` |
+
+Cosa si ricava:
+
+- **L'`AppToken` è la credenziale persistente del dispositivo**: lo emette
+  `/Confirm/` e l'app lo conserva; con email + `AppToken` si apre ogni
+  sessione, senza password né 2FA. Ha forma `<millisecondi-epoch>|<20 byte
+  in base64>` (sembra un HMAC-SHA1 col timestamp di emissione). Non sappiamo
+  se scade: nella prima cattura ne era stato usato uno emesso 5 minuti
+  prima, e basta.
+- **Il `SessionToken` ruota a ogni risposta**, come il viewstate di
+  ASP.NET: ogni chiamata ne restituisce uno nuovo e la successiva deve
+  presentare l'ultimo ricevuto (la catena si vede in `Confirm` → `GetPods`
+  → `GetPods`; `RegisterPushNotification` ne restituisce uno ma l'app poi
+  usa quello di `Confirm`, quindi la regola esatta sul riuso resta da
+  chiarire). Il timestamp dentro è l'ora del server.
+- `RegisterPushNotification` serve solo alle notifiche push (token FCM):
+  non è necessario per leggere dati.
+- `Pods` è **vuoto**: nessun POD associato all'account. Non si conoscono i
+  campi di un POD, né come se ne associa uno (potrebbe avvenire in-app
+  inserendo codice POD e dati anagrafici, o lato distributore), né gli
+  endpoint per consumi o curve — se esistono: l'app potrebbe mostrare solo
+  contratti, pratiche o lo stato del contatore.
+- Il nome host (`appssgdev`) fa pensare a un ambiente di sviluppo/collaudo
+  esposto come produzione; da non dare per stabile.
+- La seconda cattura contiene anche connessioni verso `epuf.devalspa.com`
+  e `auth.devalspa.com` (il portale web aperto dal telefono), ma solo come
+  `CONNECT` cifrato: il proxy non aveva l'ispezione HTTPS attiva per quei
+  domini, quindi non c'è nessun contenuto.
+
+Il vantaggio possibile rispetto al PUF è evitare il 2FA TOTP obbligatorio:
+qui l'accesso è email + token, con registrazione automatica. Resta da
+capire se l'app dia dati che il PUF non offre (letture orarie, quarti
+d'ora) o solo un sottoinsieme, ed è la domanda da chiudere con un account
+che abbia un POD.
+
 ## Dati esposti — noti dal manuale, MAI verificati con una risposta reale
 
 Il manuale (§2.1 "Utenze", pag. 8-11) descrive, per ogni POD/PDR
@@ -179,6 +254,12 @@ solo la risposta con dati reali dentro.
    mostrare.
 4. Col punto 3: capire se l'export delle Curve produce un file scaricabile
    diretto o un flusso differito (ticket), e in che formato.
+5. Per l'**app mobile**: come si associa un POD a un account già
+   registrato (probabilmente una schermata "aggiungi POD" con relativa
+   chiamata), poi la risposta di `/GetPods/` con un POD dentro e gli
+   endpoint delle schermate che mostrano consumi o curve. Serve una
+   fornitura Deval. Proxy con ispezione HTTPS attiva (certificato
+   installato) fin dall'installazione dell'app.
 
 ## Come contribuire
 

@@ -66,7 +66,9 @@ app authenticator, sempre obbligatorio — un vincolo che nessun altro
 distributore già supportato ha), ma da un account senza POD associato:
 manca ancora la conferma delle sezioni Letture/Curve, che il manuale
 pubblico del portale PUF descrive come letture mensili e curve orarie
-per POD. Stesso tipo di portale ASP.NET WebForms di Edyna (già supportato) (probabilmente
+per POD. Esiste anche un'app mobile con un backend JSON separato: registrazione
+e accesso verificati (senza password né 2FA), ma da un account vuoto, quindi
+ancora nessun dato di consumo visto. Stesso tipo di portale ASP.NET WebForms di Edyna (già supportato) (probabilmente
 stesso vendor, Terranova). Se hai una fornitura Deval con un'utenza
 registrata sul PUF puoi aiutare — vedi
 [documentation/protocols/deval-protocol.md](documentation/protocols/deval-protocol.md).
