@@ -28,7 +28,7 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | Areti | Email + password | `recupera_storico` | |
 | Ireti | Username + password | `recupera_storico` | Giorno da 25 ore (25/10/2026) da ricontrollare; ora di pubblicazione del giorno precedente da misurare; POD di produzione non supportati |
 | SET Distribuzione | Email + password | `recupera_storico` | Verificato da un solo utente con POD attivo, che ha confermato i dati e importato lo storico; giorni di cambio ora (dopo il 25/10/2026) e ora di pubblicazione del giorno precedente da verificare |
-| Edyna | Nome utente + password | `recupera_storico` | Catena di navigazione verificata su una cattura reale, **non ancora provato in un Home Assistant reale**. Portale lentissimo (richieste da oltre 100 s): il primo aggiornamento può durare minuti. Ritardo dei dati (oltre 10 giorni nella cattura) e giorno da 23 ore da verificare |
+| Edyna | Nome utente + password | `recupera_storico` | **Provato in un Home Assistant reale** (import senza errori, giorno da 25 ore corretto). Portale lentissimo (richieste da oltre 100 s): il primo aggiornamento può durare minuti. Dati con oltre 10 giorni di ritardo (regola ignota, chiesta a Edyna) e giorno da 23 ore da verificare |
 
 > [!WARNING]
 > **E-Distribuzione: login automatico bloccato, accesso dal browser**
@@ -291,8 +291,8 @@ di procedere a vuoto.
 > [!WARNING]
 > Il portale Edyna non ha un'API: l'integrazione lo naviga come un browser
 > (login, Utenze, Curve, mese) e legge le tabelle della pagina. Login e
-> formato dei dati sono verificati su due catture reali, ma l'integrazione
-> non è ancora stata provata in un Home Assistant reale. Il portale è molto
+> formato dei dati sono verificati su catture reali e l'integrazione è stata
+> provata in un Home Assistant reale. Il portale è molto
 > lento (alcune richieste superano i 100 secondi e la prima risposta delle
 > curve è vuota, quindi si ripete): il primo import parte in background e
 > può richiedere alcuni minuti. Se la configurazione o il primo import falliscono, apri una issue con il log

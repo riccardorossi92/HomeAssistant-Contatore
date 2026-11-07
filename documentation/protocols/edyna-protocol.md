@@ -1,4 +1,4 @@
-# Edyna — implementato, catena verificata su una cattura reale
+# Edyna — implementato e provato in Home Assistant
 
 **Edyna S.r.l.** (distributore dell'Alto Adige / Südtirol, gruppo
 Alperia, P.IVA `02689370217` confermata dalla ricerca ARERA per Bolzano e
@@ -6,8 +6,8 @@ Salorno) — portale `portaledistributore.edyna.net`. **Supportato** da
 `distributors/edyna/`. Il login è verificato su una cattura (account di prova
 senza POD); l'intera catena Utenze → Curve → anno → mese su una seconda
 (account con POD, 05/11/2026), rigiocata contro il client vero con un
-portale finto che risponde con le pagine registrate. **Non ancora provato in
-un Home Assistant reale.** Origine: [issue #19](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/19).
+portale finto che risponde con le pagine registrate. **Provato in un Home Assistant
+reale** (v0.13.0, 06/11/2026): import senza errori, giorno da 25 ore corretto. Origine: [issue #19](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/19).
 Il portale espone le **curve orarie e al quarto d'ora** e i consumi mensili
 per POD.
 
@@ -241,7 +241,10 @@ La sequenza completa vista, con il tab Curve aperto:
   seconda 02-03 (mapping in `statistics.py`): il valore della cattura (0,26
   kWh, come le altre ore notturne e non come quelle serali) lo supporta, e
   la seconda cattura lo conferma sul 26/10/2025 (colonna 25 a 0,223 kWh,
-  come le ore notturne; nei giorni normali vale 0,0). Resta da vedere il
+  come le ore notturne; nei giorni normali vale 0,0) e **in Home Assistant
+  reale**: il grafico del 25/10/2026 ha 25 barre con l'ora ripetuta dopo la
+  prima 02–03 e il totale giornaliero (18,97 kWh) coincide con la somma
+  della riga. Resta da vedere il
   giorno da 23 ore, mai osservato (29/03/2026 non è in nessuna cattura): si importa solo se l'Ora 3 è
   a zero.
 - **Formato numerico**: virgola decimale, nessun separatore delle
@@ -251,9 +254,9 @@ La sequenza completa vista, con il tab Curve aperto:
 
 ## Cosa manca
 
-1. **Una prova in un Home Assistant reale.** La catena è verificata su una
-   cattura, non ancora dal vivo: restano i tempi (richieste da oltre 100 s,
-   timeout a 300 s) e il primo ciclo in background.
+1. **Il ritardo dei dati**: in HA reale i dati arrivano solo fino al
+   25/10 (il 06/11); l'utente ha scritto a Edyna per chiedere la regola.
+   L'import riprende da solo quando compaiono giorni nuovi.
 2. **Due mesi di fila nello stesso anno** (il click sul mese seguente col
    tab Curve orarie ancora aperto): la cattura ha un solo mese per anno. Se
    il link manca il client riapre Curve, ma costa due richieste lente.
@@ -263,8 +266,7 @@ La sequenza completa vista, con il tab Curve aperto:
    `.xlsx` con i quarti d'ora del giorno; contenuto non analizzato (la
    cattura lo contiene in base64, non anonimizzabile). Un export mensile
    eviterebbe il parsing HTML.
-5. **Il giorno da 23 ore** (ultima domenica di marzo) e la **regola del
-   ritardo** dei dati (25/10 visibile il 05/11).
+5. **Il giorno da 23 ore** (ultima domenica di marzo): mai osservato.
 6. **Più POD e POD di produzione/immissione**: le catture hanno un solo POD
    di prelievo.
 
