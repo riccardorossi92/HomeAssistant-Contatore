@@ -10,8 +10,8 @@ Design (il "perché" in documentation/protocols/edyna-protocol.md):
     verificare login e POD.
 
   - Nessun "giorno atteso" con coda di retry come SET/Ireti: nella cattura
-    del 05/11/2026 l'ultimo giorno disponibile era il 25/10, oltre 10 giorni
-    di ritardo di cui non si conosce la regola. Ogni richiesta rilegge il
+    del 05/11/2026 l'ultimo giorno disponibile era il 25/10 (11 giorni di
+    ritardo, poi recuperati: dal 07/11 si vede il giorno prima). Ogni richiesta rilegge il
     mese dell'ultimo dato importato (meno GIORNI_DI_RIPASSO) fino a quello in
     corso e importa tutto ciò che c'è di nuovo: l'import è idempotente
     (statistics_common fonde e ricalcola le somme), quindi riprendere un

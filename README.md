@@ -28,7 +28,7 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | Areti | Email + password | `recupera_storico` | |
 | Ireti | Username + password | `recupera_storico` | Giorno da 25 ore (25/10/2026) da ricontrollare; ora di pubblicazione del giorno precedente da misurare; POD di produzione non supportati |
 | SET Distribuzione | Email + password | `recupera_storico` | Verificato da un solo utente con POD attivo, che ha confermato i dati e importato lo storico; giorni di cambio ora (dopo il 25/10/2026) e ora di pubblicazione del giorno precedente da verificare |
-| Edyna | Nome utente + password | `recupera_storico` | **Provato in un Home Assistant reale** (import senza errori, giorno da 25 ore corretto). Portale lentissimo (richieste da oltre 100 s): il primo aggiornamento può durare minuti. Dati con oltre 10 giorni di ritardo (regola ignota, chiesta a Edyna) e giorno da 23 ore da verificare |
+| Edyna | Nome utente + password | `recupera_storico` | **Provato in un Home Assistant reale** (import senza errori, giorno da 25 ore corretto). Portale lentissimo (richieste da oltre 100 s): il primo aggiornamento può durare minuti. Dal 07/11/2026 i dati arrivano con un giorno di ritardo (nella cattura del 05/11 erano 11 giorni indietro, un arrivo temporaneo); giorno da 23 ore da verificare |
 
 > [!WARNING]
 > **E-Distribuzione: login automatico bloccato, accesso dal browser**
@@ -361,7 +361,7 @@ Ogni distributore pubblica i dati a modo suo, e l'integrazione si adatta:
 | Areti | Un mese solare chiuso alla volta, completato qualche giorno alla volta | Una volta al giorno |
 | E-Distribuzione | Il giorno precedente | Ogni giorno, a un orario scelto a caso tra le 16:00 e le 20:00 al momento della configurazione (diverso per ogni installazione, modificabile dalle opzioni) |
 | Ireti | Una curva a 15 minuti | Una volta al giorno, senza un orario fisso |
-| Edyna | Un mese per volta, un giorno per riga (oltre 10 giorni di ritardo nella cattura del 05/11/2026) | Una volta al giorno, a un orario scelto a caso tra le 06:00 e le 22:00 al momento della configurazione (diverso per ogni installazione, non modificabile dalle opzioni) |
+| Edyna | Un mese per volta, un giorno per riga (da un giorno di ritardo; 11 giorni nella cattura del 05/11/2026, poi recuperati) | Una volta al giorno, a un orario scelto a caso tra le 06:00 e le 22:00 al momento della configurazione (diverso per ogni installazione, non modificabile dalle opzioni) |
 | SET Distribuzione | Il giorno precedente, con il dettaglio orario (e i quarti d'ora) | Ogni sera, a un orario scelto a caso tra le 18:00 e le 22:00 al momento della configurazione (diverso per ogni installazione, non modificabile dalle opzioni) |
 
 **Mese solare chiuso** (Duereti, Unareti, RetiPiù, Reti Valtellina
@@ -398,8 +398,9 @@ riprovato nei giorni successivi, così non si creano buchi.
   si recupera un giorno alla volta.
 
 **Edyna** non ha una coda di giorni da riprovare: il portale mostra un
-mese per volta e nella cattura l'ultimo giorno disponibile aveva oltre 10
-giorni di ritardo, di cui non si conosce la regola. A ogni richiesta (al
+mese per volta e il ritardo di pubblicazione non è fisso: nella cattura del
+05/11/2026 l'ultimo giorno disponibile aveva 11 giorni di ritardo, poi
+recuperati (dal 07/11 si vede il giorno prima). A ogni richiesta (al
 massimo una al giorno) l'integrazione rilegge il mese dell'ultimo dato
 importato, ripartendo da una settimana prima, fino al mese in corso, e
 importa tutto quello che c'è di nuovo: un buco si chiude da solo appena il

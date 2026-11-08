@@ -82,9 +82,9 @@ CONF_DATA_INSTALLAZIONE = "data_installazione"
 # della entry - stesso nome e formato degli altri distributori.
 CONF_ORARIO_RICHIESTA = "orario_richiesta"
 
-# Nella cattura del 05/11/2026 l'ultimo giorno disponibile era il 25/10: oltre
-# 10 giorni di ritardo, di cui non si conosce la regola (cadenza fissa? per
-# POD?). Per questo non si aspetta un "giorno atteso" con una coda di retry
+# Nella cattura del 05/11/2026 l'ultimo giorno disponibile era il 25/10: 11
+# giorni di ritardo, poi recuperati (da sabato 07/11 si vede il giorno prima).
+# Il ritardo non e' fisso, quindi non si aspetta un "giorno atteso" con una coda di retry
 # come SET/Ireti: ogni richiesta rilegge il mese dell'ultimo dato importato (e
 # il successivo) e importa tutto quello che c'è di nuovo.
 GIORNI_DI_RIPASSO = 7

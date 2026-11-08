@@ -23,8 +23,9 @@ per POD.
 
 Scelte di progetto:
 
-- **Nessuna coda di retry.** Nella cattura l'ultimo giorno era 11 giorni
-  prima, con una regola ignota. A ogni richiesta si rilegge il mese
+- **Nessuna coda di retry.** Il ritardo di pubblicazione non è fisso:
+  nella cattura l'ultimo giorno era 11 giorni prima, poi il portale si è
+  messo in pari (dal 07/11 l'utente vede il giorno precedente). A ogni richiesta si rilegge il mese
   dell'ultimo dato importato (da una settimana prima) fino a quello in corso
   e si importa tutto ciò che c'è: l'import è idempotente e un buco si chiude
   da solo.
@@ -228,8 +229,11 @@ La sequenza completa vista, con il tab Curve aperto:
   statistiche orarie di Home Assistant.
 - **Ritardo di pubblicazione**: la cattura è del 05/11/2026 ma l'ultimo
   giorno presente del mese di ottobre è il **25/10/2026**, cioè 11 giorni
-  prima. Non si sa se sia un ritardo fisso, una cadenza (settimanale?) o
-  dipenda dal POD. Da misurare con più catture.
+  prima, e così è rimasto in HA fino al 06/11. Da **sabato 07/11/2026**
+  l'utente vede ogni giorno i consumi del giorno prima: l'arretrato era
+  quindi temporaneo (non una cadenza fissa) e ora il dato arriva con un
+  giorno di ritardo. Ora esatta di pubblicazione non misurata. L'import
+  rilegge comunque il mese dell'ultimo dato, quindi regge entrambi i casi.
 - **Giorno da 25 ore**: il 25/10/2026 (fine ora legale) la riga ha
   valori in tutte e 25 le colonne; negli altri giorni l'Ora 25 vale
   `0,000`. La cattura non dice **in che posizione** cade l'ora
@@ -254,9 +258,9 @@ La sequenza completa vista, con il tab Curve aperto:
 
 ## Cosa manca
 
-1. **Il ritardo dei dati**: in HA reale i dati arrivano solo fino al
-   25/10 (il 06/11); l'utente ha scritto a Edyna per chiedere la regola.
-   L'import riprende da solo quando compaiono giorni nuovi.
+1. **L'ora in cui esce il giorno prima**: dal 07/11 il D-1 c'è, ma non
+   si sa a che ora lo pubblica il portale (la lettura è una al giorno a
+   un orario casuale 06–22: se il dato esce dopo, arriva il giorno dopo).
 2. **Due mesi di fila nello stesso anno** (il click sul mese seguente col
    tab Curve orarie ancora aperto): la cattura ha un solo mese per anno. Se
    il link manca il client riapre Curve, ma costa due richieste lente.
