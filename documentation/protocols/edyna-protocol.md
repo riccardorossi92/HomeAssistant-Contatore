@@ -19,22 +19,26 @@ per POD.
 | `parse.py` | Funzioni pure sull'HTML: campi del form come li invia il browser, griglia Utenze, selettore Anno, link dei mesi, griglia oraria |
 | `api.py` | Navigazione: ogni passo è un POST con tutto il form della pagina corrente; se la pagina non porta il contenuto atteso prova `SecondPostback` (al massimo due volte) e poi solleva un errore che nomina il passo; se la tabella dei mesi arriva vuota ripete lo stesso postback una volta. Timeout di 300 s per richiesta |
 | `statistics.py` | 25 colonne → bucket orari UTC, con il mapping dei giorni da 23 e 25 ore |
-| `coordinator.py` | Una lettura al giorno dopo un orario casuale (06–22), un mese per volta; il primo ciclo parte in background (può durare minuti) |
+| `coordinator.py` | Prima lettura del giorno dopo un orario casuale (06–22), poi retry orario finché manca solo ieri, un mese per volta; il primo ciclo parte in background (può durare minuti) |
 
 Scelte di progetto:
 
-- **Nessuna coda di retry.** Il ritardo di pubblicazione non è fisso:
+- **Nessuna coda di giorni da riprovare.** Il ritardo di pubblicazione non è fisso:
   nella cattura l'ultimo giorno era 11 giorni prima, poi il portale si è
   messo in pari (dal 07/11 l'utente vede il giorno precedente). A ogni richiesta si rilegge il mese
   dell'ultimo dato importato (da una settimana prima) fino a quello in corso
   e si importa tutto ciò che c'è: l'import è idempotente e un buco si chiude
   da solo.
-- **Una sola lettura al giorno, senza retry.** Il coordinator si sveglia ogni
-  ora ma legge il portale una volta, dopo l'orario casuale; ritenta nello
-  stesso giorno solo se la lettura va in errore. Se il giorno prima non è
-  ancora pubblicato a quell'ora (l'ora può variare da un giorno all'altro),
-  arriva il giorno dopo: uno scarto occasionale accettato, perché ogni
-  lettura costa minuti di richieste lente su un portale delicato.
+- **Retry orario solo quando manca ieri.** Il coordinator si sveglia ogni
+  ora. Dopo la prima richiesta del giorno (dopo l'orario casuale), se di
+  ogni POD manca soltanto ieri (l'ultimo dato importato è l'altroieri),
+  richiede di nuovo a ogni ciclo, finché ieri non arriva e al più fino a
+  mezzanotte, senza un tetto di richieste: l'ora in cui esce il giorno
+  prima varia. Con un
+  arretrato maggiore (come gli 11 giorni di inizio novembre) ritentare ogni
+  ora non servirebbe, e ogni richiesta costa minuti di richieste lente: una
+  sola richiesta al giorno. Un errore ritenta al ciclo successivo, come
+  prima.
 - **Controlli prima di importare**: il mese e il POD riportati dalla pagina
   devono coincidere con quelli chiesti; un giorno con celle vuote, con un
   numero di ore che non torna o a zero in tutte le ore (non pubblicato) non

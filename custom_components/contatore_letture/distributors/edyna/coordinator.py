@@ -4,14 +4,22 @@ Design (il "perché" in documentation/protocols/edyna-protocol.md):
 
   - Il portale mostra un mese per volta (una riga per giorno), dopo un
     login e 4-6 postback. Si chiede quindi un mese alla volta, e il ciclo
-    tocca il portale al massimo una volta al giorno, dopo un orario scelto a
-    caso per installazione (salvato nelle opzioni, come gli altri
-    distributori). Il primo ciclo dopo la configurazione parte subito, per
-    verificare login e POD.
+    tocca il portale una volta al giorno, dopo un orario scelto a caso per
+    installazione (salvato nelle opzioni, come gli altri distributori). Il
+    primo ciclo dopo la configurazione parte subito, per verificare login e
+    POD.
 
-  - Nessun "giorno atteso" con coda di retry come SET/Ireti: nella cattura
-    del 05/11/2026 l'ultimo giorno disponibile era il 25/10 (11 giorni di
-    ritardo, poi recuperati: dal 07/11 si vede il giorno prima). Ogni richiesta rilegge il
+  - Retry orario come SET/Ireti, ma senza coda di giorni: l'ora in cui esce
+    il giorno prima varia. Dopo la prima richiesta del giorno, se manca
+    soltanto ieri (l'ultimo dato importato di ogni POD e' l'altroieri) il
+    ciclo orario richiede di nuovo, finche' ieri non arriva e al piu' fino a
+    mezzanotte (nessun tetto di richieste: la condizione basta). Con un arretrato piu' grande (come gli 11 giorni di
+    inizio novembre) ritentare ogni ora non servirebbe: una richiesta al
+    giorno, come prima.
+
+  - Nessun "giorno atteso" con coda: nella cattura del 05/11/2026 l'ultimo
+    giorno disponibile era il 25/10 (11 giorni di ritardo, poi recuperati:
+    dal 07/11 si vede il giorno prima). Ogni richiesta rilegge il
     mese dell'ultimo dato importato (meno GIORNI_DI_RIPASSO) fino a quello in
     corso e importa tutto ciò che c'è di nuovo: l'import è idempotente
     (statistics_common fonde e ricalcola le somme), quindi riprendere un
@@ -98,7 +106,8 @@ class EdynaCoordinator(DataUpdateCoordinator[dict]):
         self._session = async_create_clientsession(hass, cookie_jar=nuovo_cookie_jar())
         self._auth = EdynaAuthClient(self._session)
         self._orario_ripiego: time | None = None
-        # Giorno (locale) dell'ultima richiesta completata: una al giorno.
+        # Giorno (locale) dell'ultima richiesta completata: la prima dopo
+        # l'orario, poi i retry orari finche' manca solo ieri.
         self._ultima_richiesta: date | None = None
         # Rimasti mesi da leggere dopo il tetto per ciclo: richiedi subito.
         self._servono_altri_cicli = False
@@ -129,9 +138,11 @@ class EdynaCoordinator(DataUpdateCoordinator[dict]):
             )
         return self._orario_ripiego
 
-    def _e_ora_di_chiedere(self) -> bool:
+    async def _e_ora_di_chiedere(self) -> bool:
         """Al primo avvio subito (verifica login e POD); poi una volta al
-        giorno dopo l'orario, o subito se restano mesi da recuperare."""
+        giorno dopo l'orario, o subito se restano mesi da recuperare; fatta
+        la prima richiesta del giorno, di nuovo ogni ora finche' manca solo
+        ieri."""
         if not self.entry.data.get(CONF_DATA_INSTALLAZIONE):
             self.hass.config_entries.async_update_entry(
                 self.entry,
@@ -151,7 +162,27 @@ class EdynaCoordinator(DataUpdateCoordinator[dict]):
         if self._servono_altri_cicli:
             return True
         adesso = dt_util.now()
-        return adesso.time() >= self._orario_richiesta and self._ultima_richiesta != adesso.date()
+        if adesso.time() < self._orario_richiesta:
+            return False
+        if self._ultima_richiesta != adesso.date():
+            return True
+        return await self._manca_solo_ieri(adesso.date())
+
+    async def _manca_solo_ieri(self, oggi: date) -> bool:
+        """True se, dopo la richiesta di oggi, resta da importare soltanto
+        ieri: almeno un POD e' fermo all'altroieri e nessuno e' piu' indietro.
+        Con un arretrato maggiore ritentare ogni ora non servirebbe: il dato
+        non e' una questione dell'ora di pubblicazione di ieri."""
+        ieri = oggi - timedelta(days=1)
+        altroieri = ieri - timedelta(days=1)
+        manca_ieri = False
+        for pod in self.pods:
+            ultima = await async_get_ultima_data_disponibile(self.hass, pod)
+            if ultima is None or ultima < altroieri:
+                return False
+            if ultima < ieri:
+                manca_ieri = True
+        return manca_ieri
 
     async def _async_login(self) -> EdynaApiClient:
         try:
@@ -205,7 +236,7 @@ class EdynaCoordinator(DataUpdateCoordinator[dict]):
             for pod in self.pods
         }
 
-        if self._e_ora_di_chiedere():
+        if await self._e_ora_di_chiedere():
             self._servono_altri_cicli = False
             api = await self._async_login()
             for pod in self.pods:

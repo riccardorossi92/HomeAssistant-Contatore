@@ -35,6 +35,7 @@ from custom_components.contatore_letture.distributors.edyna.const import (
 )
 
 POD = "IT000E00000001"
+POD_2 = "IT000E00000002"
 ALTRO_POD = "IT000E00000003"
 
 
@@ -230,6 +231,116 @@ class TestCicloAutomatico:
             dati = await coordinator._async_update_data()
         login.assert_not_called()
         assert dati["by_pod"][POD]["ultima_data_disponibile"] is None
+
+    async def test_se_manca_solo_ieri_si_ritenta_ogni_ora(
+        self, hass, coordinator, statistiche, monkeypatch
+    ):
+        # Oggi 05/11, ultimo dato importato il 03/11: manca solo il 04/11.
+        statistiche["ultima"] = date(2026, 11, 3)
+        api = _api_finta({})
+        login = AsyncMock(return_value=api)
+        monkeypatch.setattr(coordinator, "_async_login", login)
+
+        with freeze_time("2026-11-05 12:00:00"):
+            await coordinator._async_update_data()
+        with freeze_time("2026-11-05 13:00:00"):
+            await coordinator._async_update_data()
+        with freeze_time("2026-11-05 14:00:00"):
+            await coordinator._async_update_data()
+        assert login.await_count == 3
+
+        # Ieri e' arrivato: basta ritentare.
+        statistiche["ultima"] = date(2026, 11, 4)
+        with freeze_time("2026-11-05 15:00:00"):
+            await coordinator._async_update_data()
+        assert login.await_count == 3
+
+    async def test_con_un_arretrato_piu_grande_resta_una_richiesta_al_giorno(
+        self, hass, coordinator, statistiche, monkeypatch
+    ):
+        # Come i primi di novembre: ultimo dato il 25/10, nove giorni indietro.
+        statistiche["ultima"] = date(2026, 10, 25)
+        login = AsyncMock(return_value=_api_finta({}))
+        monkeypatch.setattr(coordinator, "_async_login", login)
+
+        with freeze_time("2026-11-05 12:00:00"):
+            await coordinator._async_update_data()
+        with freeze_time("2026-11-05 13:00:00"):
+            await coordinator._async_update_data()
+        assert login.await_count == 1
+
+    async def test_senza_dati_importati_non_si_ritenta(
+        self, hass, coordinator, statistiche, monkeypatch
+    ):
+        login = AsyncMock(return_value=_api_finta({}))
+        monkeypatch.setattr(coordinator, "_async_login", login)
+        with freeze_time("2026-11-05 12:00:00"):
+            await coordinator._async_update_data()
+        with freeze_time("2026-11-05 13:00:00"):
+            await coordinator._async_update_data()
+        assert login.await_count == 1
+
+    async def test_senza_tetto_si_ritenta_ogni_ora_fino_a_sera(self, hass, statistiche, monkeypatch):
+        await hass.config.async_set_time_zone("Europe/Rome")
+        entry = _entry(
+            hass,
+            data={CONF_DATA_INSTALLAZIONE: "2026-10-01"},
+            options={CONF_ORARIO_RICHIESTA: "06:00"},
+        )
+        coord = create_coordinator(hass, entry)
+        statistiche["ultima"] = date(2026, 11, 3)
+        login = AsyncMock(return_value=_api_finta({}))
+        monkeypatch.setattr(coord, "_async_login", login)
+
+        for ora in range(5, 22):  # 06:00..22:00 a Roma, un ciclo ogni ora
+            with freeze_time(f"2026-11-05 {ora:02d}:00:00"):
+                await coord._async_update_data()
+        assert login.await_count == 17  # ogni ora, finche' ieri non arriva
+
+    async def test_due_pod_si_ritenta_finche_uno_manca_ieri(
+        self, hass, statistiche, monkeypatch
+    ):
+        await hass.config.async_set_time_zone("Europe/Rome")
+        entry = _entry(
+            hass,
+            data={CONF_DATA_INSTALLAZIONE: "2026-10-01", CONF_PODS: [POD, POD_2]},
+            options={CONF_ORARIO_RICHIESTA: "09:00"},
+        )
+        coord = create_coordinator(hass, entry)
+        ultime = {POD: date(2026, 11, 4), POD_2: date(2026, 11, 3)}
+
+        async def _ultima(hass, pod):
+            return ultime[pod]
+
+        monkeypatch.setattr(modulo, "async_get_ultima_data_disponibile", _ultima)
+        login = AsyncMock(return_value=_api_finta({}))
+        monkeypatch.setattr(coord, "_async_login", login)
+
+        with freeze_time("2026-11-05 12:00:00"):
+            await coord._async_update_data()
+        with freeze_time("2026-11-05 13:00:00"):
+            await coord._async_update_data()
+        assert login.await_count == 2  # il secondo POD e' fermo all'altroieri
+
+    async def test_il_retry_non_passa_la_mezzanotte(self, hass, statistiche, monkeypatch):
+        await hass.config.async_set_time_zone("Europe/Rome")
+        entry = _entry(
+            hass,
+            data={CONF_DATA_INSTALLAZIONE: "2026-10-01"},
+            options={CONF_ORARIO_RICHIESTA: "22:00"},
+        )
+        coord = create_coordinator(hass, entry)
+        statistiche["ultima"] = date(2026, 11, 3)
+        login = AsyncMock(return_value=_api_finta({}))
+        monkeypatch.setattr(coord, "_async_login", login)
+
+        with freeze_time("2026-11-05 21:30:00"):  # 22:30 a Roma
+            await coord._async_update_data()
+        with freeze_time("2026-11-05 22:30:00"):  # 23:30
+            await coord._async_update_data()
+        with freeze_time("2026-11-05 23:30:00"):  # 00:30 del 06/11, prima dell'orario
+            await coord._async_update_data()
+        assert login.await_count == 2
 
     async def test_errore_del_portale_riprova_al_ciclo_dopo_e_salva_il_parziale(
         self, hass, coordinator, statistiche, monkeypatch

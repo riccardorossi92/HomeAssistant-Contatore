@@ -361,7 +361,7 @@ Ogni distributore pubblica i dati a modo suo, e l'integrazione si adatta:
 | Areti | Un mese solare chiuso alla volta, completato qualche giorno alla volta | Una volta al giorno |
 | E-Distribuzione | Il giorno precedente | Ogni giorno, a un orario scelto a caso tra le 16:00 e le 20:00 al momento della configurazione (diverso per ogni installazione, modificabile dalle opzioni) |
 | Ireti | Una curva a 15 minuti | Una volta al giorno, senza un orario fisso |
-| Edyna | Un mese per volta, un giorno per riga (da un giorno di ritardo; 11 giorni nella cattura del 05/11/2026, poi recuperati) | Una volta al giorno, a un orario scelto a caso tra le 06:00 e le 22:00 al momento della configurazione (diverso per ogni installazione, non modificabile dalle opzioni) |
+| Edyna | Un mese per volta, un giorno per riga (da un giorno di ritardo; 11 giorni nella cattura del 05/11/2026, poi recuperati) | Dopo un orario scelto a caso tra le 06:00 e le 22:00 al momento della configurazione (diverso per ogni installazione, non modificabile dalle opzioni): una richiesta al giorno, poi un tentativo ogni ora finché manca solo il giorno precedente |
 | SET Distribuzione | Il giorno precedente, con il dettaglio orario (e i quarti d'ora) | Ogni sera, a un orario scelto a caso tra le 18:00 e le 22:00 al momento della configurazione (diverso per ogni installazione, non modificabile dalle opzioni) |
 
 **Mese solare chiuso** (Duereti, Unareti, RetiPiù, Reti Valtellina
@@ -400,8 +400,10 @@ riprovato nei giorni successivi, così non si creano buchi.
 **Edyna** non ha una coda di giorni da riprovare: il portale mostra un
 mese per volta e il ritardo di pubblicazione non è fisso: nella cattura del
 05/11/2026 l'ultimo giorno disponibile aveva 11 giorni di ritardo, poi
-recuperati (dal 07/11 si vede il giorno prima). A ogni richiesta (al
-massimo una al giorno) l'integrazione rilegge il mese dell'ultimo dato
+recuperati (dal 07/11 si vede il giorno prima). Dopo la prima richiesta
+del giorno, se manca soltanto il giorno precedente l'integrazione
+ritenta ogni ora, fino a mezzanotte; con un arretrato più
+grande resta una richiesta al giorno. A ogni richiesta l'integrazione rilegge il mese dell'ultimo dato
 importato, ripartendo da una settimana prima, fino al mese in corso, e
 importa tutto quello che c'è di nuovo: un buco si chiude da solo appena il
 portale lo riempie. Al primo avvio legge gli ultimi due mesi; se si è
