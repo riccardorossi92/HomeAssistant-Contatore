@@ -226,12 +226,9 @@ storico (`recupera_storico`) è stato importato senza problemi.
    il portale restituisce sempre 24 ore anche in quei giorni, il giorno
    viene scartato con un avviso nei log: è il primo punto da controllare
    dopo il 25/10/2026.
-2. **Ora di pubblicazione** del giorno precedente: da misurare (lo
-   script `scripts/verify_setdistribuzione_login.py` dice se un giorno
-   c'è già).
-3. **Risposta per un giorno non ancora pubblicato** (lista vuota o 404):
+2. **Risposta per un giorno non ancora pubblicato** (lista vuota o 404):
    mai vista, entrambe trattate come "non ancora disponibile".
-4. **Valori `estimated`**: importati come gli altri; non sappiamo se il
+3. **Valori `estimated`**: importati come gli altri; non sappiamo se il
    portale li corregge in seguito né quando.
 
 ## Verifica da terminale

@@ -340,9 +340,6 @@ Non blocca l'uso, ma va tenuto d'occhio quando arriva un riscontro reale:
   ricontrollare dopo il 25/10/2026.
 - **`/users/exabeat/registry`**: mai confermato (non usato).
   `/readings/exabeat/measures` risponde 404.
-- **Ritardo di pubblicazione**: dati fino a D-2 il mattino, ora di
-  uscita di D-1 ancora da misurare. Il meccanismo di coda rende comunque
-  robusto `RITARDO_DATI_GIORNI = 1` (vedi "Design del coordinator").
 - **POD di produzione** (`operation: "IMMISSIONE"` invece di
   `"PRELIEVO"`): non supportato, mai testato.
 
