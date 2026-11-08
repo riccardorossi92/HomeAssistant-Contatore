@@ -28,7 +28,7 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | Areti | Email + password | `recupera_storico` | |
 | Ireti | Username + password | `recupera_storico` | Giorno da 25 ore (25/10/2026) da ricontrollare; ora di pubblicazione del giorno precedente da misurare; POD di produzione non supportati |
 | SET Distribuzione | Email + password | `recupera_storico` | Verificato da un solo utente con POD attivo, che ha confermato i dati e importato lo storico; giorni di cambio ora (dopo il 25/10/2026) e ora di pubblicazione del giorno precedente da verificare |
-| Edyna | Nome utente + password | `recupera_storico` | **Provato in un Home Assistant reale** (import senza errori, giorno da 25 ore corretto). Portale lentissimo (richieste da oltre 100 s): il primo aggiornamento può durare minuti. Dal 07/11/2026 i dati arrivano con un giorno di ritardo (nella cattura del 05/11 erano 11 giorni indietro, un arrivo temporaneo); giorno da 23 ore da verificare |
+| Edyna | Nome utente + password | `recupera_storico` | Giorno da 23 ore (cambio d'ora di marzo 2027) non ancora osservato; POD di produzione e immissione non supportati |
 
 > [!WARNING]
 > **E-Distribuzione: login automatico bloccato, accesso dal browser**

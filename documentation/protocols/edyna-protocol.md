@@ -29,6 +29,12 @@ Scelte di progetto:
   dell'ultimo dato importato (da una settimana prima) fino a quello in corso
   e si importa tutto ciò che c'è: l'import è idempotente e un buco si chiude
   da solo.
+- **Una sola lettura al giorno, senza retry.** Il coordinator si sveglia ogni
+  ora ma legge il portale una volta, dopo l'orario casuale; ritenta nello
+  stesso giorno solo se la lettura va in errore. Se il giorno prima non è
+  ancora pubblicato a quell'ora (l'ora può variare da un giorno all'altro),
+  arriva il giorno dopo: uno scarto occasionale accettato, perché ogni
+  lettura costa minuti di richieste lente su un portale delicato.
 - **Controlli prima di importare**: il mese e il POD riportati dalla pagina
   devono coincidere con quelli chiesti; un giorno con celle vuote, con un
   numero di ore che non torna o a zero in tutte le ore (non pubblicato) non
@@ -258,20 +264,17 @@ La sequenza completa vista, con il tab Curve aperto:
 
 ## Cosa manca
 
-1. **L'ora in cui esce il giorno prima**: dal 07/11 il D-1 c'è, ma non
-   si sa a che ora lo pubblica il portale (la lettura è una al giorno a
-   un orario casuale 06–22: se il dato esce dopo, arriva il giorno dopo).
-2. **Due mesi di fila nello stesso anno** (il click sul mese seguente col
+1. **Due mesi di fila nello stesso anno** (il click sul mese seguente col
    tab Curve orarie ancora aperto): la cattura ha un solo mese per anno. Se
    il link manca il client riapre Curve, ma costa due richieste lente.
-3. **Il comportamento a sessione scaduta** (cookie rifiutato, risposta
+2. **Il comportamento a sessione scaduta** (cookie rifiutato, risposta
    diversa dal login?).
-4. **Gli export Excel**: `btnExportQuartiGiornalieri` restituisce un
+3. **Gli export Excel**: `btnExportQuartiGiornalieri` restituisce un
    `.xlsx` con i quarti d'ora del giorno; contenuto non analizzato (la
    cattura lo contiene in base64, non anonimizzabile). Un export mensile
    eviterebbe il parsing HTML.
-5. **Il giorno da 23 ore** (ultima domenica di marzo): mai osservato.
-6. **Più POD e POD di produzione/immissione**: le catture hanno un solo POD
+4. **Il giorno da 23 ore** (ultima domenica di marzo): mai osservato.
+5. **Più POD e POD di produzione/immissione**: le catture hanno un solo POD
    di prelievo.
 
 ## Come contribuire
