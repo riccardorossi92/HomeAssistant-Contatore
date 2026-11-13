@@ -15,6 +15,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ...const import DOMAIN
+from ...consumo_periodo import crea_sensori_consumo
 from ...device_helpers import assicura_dispositivo_padre, collega_al_padre
 from .coordinator import AretiCoordinator
 
@@ -54,6 +55,11 @@ def build_areti_entities(hass, coordinator: AretiCoordinator) -> list[SensorEnti
     for pod in coordinator.pods:
         entities.append(AretiUltimaDataDisponibileSensor(coordinator, entry, pod, id_padre))
         entities.append(AretiConsumoMeseSensor(coordinator, entry, pod, id_padre))
+        entities.extend(
+            crea_sensori_consumo(
+                hass, entry, coordinator, pod, _device_info_pod(entry, pod, id_padre)
+            )
+        )
     return entities
 
 

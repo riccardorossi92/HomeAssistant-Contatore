@@ -111,8 +111,8 @@ async def test_build_pcf_entities_conta_account_piu_due_per_pod(hass):
     )
     entry.add_to_hass(hass)
     entità = s.build_pcf_entities(hass, _coord(), entry, "Duereti")
-    # 3 sull'account + 2 per ciascuno dei 2 POD
-    assert len(entità) == 3 + 2 * 2
+    # 3 sull'account + 5 per ciascuno dei 2 POD (2 diagnostici + 3 di periodo)
+    assert len(entità) == 3 + 5 * 2
     nomi = {type(e).__name__ for e in entità}
     assert "PcfPodConfiguratiSensor" in nomi
     assert "PcfUltimaDataDisponibileSensor" in nomi

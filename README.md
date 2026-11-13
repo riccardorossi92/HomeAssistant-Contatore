@@ -415,10 +415,42 @@ ancora pubblicato) non viene importato.
 automaticamente. Si richiede con l'azione `recupera_storico` (vedi
 [Azioni](#azioni) sotto).
 
-Tutte le entità esposte sono diagnostiche — i consumi stanno nelle
-statistiche, non in un sensore — raggruppate in un dispositivo "Account"
-più uno per ogni POD. Espandi la sezione del tuo distributore per il
-dettaglio.
+Le entità sono raggruppate in un dispositivo "Account" più uno per ogni
+POD. Quelle di stato sono diagnostiche; i consumi stanno nelle statistiche,
+e per averli anche come entità (card, template, automazioni) ogni POD ha
+tre [sensori di consumo del periodo](#sensori-di-consumo-del-periodo).
+Espandi la sezione del tuo distributore per il dettaglio.
+
+### Sensori di consumo del periodo
+
+Per ogni POD, di tutti i distributori, tre sensori in kWh sommano i consumi
+già importati:
+
+| Entità | Cosa mostra |
+|---|---|
+| Consumo mese corrente | Dal 1° del mese in corso |
+| Consumo trimestre corrente | Dal 1° del trimestre solare in corso (gen-mar, apr-giu, lug-set, ott-dic) |
+| Consumo anno corrente | Dal 1° gennaio |
+
+Sono normali sensori (`device_class: energy`), quindi si possono usare in
+qualunque card, template o automazione, ad esempio in una card bolletta.
+Gli attributi `dal` e `dati_fino_al` dicono da quando parte il periodo e
+fino a quale giorno ci sono dati.
+
+- Si aggiornano a ogni giro dell'integrazione, quando arrivano dati nuovi, e
+  a mezzanotte, quando un nuovo mese, trimestre o anno riparte da zero.
+- Il totale è **fino all'ultimo giorno importato**, non fino a oggi: ogni
+  distributore pubblica con il suo ritardo (vedi la tabella sopra).
+- Sono `unknown` finché il periodo non ha nemmeno un giorno importato, per
+  non far passare per zero un dato che manca. Con **Duereti, Unareti,
+  RetiPiù, Reti Valtellina Valchiavenna e Areti**, che pubblicano a mese
+  chiuso, il mese corrente resta `unknown` fino alla chiusura, e trimestre
+  e anno sono completi fino all'ultimo mese chiuso.
+- Non hanno `state_class`, volutamente: nella Energy Dashboard continua a
+  servire la statistica `contatore_letture:<pod>_energia`, altrimenti lo
+  stesso consumo verrebbe contato due volte.
+- Contano solo il prelievo (`<pod>_energia`): l'immissione in rete di
+  E-Distribuzione (`<pod>_immissione`) non è inclusa.
 
 <details>
 <summary><b>Entità esposte — Duereti / Unareti / RetiPiù / Reti Valtellina Valchiavenna</b></summary>

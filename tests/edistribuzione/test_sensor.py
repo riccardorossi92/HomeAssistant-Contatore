@@ -59,6 +59,6 @@ async def test_build_edistribuzione_entities_conta_account_piu_due_per_pod(hass)
     entry = _entry(hass, pods=[POD, "IT002"])
     coord = SimpleNamespace(data=None, pods=[POD, "IT002"], entry=entry)
     entità = s.build_edistribuzione_entities(hass, coord)
-    # 1 sull'account + 2 per ciascuno dei 2 POD
-    assert len(entità) == 1 + 2 * 2
+    # 1 sull'account + 5 per ciascuno dei 2 POD (2 diagnostici + 3 di periodo)
+    assert len(entità) == 1 + 5 * 2
     assert "EdistribuzionePodConfiguratiSensor" in {type(e).__name__ for e in entità}

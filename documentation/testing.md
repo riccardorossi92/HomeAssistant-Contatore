@@ -22,6 +22,9 @@ tests/
   test_config_flow.py                # wizard ARERA + ramo PCF + ramo E-Distribuzione + opzioni + reauth
   test_arera_lookup.py               # parsing dell'HTML ARERA + errori di rete
   test_init_services.py              # helper delle azioni (_trova_coordinator, _risolvi_...)
+  test_consumo_periodo.py            # sensori consumo mese/trimestre/anno (recorder simulato)
+  recorder_reale/                    # recorder vero in memoria: lettura per giorno e sensori end-to-end
+    conftest.py                        # fa partire recorder_mock prima di hass
   pcf_common/                        # Duereti / Unareti
     conftest.py                        # harness: FakePcfApi, make_pcf_coordinator, pcf_io
     test_api.py                         # non richiede HA
