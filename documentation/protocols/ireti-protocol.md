@@ -105,6 +105,28 @@ password grant lo rende superfluo.
 > v0.8.6), e una risposta non JSON diventa un `IretiAuthError` con lo
 > status HTTP invece di un `JSONDecodeError`.
 
+> [!WARNING]
+> **Il WAF blocca il password grant se la password contiene certi
+> caratteri.** Il token endpoint risponde 403 con la stessa pagina HTML
+> ("403 Error - Message") a richieste il cui corpo contiene sequenze che
+> le sue regole scambiano per XSS/SQL injection: verificato il 14/11/2026
+> con credenziali finte, `<…>`, `<script>` e `/*` danno 403, mentre
+> `'`, `"`, `;`, `--`, `%`, `&`, `$`, `\`, `=`, `|`, `(`, `{`, `` ` `` e `@`
+> arrivano a Keycloak (401 `invalid_grant`). Non dipende da User-Agent né
+> da cookie, e fallisce già al primo login
+> ([issue #21](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/21):
+> integrazione e script falliscono sulla stessa rete, mentre il browser
+> funziona). Il form di Keycloak (`login-actions/authenticate`) con le
+> stesse password **non** viene bloccato. Per questo `auth.py`, quando il
+> password grant prende un 403 non JSON, ripiega sul flusso del browser:
+> `GET .../auth` (con `redirect_uri=https://smartpod.ireti.it/`, PKCE S256)
+> → `POST` del form (302 con `code`) → `POST .../token` con
+> `grant_type=authorization_code` e `code_verifier`, che non contiene la
+> password. Il cookie jar va svuotato anche prima dello scambio del
+> `code`, per lo stesso motivo del punto precedente. Il ramo che termina
+> con un login riuscito non è ancora stato provato con un account reale
+> (solo fino al form, con credenziali finte).
+
 ## API note — verificate funzionanti
 
 Tutte con `Authorization: Bearer <access_token>` e gli header da browser
@@ -338,6 +360,9 @@ Non blocca l'uso, ma va tenuto d'occhio quando arriva un riscontro reale:
 - **Giorno da 25 ore**: la forma è nota (26/10/2025), ma non sappiamo
   se l'ordine e la divisione dei due elementi siano sempre gli stessi. Da
   ricontrollare dopo il 25/10/2026.
+- **Fallback a form (issue #21)**: provato dal vivo solo fino al form con
+  credenziali finte; manca la conferma di un login completo con una
+  password che il WAF blocca (code → token).
 - **`/users/exabeat/registry`**: mai confermato (non usato).
   `/readings/exabeat/measures` risponde 404.
 - **POD di produzione** (`operation: "IMMISSIONE"` invece di

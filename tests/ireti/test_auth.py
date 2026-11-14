@@ -166,10 +166,171 @@ class TestAsyncLogin:
         assert sessione.richieste[0]["cookie"] == {}
 
     @pytest.mark.asyncio
-    async def test_pagina_html_del_waf_solleva_autherror(self):
-        """Issue #10: un 403 HTML del WAF diventa un IretiAuthError leggibile,
-        non un JSONDecodeError."""
-        sessione = _Sessione(403, "<html>403 Response Code - Request ID: abc</html>")
+    async def test_pagina_html_non_403_solleva_autherror(self):
+        """Una risposta non JSON diversa da 403 resta un IretiAuthError
+        leggibile (issue #10), senza ripiegare sul flusso a form."""
+        sessione = _Sessione(502, "<html>Bad Gateway</html>")
         client = auth.IretiAuthClient(sessione)
-        with pytest.raises(auth.IretiAuthError, match="HTTP 403, risposta non JSON"):
+        with pytest.raises(auth.IretiAuthError, match="HTTP 502, risposta non JSON"):
             await client.async_login("utente", "segreto")
+        assert len(sessione.richieste) == 1
+
+
+PAGINA_403 = "<html>403 Response Code - Request ID: abc</html>"
+PAGINA_LOGIN = (
+    '<html><form id="kc-form-login" class="form" onsubmit="return true;" '
+    'action="https://smartpod.ireti.it/auth/realms/IRENSmartPOD/login-actions/'
+    'authenticate?session_code=abc&amp;execution=e1&amp;client_id=SmartPOD-Angular" '
+    'method="post"><input name="username"><input name="password"></form></html>'
+)
+
+
+class _RispostaGenerica:
+    def __init__(self, status, corpo="", headers=None, url="https://smartpod.ireti.it/x"):
+        self.status = status
+        self._corpo = corpo
+        self.headers = headers or {}
+        self.url = url
+
+    async def json(self, content_type=None):
+        if isinstance(self._corpo, str):
+            raise ValueError("non json")
+        return self._corpo
+
+    async def text(self):
+        return self._corpo if isinstance(self._corpo, str) else repr(self._corpo)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+
+class _SessioneForm:
+    """Simula il portale con il WAF che blocca il password grant (403) e
+    Keycloak che serve il form e poi il code."""
+
+    def __init__(self, esito_form="code", grant_password=(403, PAGINA_403)):
+        self.esito_form = esito_form
+        self.grant_password = grant_password
+        self.richieste: list[tuple[str, str, dict]] = []
+        self.cookie_jar = _CookieJar()
+        self.state = None
+        self.challenge = None
+
+    def get(self, url, params=None, headers=None):
+        self.richieste.append(("GET", url, {"params": params, "cookie": dict(self.cookie_jar.cookie)}))
+        self.state = params["state"]
+        self.challenge = params["code_challenge"]
+        self.cookie_jar.cookie["AUTH_SESSION_ID"] = "kc"
+        return _RispostaGenerica(200, PAGINA_LOGIN)
+
+    def post(self, url, data=None, headers=None, allow_redirects=True):
+        self.richieste.append(("POST", url, {"data": data, "cookie": dict(self.cookie_jar.cookie)}))
+        if url.endswith("/token"):
+            if data["grant_type"] == "password":
+                return _RispostaGenerica(*self.grant_password)
+            return _RispostaGenerica(200, TOKEN_REALE)
+        # POST del form di login
+        if self.esito_form == "code":
+            return _RispostaGenerica(
+                302,
+                headers={
+                    "Location": f"https://smartpod.ireti.it/?state={self.state}"
+                    "&session_state=s&code=codice-di-fantasia"
+                },
+            )
+        if self.esito_form == "credenziali":
+            return _RispostaGenerica(200, PAGINA_LOGIN)
+        if self.esito_form == "state":
+            return _RispostaGenerica(
+                302, headers={"Location": "https://smartpod.ireti.it/?state=altro&code=c"}
+            )
+        return _RispostaGenerica(403, PAGINA_403)
+
+
+class TestFallbackFormIssue21:
+    """Issue #21: il WAF risponde 403 al password grant con password che
+    contengono caratteri come '<' o '/*'; il form del browser non e' filtrato."""
+
+    @pytest.mark.asyncio
+    async def test_403_del_waf_ripiega_sul_flusso_a_form(self):
+        sessione = _SessioneForm()
+        token = await auth.IretiAuthClient(sessione).async_login("utente", "pa<ss>")
+        assert token == "token-di-fantasia"
+        metodi = [(m, u.rsplit("/", 1)[-1].split("?")[0]) for m, u, _ in sessione.richieste]
+        assert metodi == [
+            ("POST", "token"),
+            ("GET", "auth"),
+            ("POST", "authenticate"),
+            ("POST", "token"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_la_password_va_solo_nel_form_e_il_code_senza_password(self):
+        sessione = _SessioneForm()
+        await auth.IretiAuthClient(sessione).async_login("utente", "pa<ss>")
+        _, url_form, extra = sessione.richieste[2]
+        assert url_form.startswith("https://smartpod.ireti.it/")
+        assert "&amp;" not in url_form  # l'action e' stata de-escapata
+        assert extra["data"] == {"username": "utente", "password": "pa<ss>"}
+        scambio = sessione.richieste[3][2]["data"]
+        assert scambio["grant_type"] == "authorization_code"
+        assert scambio["code"] == "codice-di-fantasia"
+        assert "password" not in scambio
+        assert scambio["code_verifier"]
+
+    @pytest.mark.asyncio
+    async def test_pkce_challenge_e_sha256_del_verifier(self):
+        import base64
+        import hashlib
+
+        sessione = _SessioneForm()
+        await auth.IretiAuthClient(sessione).async_login("utente", "pa<ss>")
+        verifier = sessione.richieste[3][2]["data"]["code_verifier"]
+        atteso = (
+            base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
+            .rstrip(b"=")
+            .decode()
+        )
+        assert sessione.challenge == atteso
+        assert 43 <= len(verifier) <= 128
+
+    @pytest.mark.asyncio
+    async def test_scambio_del_code_parte_senza_cookie(self):
+        """Il WAF rifiuta il token endpoint con i cookie di Keycloak."""
+        sessione = _SessioneForm()
+        await auth.IretiAuthClient(sessione).async_login("utente", "pa<ss>")
+        assert sessione.richieste[3][2]["cookie"] == {}
+        assert sessione.cookie_jar.cookie == {}
+
+    @pytest.mark.asyncio
+    async def test_credenziali_errate_nel_form(self):
+        sessione = _SessioneForm(esito_form="credenziali")
+        with pytest.raises(auth.IretiInvalidCredentials):
+            await auth.IretiAuthClient(sessione).async_login("utente", "pa<ss>")
+
+    @pytest.mark.asyncio
+    async def test_state_diverso_solleva_autherror(self):
+        sessione = _SessioneForm(esito_form="state")
+        with pytest.raises(auth.IretiAuthError, match="state"):
+            await auth.IretiAuthClient(sessione).async_login("utente", "pa<ss>")
+
+    @pytest.mark.asyncio
+    async def test_waf_anche_sul_form_solleva_autherror(self):
+        sessione = _SessioneForm(esito_form="waf")
+        with pytest.raises(auth.IretiAuthError, match="HTTP 403") as exc:
+            await auth.IretiAuthClient(sessione).async_login("utente", "pa<ss>")
+        assert not isinstance(exc.value, auth.IretiInvalidCredentials)
+
+    @pytest.mark.asyncio
+    async def test_password_normale_non_tocca_il_form(self):
+        sessione = _SessioneForm(grant_password=(200, TOKEN_REALE))
+        await auth.IretiAuthClient(sessione).async_login("utente", "segreto")
+        assert len(sessione.richieste) == 1
+
+    def test_action_fuori_dal_portale_non_riceve_le_credenziali(self):
+        pagina = PAGINA_LOGIN.replace("https://smartpod.ireti.it", "https://evil.example")
+        with pytest.raises(auth.IretiAuthError, match="Form di login"):
+            auth.IretiAuthClient._trova_action_login(pagina)

@@ -138,6 +138,78 @@ def anonimizza(dato: Any, campioni_lista: int = 3) -> Any:
     return dato
 
 
+AUTH_URL = f"{BASE}/auth/realms/{REALM}/protocol/openid-connect/auth"
+REDIRECT_URI = f"{BASE}/"
+
+
+def _login_a_form(username: str, password: str) -> dict:
+    """Flusso del browser (form di Keycloak + authorization_code con PKCE).
+
+    Serve quando il WAF risponde 403 al password grant: succede con password
+    che contengono caratteri come '<', '>' o '/*' (issue #21). Il form non e'
+    filtrato allo stesso modo e lo scambio del code non contiene la password.
+    """
+    import base64
+    import hashlib
+    import html
+    import secrets
+    from urllib.parse import parse_qs, urlsplit
+
+    verifier = secrets.token_urlsafe(64)
+    challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode("ascii")).digest()
+    ).rstrip(b"=").decode("ascii")
+    state = secrets.token_urlsafe(16)
+    ua = {"User-Agent": HEADERS_BROWSER["User-Agent"]}
+
+    sess = requests.Session()
+    pagina = sess.get(
+        AUTH_URL,
+        params={
+            "client_id": CLIENT_ID, "redirect_uri": REDIRECT_URI,
+            "response_type": "code", "scope": "openid profile email",
+            "state": state, "nonce": secrets.token_urlsafe(16),
+            "code_challenge": challenge, "code_challenge_method": "S256",
+        },
+        headers=ua, timeout=30,
+    )
+    if pagina.status_code != 200:
+        sys.exit(f"  Pagina di login non disponibile (HTTP {pagina.status_code})")
+    action = None
+    for tag in re.findall(r"<form\b[^>]*>", pagina.text, re.IGNORECASE):
+        m = re.search(r'\baction="([^"]+)"', tag, re.IGNORECASE)
+        if m and "login-actions/authenticate" in m.group(1):
+            action = html.unescape(m.group(1))
+            break
+    if not action or not action.startswith(BASE + "/"):
+        sys.exit("  Form di login non trovato nella pagina")
+
+    risp = sess.post(
+        action, data={"username": username, "password": password},
+        headers={**ua, "Origin": BASE, "Referer": pagina.url},
+        allow_redirects=False, timeout=30,
+    )
+    if risp.status_code == 200 and "kc-form-login" in risp.text:
+        sys.exit("  Login fallito: utente o password errati")
+    location = risp.headers.get("Location", "")
+    if not 300 <= risp.status_code < 400 or not location.startswith(REDIRECT_URI):
+        sys.exit(f"  Login a form fallito (HTTP {risp.status_code})")
+    query = parse_qs(urlsplit(location).query)
+    if query.get("state", [None])[0] != state or "code" not in query:
+        sys.exit("  Login a form fallito (risposta inattesa)")
+
+    # Il WAF rifiuta il token endpoint se la richiesta porta i cookie del form.
+    return requests.post(
+        TOKEN_URL,
+        data={
+            "grant_type": "authorization_code", "client_id": CLIENT_ID,
+            "code": query["code"][0], "redirect_uri": REDIRECT_URI,
+            "code_verifier": verifier,
+        },
+        timeout=30,
+    )
+
+
 def login(username: str, password: str) -> str:
     print("\n[1/6] Login...")
     resp = requests.post(
@@ -151,6 +223,12 @@ def login(username: str, password: str) -> str:
         },
         timeout=30,
     )
+    if resp.status_code == 403 and not resp.headers.get(
+        "Content-Type", ""
+    ).startswith("application/json"):
+        print("  Il WAF ha bloccato il login diretto (succede con password che "
+              "contengono\n  caratteri come < > /*): riprovo come fa il browser...")
+        resp = _login_a_form(username, password)
     if resp.status_code != 200:
         try:
             err = resp.json()

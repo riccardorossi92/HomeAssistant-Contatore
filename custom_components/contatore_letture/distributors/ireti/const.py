@@ -15,6 +15,10 @@ BASE_URL = "https://smartpod.ireti.it"
 REALM = "IRENSmartPOD"
 CLIENT_ID = "SmartPOD-Angular"  # client pubblico: nessun client_secret
 TOKEN_URL = f"{BASE_URL}/auth/realms/{REALM}/protocol/openid-connect/token"
+# Flusso del browser (authorization_code), usato come ripiego quando il WAF
+# blocca il password grant (issue #21). redirect_uri accettato dal client.
+AUTH_URL = f"{BASE_URL}/auth/realms/{REALM}/protocol/openid-connect/auth"
+REDIRECT_URI = f"{BASE_URL}/"
 
 DISPLAY_NAME = "Ireti"
 # Confermata via query ARERA live (comune di Torino, 18/09/2026): "IRETI
@@ -49,6 +53,13 @@ HEADERS_BROWSER = {
     "Sec-Fetch-Site": "same-origin",
     "Sec-Fetch-Mode": "cors",
     "Sec-Fetch-Dest": "empty",
+}
+
+# Header per le richieste di navigazione (pagina di login del flusso a form).
+HEADERS_PAGINA = {
+    "User-Agent": HEADERS_BROWSER["User-Agent"],
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": HEADERS_BROWSER["Accept-Language"],
 }
 
 # Il refresh_token dura solo 30 minuti (refresh_expires_in: 1800,
