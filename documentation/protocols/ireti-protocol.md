@@ -110,9 +110,12 @@ password grant lo rende superfluo.
 > caratteri.** Il token endpoint risponde 403 con la stessa pagina HTML
 > ("403 Error - Message") a richieste il cui corpo contiene sequenze che
 > le sue regole scambiano per XSS/SQL injection: verificato il 14/11/2026
-> con credenziali finte, `<…>`, `<script>` e `/*` danno 403, mentre
-> `'`, `"`, `;`, `--`, `%`, `&`, `$`, `\`, `=`, `|`, `(`, `{`, `` ` `` e `@`
-> arrivano a Keycloak (401 `invalid_grant`). Non dipende da User-Agent né
+> con credenziali finte, `<…>`, `<script>`, `/*`, un `;` **all'inizio**
+> della password (`;Abc123`) e `;--` danno 403, mentre `'`, `"`, `--`, `%`,
+> `&`, `$`, `\`, `=`, `|`, `(`, `{`, `` ` `` e `@`, e un `;` in mezzo o in
+> fondo (`Abc;123`, `Abc123;`), arrivano a Keycloak (401 `invalid_grant`).
+> Le regole sono quindi sul pattern, non sul singolo carattere: l'elenco
+> non è completo (il caso `;` è emerso dalla issue #21). Non dipende da User-Agent né
 > da cookie, e fallisce già al primo login
 > ([issue #21](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/21):
 > integrazione e script falliscono sulla stessa rete, mentre il browser
