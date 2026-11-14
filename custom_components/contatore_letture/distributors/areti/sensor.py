@@ -57,7 +57,9 @@ def build_areti_entities(hass, coordinator: AretiCoordinator) -> list[SensorEnti
         entities.append(AretiConsumoMeseSensor(coordinator, entry, pod, id_padre))
         entities.extend(
             crea_sensori_consumo(
-                hass, entry, coordinator, pod, _device_info_pod(entry, pod, id_padre)
+                hass, entry, coordinator, pod, _device_info_pod(entry, pod, id_padre),
+                # Mese chiuso: il mese in corso non ha mai dati (vedi consumo_periodo).
+                mese_corrente=False,
             )
         )
     return entities

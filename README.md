@@ -418,34 +418,38 @@ automaticamente. Si richiede con l'azione `recupera_storico` (vedi
 Le entità sono raggruppate in un dispositivo "Account" più uno per ogni
 POD. Quelle di stato sono diagnostiche; i consumi stanno nelle statistiche,
 e per averli anche come entità (card, template, automazioni) ogni POD ha
-tre [sensori di consumo del periodo](#sensori-di-consumo-del-periodo).
+i [sensori di consumo del periodo](#sensori-di-consumo-del-periodo).
 Espandi la sezione del tuo distributore per il dettaglio.
 
 ### Sensori di consumo del periodo
 
-Per ogni POD, di tutti i distributori, tre sensori in kWh sommano i consumi
+Per ogni POD, di tutti i distributori, alcuni sensori in kWh sommano i consumi
 già importati:
 
-| Entità | Cosa mostra |
-|---|---|
-| Consumo mese corrente | Dal 1° del mese in corso |
-| Consumo trimestre corrente | Dal 1° del trimestre solare in corso (gen-mar, apr-giu, lug-set, ott-dic) |
-| Consumo anno corrente | Dal 1° gennaio |
+| Entità | Cosa mostra | Distributori |
+|---|---|---|
+| Consumo mese corrente | Dal 1° del mese in corso | E-Distribuzione, Ireti, SET Distribuzione, Edyna |
+| Consumo mese precedente | L'intero mese di calendario prima di quello in corso | Tutti |
+| Consumo trimestre corrente | Dal 1° del trimestre solare in corso (gen-mar, apr-giu, lug-set, ott-dic) | Tutti |
+| Consumo anno corrente | Dal 1° gennaio | Tutti |
 
 Sono normali sensori (`device_class: energy`), quindi si possono usare in
 qualunque card, template o automazione, ad esempio in una card bolletta.
-Gli attributi `dal` e `dati_fino_al` dicono da quando parte il periodo e
-fino a quale giorno ci sono dati.
+Gli attributi `dal`, `al` e `dati_fino_al` dicono quale periodo copre il
+sensore e fino a quale giorno ci sono dati.
 
 - Si aggiornano a ogni giro dell'integrazione, quando arrivano dati nuovi, e
   a mezzanotte, quando un nuovo mese, trimestre o anno riparte da zero.
 - Il totale è **fino all'ultimo giorno importato**, non fino a oggi: ogni
-  distributore pubblica con il suo ritardo (vedi la tabella sopra).
+  distributore pubblica con il suo ritardo (vedi la tabella sopra). Per il
+  mese precedente, `dati_fino_al` dice se è completo.
 - Sono `unknown` finché il periodo non ha nemmeno un giorno importato, per
-  non far passare per zero un dato che manca. Con **Duereti, Unareti,
-  RetiPiù, Reti Valtellina Valchiavenna e Areti**, che pubblicano a mese
-  chiuso, il mese corrente resta `unknown` fino alla chiusura, e trimestre
-  e anno sono completi fino all'ultimo mese chiuso.
+  non far passare per zero un dato che manca. Succede per il mese precedente
+  nei primi giorni del mese, prima che il distributore pubblichi.
+- **Duereti, Unareti, RetiPiù, Reti Valtellina Valchiavenna e Areti**
+  pubblicano a mese chiuso: il mese in corso non ha mai dati, quindi per loro
+  il mese corrente non esiste. Il dato per la bolletta è il mese precedente,
+  mentre trimestre e anno sono completi fino all'ultimo mese chiuso.
 - Non hanno `state_class`, volutamente: nella Energy Dashboard continua a
   servire la statistica `contatore_letture:<pod>_energia`, altrimenti lo
   stesso consumo verrebbe contato due volte.

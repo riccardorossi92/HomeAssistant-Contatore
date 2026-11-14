@@ -29,23 +29,28 @@ def _fuso_utc():
 @pytest.mark.parametrize(
     ("periodo", "oggi", "atteso"),
     [
-        ("mese", date(2026, 11, 13), date(2026, 11, 1)),
-        ("mese", date(2026, 11, 1), date(2026, 11, 1)),
-        ("trimestre", date(2026, 1, 1), date(2026, 1, 1)),
-        ("trimestre", date(2026, 3, 31), date(2026, 1, 1)),
-        ("trimestre", date(2026, 4, 1), date(2026, 4, 1)),
-        ("trimestre", date(2026, 11, 13), date(2026, 10, 1)),
-        ("trimestre", date(2026, 12, 31), date(2026, 10, 1)),
-        ("anno", date(2026, 11, 13), date(2026, 1, 1)),
+        ("mese", date(2026, 11, 13), (date(2026, 11, 1), date(2026, 11, 13))),
+        ("mese", date(2026, 11, 1), (date(2026, 11, 1), date(2026, 11, 1))),
+        ("mese_precedente", date(2026, 11, 13), (date(2026, 10, 1), date(2026, 10, 31))),
+        ("mese_precedente", date(2026, 11, 1), (date(2026, 10, 1), date(2026, 10, 31))),
+        ("mese_precedente", date(2026, 3, 1), (date(2026, 2, 1), date(2026, 2, 28))),
+        ("mese_precedente", date(2028, 3, 15), (date(2028, 2, 1), date(2028, 2, 29))),  # bisestile
+        ("mese_precedente", date(2026, 1, 20), (date(2025, 12, 1), date(2025, 12, 31))),
+        ("trimestre", date(2026, 1, 1), (date(2026, 1, 1), date(2026, 1, 1))),
+        ("trimestre", date(2026, 3, 31), (date(2026, 1, 1), date(2026, 3, 31))),
+        ("trimestre", date(2026, 4, 1), (date(2026, 4, 1), date(2026, 4, 1))),
+        ("trimestre", date(2026, 11, 13), (date(2026, 10, 1), date(2026, 11, 13))),
+        ("trimestre", date(2026, 12, 31), (date(2026, 10, 1), date(2026, 12, 31))),
+        ("anno", date(2026, 11, 13), (date(2026, 1, 1), date(2026, 11, 13))),
     ],
 )
-def test_inizio_periodo(periodo, oggi, atteso):
-    assert cp.inizio_periodo(periodo, oggi) == atteso
+def test_intervallo_periodo(periodo, oggi, atteso):
+    assert cp.intervallo_periodo(periodo, oggi) == atteso
 
 
-def test_inizio_periodo_sconosciuto():
+def test_intervallo_periodo_sconosciuto():
     with pytest.raises(ValueError):
-        cp.inizio_periodo("settimana", date(2026, 1, 1))
+        cp.intervallo_periodo("settimana", date(2026, 1, 1))
 
 
 # --- somma_periodo -----------------------------------------------------------
@@ -129,7 +134,7 @@ def _consumi(hass, entry=None):
     return cp.ConsumiPod(hass, entry, coordinator, POD), entry, coordinator
 
 
-async def test_aggiorna_calcola_i_tre_periodi(hass):
+async def test_aggiorna_calcola_tutti_i_periodi(hass):
     consumi, _entry, _coord = _consumi(hass)
     oggi = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
     with (
@@ -139,17 +144,44 @@ async def test_aggiorna_calcola_i_tre_periodi(hass):
         await consumi.async_aggiorna()
 
     lettura.assert_awaited_once_with(hass, "contatore_letture:it001e00000009_energia", date(2026, 1, 1))
-    assert consumi.valori["mese"] == (pytest.approx(4.5), date(2026, 11, 1), date(2026, 11, 12))
-    assert consumi.valori["trimestre"] == (pytest.approx(7.5), date(2026, 10, 1), date(2026, 11, 12))
-    assert consumi.valori["anno"] == (pytest.approx(12.5), date(2026, 1, 1), date(2026, 11, 12))
+    n = date(2026, 11, 13)
+    assert consumi.valori["mese"] == (
+        pytest.approx(4.5), date(2026, 11, 1), n, date(2026, 11, 12)
+    )
+    # Ottobre intero: 1.0 + 2.0, ultimo dato il 15; il 30/9 e il 2/11 ne restano fuori.
+    assert consumi.valori["mese_precedente"] == (
+        pytest.approx(3.0), date(2026, 10, 1), date(2026, 10, 31), date(2026, 10, 15)
+    )
+    assert consumi.valori["trimestre"] == (
+        pytest.approx(7.5), date(2026, 10, 1), n, date(2026, 11, 12)
+    )
+    assert consumi.valori["anno"] == (
+        pytest.approx(12.5), date(2026, 1, 1), n, date(2026, 11, 12)
+    )
+
+
+async def test_a_gennaio_il_mese_precedente_e_dicembre_e_la_lettura_parte_da_li(hass):
+    consumi, _entry, _coord = _consumi(hass)
+    oggi = datetime(2027, 1, 20, 12, 0, tzinfo=UTC)
+    kwh = {date(2026, 12, 31): 2.0, date(2027, 1, 5): 1.0}
+    with (
+        patch.object(dt_util, "now", return_value=oggi),
+        patch.object(cp, "leggi_consumi_giornalieri", return_value=kwh) as lettura,
+    ):
+        await consumi.async_aggiorna()
+    assert lettura.await_args.args[2] == date(2026, 12, 1)
+    assert consumi.valori["mese_precedente"][0] == pytest.approx(2.0)
+    assert consumi.valori["mese"][0] == pytest.approx(1.0)
+    assert consumi.valori["anno"][0] == pytest.approx(1.0)  # solo il 2027
 
 
 async def test_errore_di_lettura_non_cancella_i_valori_precedenti(hass):
     consumi, _entry, _coord = _consumi(hass)
-    consumi.valori["mese"] = (1.0, date(2026, 11, 1), date(2026, 11, 2))
+    precedente = (1.0, date(2026, 11, 1), date(2026, 11, 13), date(2026, 11, 2))
+    consumi.valori["mese"] = precedente
     with patch.object(cp, "leggi_consumi_giornalieri", side_effect=RuntimeError("recorder")):
         await consumi.async_aggiorna()
-    assert consumi.valori["mese"] == (1.0, date(2026, 11, 1), date(2026, 11, 2))
+    assert consumi.valori["mese"] == precedente
 
 
 def test_sensore_prima_della_prima_lettura_e_sconosciuto(hass):
@@ -161,30 +193,43 @@ def test_sensore_prima_della_prima_lettura_e_sconosciuto(hass):
 
 def test_sensore_arrotonda_e_espone_gli_attributi(hass):
     consumi, entry, _coord = _consumi(hass)
-    consumi.valori["anno"] = (12.34567, date(2026, 1, 1), date(2026, 11, 12))
+    consumi.valori["anno"] = (
+        12.34567, date(2026, 1, 1), date(2026, 11, 13), date(2026, 11, 12)
+    )
     sensore = cp.ConsumoPeriodoSensor(consumi, entry, POD, "anno", {})
     assert sensore.native_value == 12.346
-    assert sensore.extra_state_attributes == {"dal": "2026-01-01", "dati_fino_al": "2026-11-12"}
+    assert sensore.extra_state_attributes == {
+        "dal": "2026-01-01",
+        "al": "2026-11-13",
+        "dati_fino_al": "2026-11-12",
+    }
 
 
 def test_sensore_periodo_senza_dati_ha_valore_none_ma_attributo_dal(hass):
     consumi, entry, _coord = _consumi(hass)
-    consumi.valori["mese"] = (None, date(2026, 11, 1), None)
+    consumi.valori["mese"] = (None, date(2026, 11, 1), date(2026, 11, 13), None)
     sensore = cp.ConsumoPeriodoSensor(consumi, entry, POD, "mese", {})
     assert sensore.native_value is None
-    assert sensore.extra_state_attributes == {"dal": "2026-11-01", "dati_fino_al": None}
+    assert sensore.extra_state_attributes == {
+        "dal": "2026-11-01",
+        "al": "2026-11-13",
+        "dati_fino_al": None,
+    }
 
 
-def test_crea_sensori_consumo_tre_sensori_con_id_stabili(hass):
+def test_crea_sensori_consumo_quattro_sensori_con_id_stabili(hass):
     entry = MockConfigEntry(domain=DOMAIN, data={}, title="x", entry_id="abc")
     sensori = cp.crea_sensori_consumo(hass, entry, SimpleNamespace(), POD, {"name": "POD"})
+    # Gli unique_id dei tre periodi correnti sono quelli della 0.14.0: non cambiano.
     assert [s.unique_id for s in sensori] == [
         f"abc_{POD}_consumo_mese_corrente",
+        f"abc_{POD}_consumo_mese_precedente",
         f"abc_{POD}_consumo_trimestre_corrente",
         f"abc_{POD}_consumo_anno_corrente",
     ]
     assert [s.name for s in sensori] == [
         "Consumo mese corrente",
+        "Consumo mese precedente",
         "Consumo trimestre corrente",
         "Consumo anno corrente",
     ]
@@ -194,6 +239,18 @@ def test_crea_sensori_consumo_tre_sensori_con_id_stabili(hass):
         assert s.state_class is None
         assert s.entity_category is None
         assert s.device_info == {"name": "POD"}
+
+
+def test_a_mese_chiuso_non_si_crea_il_mese_corrente(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, title="x", entry_id="abc")
+    sensori = cp.crea_sensori_consumo(
+        hass, entry, SimpleNamespace(), POD, {}, mese_corrente=False
+    )
+    assert [s.name for s in sensori] == [
+        "Consumo mese precedente",
+        "Consumo trimestre corrente",
+        "Consumo anno corrente",
+    ]
 
 
 async def test_registra_avvia_i_trigger_una_volta_e_li_ferma_con_l_ultimo(hass):
@@ -212,10 +269,10 @@ async def test_registra_avvia_i_trigger_una_volta_e_li_ferma_con_l_ultimo(hass):
         pianifica.assert_called_once()  # prima lettura, solo al primo sensore
 
         annulla_coordinator, annulla_orario = consumi._annulla
-        consumi.rimuovi(sensori[0])
-        consumi.rimuovi(sensori[1])
+        for s in sensori[:-1]:
+            consumi.rimuovi(s)
         annulla_coordinator.assert_not_called()
-        consumi.rimuovi(sensori[2])
+        consumi.rimuovi(sensori[-1])
         annulla_coordinator.assert_called_once()
         annulla_orario.assert_called_once()
 

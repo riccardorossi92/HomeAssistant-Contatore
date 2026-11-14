@@ -5,7 +5,7 @@ contatore_letture/
   config_flow.py         # orchestratore: wizard ARERA + step "pcf"/"edistribuzione"/"areti"/"ireti"/"setdistribuzione"/"edyna" + reauth + options
   __init__.py             # setup/unload, dispatch per distributore, servizi condivisi
   sensor.py                # dispatch verso il modulo del distributore
-  consumo_periodo.py        # sensori consumo mese/trimestre/anno corrente (uguali per tutti i distributori)
+  consumo_periodo.py        # sensori consumo mese corrente/mese precedente/trimestre/anno (uguali per tutti i distributori)
   istat_comuni.py           # elenco comuni: fetch live + fallback snapshot
   istat_transform.py         # trasformazione pura lista->albero (usata da istat_comuni.py e scripts/)
   arera_lookup.py              # query live ARERA (comune -> distributore)
@@ -66,7 +66,7 @@ protocollo, come Duereti/Unareti) vive nel proprio pacchetto sotto
 `distributors/`, con la stessa forma: `api.py` (client HTTP), `auth.py`
 se serve un login separato dalle sole credenziali API,
 `coordinator.py` (polling + logica di retry), `sensor.py` (entità
-diagnostiche; ognuno aggiunge anche i tre sensori di `consumo_periodo.py`), `statistics.py` (import delle curve nella Energy
+diagnostiche; ognuno aggiunge anche i sensori di `consumo_periodo.py`), `statistics.py` (import delle curve nella Energy
 Dashboard), `const.py`. Il resto del pacchetto (`config_flow.py`,
 `__init__.py`, `sensor.py` in cima) fa da orchestratore comune, senza
 logica specifica di un singolo distributore al suo interno — quella

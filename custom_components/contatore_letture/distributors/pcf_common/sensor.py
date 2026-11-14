@@ -77,6 +77,8 @@ def build_pcf_entities(hass, coordinator, entry: ConfigEntry, display_name: str)
             crea_sensori_consumo(
                 hass, entry, coordinator, pod_conf["pod"],
                 _device_info_pod(entry, pod_conf["pod"], display_name, id_padre),
+                # Mese chiuso: il mese in corso non ha mai dati (vedi consumo_periodo).
+                mese_corrente=False,
             )
         )
 

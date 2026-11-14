@@ -64,6 +64,6 @@ async def test_build_areti_entities_conta_account_piu_due_per_pod(hass):
     entry = _entry(hass, pods=[POD, "IT002"])
     coord = SimpleNamespace(data=None, pods=[POD, "IT002"], entry=entry)
     entità = s.build_areti_entities(hass, coord)
-    # 1 sull'account + 5 per ciascuno dei 2 POD (2 diagnostici + 3 di periodo)
+    # 1 sull'account + 5 per ciascuno dei 2 POD (2 diagnostici + 3 di periodo, senza il mese corrente)
     assert len(entità) == 1 + 5 * 2
     assert "AretiPodConfiguratiSensor" in {type(e).__name__ for e in entità}

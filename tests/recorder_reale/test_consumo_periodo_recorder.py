@@ -102,7 +102,7 @@ async def test_sensori_end_to_end_stati_attributi_e_giro_del_coordinator(hass):
         hass,
         {
             datetime(2026, 1, 15, 10, 0, tzinfo=UTC): 100.0,  # anno, non trimestre
-            datetime(2026, 10, 20, 10, 0, tzinfo=UTC): 10.0,  # trimestre, non mese
+            datetime(2026, 10, 20, 10, 0, tzinfo=UTC): 10.0,  # mese precedente e trimestre
             datetime(2026, 11, 2, 10, 0, tzinfo=UTC): 1.5,
             datetime(2026, 11, 2, 11, 0, tzinfo=UTC): 0.5,
             datetime(2026, 11, 12, 10, 0, tzinfo=UTC): 3.0,
@@ -115,13 +115,17 @@ async def test_sensori_end_to_end_stati_attributi_e_giro_del_coordinator(hass):
         piattaforma = MockEntityPlatform(hass, domain="sensor", platform_name=DOMAIN)
         await piattaforma.async_add_entities(sensori)
         await hass.async_block_till_done()
-        await _attendi(lambda: "dal" in hass.states.get(sensori[2].entity_id).attributes)
+        await _attendi(lambda: "dal" in hass.states.get(sensori[3].entity_id).attributes)
 
         assert len(ascoltatori) == 1  # un solo ascoltatore per POD, non uno per sensore
 
         stati = {s.entity_id: hass.states.get(s.entity_id) for s in sensori}
-        mese, trimestre, anno = (stati[s.entity_id] for s in sensori)
+        mese, precedente, trimestre, anno = (stati[s.entity_id] for s in sensori)
         assert float(mese.state) == pytest.approx(5.0)
+        assert float(precedente.state) == pytest.approx(10.0)
+        assert precedente.attributes["dal"] == "2026-10-01"
+        assert precedente.attributes["al"] == "2026-10-31"
+        assert precedente.attributes["dati_fino_al"] == "2026-10-20"
         assert float(trimestre.state) == pytest.approx(15.0)
         assert float(anno.state) == pytest.approx(115.0)
         assert mese.attributes["unit_of_measurement"] == "kWh"
@@ -166,10 +170,11 @@ async def test_periodo_senza_dati_resta_sconosciuto(hass):
         await hass.async_block_till_done()
         await _attendi(lambda: "dal" in hass.states.get(sensori[0].entity_id).attributes)
 
-    mese, trimestre, _anno = (hass.states.get(s.entity_id) for s in sensori)
+    mese, precedente, trimestre, _anno = (hass.states.get(s.entity_id) for s in sensori)
     assert mese.state == "unknown"
     assert mese.attributes["dal"] == "2026-11-01"
     assert mese.attributes["dati_fino_al"] is None
+    assert float(precedente.state) == pytest.approx(10.0)
     assert float(trimestre.state) == pytest.approx(10.0)
 
     for sensore in sensori:  # stacca ascoltatore e timer di mezzanotte

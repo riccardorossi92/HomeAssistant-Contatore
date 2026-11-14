@@ -1,4 +1,4 @@
-"""Sensori "consumo del mese / trimestre / anno corrente" per ogni POD.
+"""Sensori "consumo del mese corrente / mese precedente / trimestre / anno" per POD.
 
 I consumi veri vivono nelle external statistics (`contatore_letture:<pod>_energia`),
 che non sono entità: non si possono mettere in una card (es. card-bolletta) né
@@ -10,24 +10,27 @@ Un solo modulo per tutti i distributori: tutti scrivono lo stesso statistic_id
 distributore li aggiunge alle proprie entità con `crea_sensori_consumo`.
 
 Per ogni POD c'è un solo `ConsumiPod` che rilegge le statistiche una volta e
-alimenta i tre sensori. Si aggiorna quando il coordinator finisce un giro (è lì
+alimenta i sensori. Si aggiorna quando il coordinator finisce un giro (è lì
 che arrivano dati nuovi) e a mezzanotte, perché al cambio di mese/trimestre/anno
 il periodo corrente riparte da zero anche se non arriva nessun dato.
 
-Il valore è `unknown` finché il periodo corrente non ha nemmeno un giorno
-importato: non è uno zero (sarebbe un consumo inventato). Succede di regola
-all'inizio del periodo, e per tutto il mese per i distributori che pubblicano a
-mese chiuso (Duereti, Unareti, RetiPiù, Reti Valtellina Valchiavenna, Areti): lì il
-mese corrente si riempie solo a mese concluso, mentre trimestre e anno sono
-completi fino all'ultimo mese chiuso. L'attributo `dati_fino_al` dice fino a
-quale giorno il totale è completo.
+Il valore è `unknown` finché il periodo non ha nemmeno un giorno importato: non
+è uno zero (sarebbe un consumo inventato). L'attributo `dati_fino_al` dice fino
+a quale giorno il totale è completo.
+
+I distributori che pubblicano a mese chiuso (Duereti, Unareti, RetiPiù, Reti
+Valtellina Valchiavenna, Areti) non hanno mai dati nel mese in corso: per loro
+il "mese corrente" resterebbe sempre `unknown`, quindi non lo creano
+(`mese_corrente=False`) e restano mese precedente, trimestre e anno. Il mese
+precedente è il dato utile per la bolletta: si riempie quando il distributore
+pubblica quel mese.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.statistics import statistics_during_period
@@ -42,19 +45,34 @@ from .statistics_common import sanitize_statistic_id
 
 _LOGGER = logging.getLogger(__name__)
 
-# Ordine = ordine di creazione delle entità. Il trimestre è quello solare
-# (gen-mar, apr-giu, lug-set, ott-dic), non quello della fornitura.
-PERIODI = ("mese", "trimestre", "anno")
+# periodo -> (parte dello unique_id, nome dell'entità). Gli unique_id dei
+# periodi correnti sono quelli della 0.14.0 e non vanno cambiati. L'ordine è
+# quello di creazione delle entità. Il trimestre è quello solare (gen-mar,
+# apr-giu, lug-set, ott-dic), non quello della fornitura.
+PERIODI: dict[str, tuple[str, str]] = {
+    "mese": ("mese_corrente", "Consumo mese corrente"),
+    "mese_precedente": ("mese_precedente", "Consumo mese precedente"),
+    "trimestre": ("trimestre_corrente", "Consumo trimestre corrente"),
+    "anno": ("anno_corrente", "Consumo anno corrente"),
+}
 
 
-def inizio_periodo(periodo: str, oggi: date) -> date:
-    """Primo giorno del mese/trimestre/anno che contiene `oggi`."""
+def intervallo_periodo(periodo: str, oggi: date) -> tuple[date, date]:
+    """Primo e ultimo giorno del periodo, rispetto a `oggi`.
+
+    Per i periodi correnti l'ultimo giorno è `oggi`; per il mese precedente è
+    l'ultimo giorno del mese di calendario prima di quello che contiene `oggi`.
+    """
+    inizio_mese = oggi.replace(day=1)
     if periodo == "mese":
-        return oggi.replace(day=1)
+        return inizio_mese, oggi
+    if periodo == "mese_precedente":
+        fine = inizio_mese - timedelta(days=1)
+        return fine.replace(day=1), fine
     if periodo == "trimestre":
-        return date(oggi.year, 3 * ((oggi.month - 1) // 3) + 1, 1)
+        return date(oggi.year, 3 * ((oggi.month - 1) // 3) + 1, 1), oggi
     if periodo == "anno":
-        return date(oggi.year, 1, 1)
+        return date(oggi.year, 1, 1), oggi
     raise ValueError(f"Periodo sconosciuto: {periodo!r}")
 
 
@@ -119,8 +137,8 @@ class ConsumiPod:
         self._coordinator = coordinator
         self._pod = pod
         self.statistic_id = sanitize_statistic_id(pod)
-        # periodo -> (totale kWh, inizio periodo, ultimo giorno con dati)
-        self.valori: dict[str, tuple[float | None, date, date | None]] = {}
+        # periodo -> (totale kWh, primo giorno, ultimo giorno, ultimo giorno con dati)
+        self.valori: dict[str, tuple[float | None, date, date, date | None]] = {}
         self._sensori: list[SensorEntity] = []
         self._annulla: list[Callable[[], None]] = []
         self._lock = asyncio.Lock()
@@ -166,9 +184,11 @@ class ConsumiPod:
         # attuale, quindi l'ultimo vince e nessuno vede dati a metà.
         async with self._lock:
             oggi = dt_util.now().date()
+            intervalli = {p: intervallo_periodo(p, oggi) for p in PERIODI}
             try:
+                # Il mese precedente, a gennaio, cade nell'anno prima.
                 kwh = await leggi_consumi_giornalieri(
-                    self._hass, self.statistic_id, inizio_periodo("anno", oggi)
+                    self._hass, self.statistic_id, min(i for i, _ in intervalli.values())
                 )
             except Exception:  # noqa: BLE001 - un errore del recorder non deve rompere i sensori
                 _LOGGER.warning(
@@ -179,17 +199,17 @@ class ConsumiPod:
                 )
                 return
 
-            for periodo in PERIODI:
-                inizio = inizio_periodo(periodo, oggi)
-                totale, ultimo = somma_periodo(kwh, inizio, oggi)
-                self.valori[periodo] = (totale, inizio, ultimo)
+            for periodo, (inizio, fine) in intervalli.items():
+                totale, ultimo = somma_periodo(kwh, inizio, fine)
+                self.valori[periodo] = (totale, inizio, fine, ultimo)
 
             for sensore in list(self._sensori):
                 sensore.async_write_ha_state()
 
 
 class ConsumoPeriodoSensor(SensorEntity):
-    """kWh consumati nel mese/trimestre/anno corrente da un POD.
+    """kWh consumati da un POD nel mese corrente, nel mese precedente, nel
+    trimestre o nell'anno in corso.
 
     Volutamente senza state_class: il valore si azzera a ogni cambio di periodo
     e Home Assistant, con una state_class, ne compilerebbe statistiche a lungo
@@ -208,8 +228,9 @@ class ConsumoPeriodoSensor(SensorEntity):
     ) -> None:
         self._consumi = consumi
         self._periodo = periodo
-        self._attr_unique_id = f"{entry.entry_id}_{pod}_consumo_{periodo}_corrente"
-        self._attr_name = f"Consumo {periodo} corrente"
+        suffisso, nome = PERIODI[periodo]
+        self._attr_unique_id = f"{entry.entry_id}_{pod}_consumo_{suffisso}"
+        self._attr_name = nome
         self._attr_device_info = device_info
 
     async def async_added_to_hass(self) -> None:
@@ -222,7 +243,7 @@ class ConsumoPeriodoSensor(SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        totale = self._consumi.valori.get(self._periodo, (None, None, None))[0]
+        totale = self._consumi.valori.get(self._periodo, (None,))[0]
         return None if totale is None else round(totale, 3)
 
     @property
@@ -230,16 +251,32 @@ class ConsumoPeriodoSensor(SensorEntity):
         valore = self._consumi.valori.get(self._periodo)
         if valore is None:
             return {}
-        _totale, inizio, ultimo = valore
+        _totale, inizio, fine, ultimo = valore
         return {
             "dal": inizio.isoformat(),
+            "al": fine.isoformat(),
             "dati_fino_al": ultimo.isoformat() if ultimo else None,
         }
 
 
 def crea_sensori_consumo(
-    hass: HomeAssistant, entry: ConfigEntry, coordinator, pod: str, device_info
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator,
+    pod: str,
+    device_info,
+    *,
+    mese_corrente: bool = True,
 ) -> list[SensorEntity]:
-    """I tre sensori di periodo (mese, trimestre, anno) di un POD."""
+    """I sensori di periodo di un POD: mese corrente (se `mese_corrente`), mese
+    precedente, trimestre e anno.
+
+    `mese_corrente=False` per i distributori che pubblicano a mese chiuso: il
+    mese in corso non ha mai dati, il sensore sarebbe sempre `unknown`.
+    """
     consumi = ConsumiPod(hass, entry, coordinator, pod)
-    return [ConsumoPeriodoSensor(consumi, entry, pod, p, device_info) for p in PERIODI]
+    return [
+        ConsumoPeriodoSensor(consumi, entry, pod, p, device_info)
+        for p in PERIODI
+        if mese_corrente or p != "mese"
+    ]
