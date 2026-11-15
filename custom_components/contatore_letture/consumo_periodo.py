@@ -49,12 +49,25 @@ _LOGGER = logging.getLogger(__name__)
 # periodi correnti sono quelli della 0.14.0 e non vanno cambiati. L'ordine è
 # quello di creazione delle entità. Il trimestre è quello solare (gen-mar,
 # apr-giu, lug-set, ott-dic), non quello della fornitura.
+# Serie di statistiche lette: il prelievo è `<pod>_energia`, l'immissione
+# `<pod>_immissione` (oggi scritta solo da E-Distribuzione, vedi
+# distributors/edistribuzione/statistics.py).
+TIPO_PRELIEVO = "energia"
+TIPO_IMMISSIONE = "immissione"
+
 PERIODI: dict[str, tuple[str, str]] = {
     "mese": ("mese_corrente", "Consumo mese corrente"),
     "mese_precedente": ("mese_precedente", "Consumo mese precedente"),
     "trimestre": ("trimestre_corrente", "Consumo trimestre corrente"),
     "anno": ("anno_corrente", "Consumo anno corrente"),
 }
+
+
+def _nome_sensore(tipo: str, nome_consumo: str) -> str:
+    """"Consumo mese corrente" -> "Immissione mese corrente" per la serie di immissione."""
+    if tipo == TIPO_IMMISSIONE:
+        return nome_consumo.replace("Consumo", "Immissione", 1)
+    return nome_consumo
 
 
 def intervallo_periodo(periodo: str, oggi: date) -> tuple[date, date]:
@@ -131,12 +144,20 @@ async def leggi_consumi_giornalieri(
 class ConsumiPod:
     """Rilegge i consumi di un POD e li distribuisce ai tre sensori."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, coordinator, pod: str) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        coordinator,
+        pod: str,
+        tipo: str = TIPO_PRELIEVO,
+    ) -> None:
         self._hass = hass
         self._entry = entry
         self._coordinator = coordinator
         self._pod = pod
-        self.statistic_id = sanitize_statistic_id(pod)
+        self._tipo = tipo
+        self.statistic_id = sanitize_statistic_id(pod, tipo)
         # periodo -> (totale kWh, primo giorno, ultimo giorno, ultimo giorno con dati)
         self.valori: dict[str, tuple[float | None, date, date, date | None]] = {}
         self._sensori: list[SensorEntity] = []
@@ -176,7 +197,7 @@ class ConsumiPod:
 
     def _pianifica_aggiornamento(self) -> None:
         self._entry.async_create_background_task(
-            self._hass, self.async_aggiorna(), f"consumo_periodo_{self._pod}"
+            self._hass, self.async_aggiorna(), f"consumo_periodo_{self._tipo}_{self._pod}"
         )
 
     async def async_aggiorna(self) -> None:
@@ -224,13 +245,22 @@ class ConsumoPeriodoSensor(SensorEntity):
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
 
     def __init__(
-        self, consumi: ConsumiPod, entry: ConfigEntry, pod: str, periodo: str, device_info
+        self,
+        consumi: ConsumiPod,
+        entry: ConfigEntry,
+        pod: str,
+        periodo: str,
+        device_info,
+        tipo: str = TIPO_PRELIEVO,
     ) -> None:
         self._consumi = consumi
         self._periodo = periodo
         suffisso, nome = PERIODI[periodo]
-        self._attr_unique_id = f"{entry.entry_id}_{pod}_consumo_{suffisso}"
-        self._attr_name = nome
+        # Gli unique_id del prelievo sono quelli di prima (non vanno cambiati);
+        # l'immissione ha il proprio prefisso.
+        prefisso = "consumo" if tipo == TIPO_PRELIEVO else tipo
+        self._attr_unique_id = f"{entry.entry_id}_{pod}_{prefisso}_{suffisso}"
+        self._attr_name = _nome_sensore(tipo, nome)
         self._attr_device_info = device_info
 
     async def async_added_to_hass(self) -> None:
@@ -277,6 +307,29 @@ def crea_sensori_consumo(
     consumi = ConsumiPod(hass, entry, coordinator, pod)
     return [
         ConsumoPeriodoSensor(consumi, entry, pod, p, device_info)
+        for p in PERIODI
+        if mese_corrente or p != "mese"
+    ]
+
+
+def crea_sensori_immissione(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator,
+    pod: str,
+    device_info,
+    *,
+    mese_corrente: bool = True,
+) -> list[SensorEntity]:
+    """Gli stessi sensori di periodo di `crea_sensori_consumo`, sull'energia
+    immessa in rete (serie `<pod>_immissione`).
+
+    Valgono le stesse regole: `unknown` finché il periodo non ha un giorno
+    importato, nessuna state_class (non duplica le statistiche già importate).
+    """
+    consumi = ConsumiPod(hass, entry, coordinator, pod, TIPO_IMMISSIONE)
+    return [
+        ConsumoPeriodoSensor(consumi, entry, pod, p, device_info, TIPO_IMMISSIONE)
         for p in PERIODI
         if mese_corrente or p != "mese"
     ]

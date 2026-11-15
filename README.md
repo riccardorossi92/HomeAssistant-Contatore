@@ -453,8 +453,11 @@ sensore e fino a quale giorno ci sono dati.
 - Non hanno `state_class`, volutamente: nella Energy Dashboard continua a
   servire la statistica `contatore_letture:<pod>_energia`, altrimenti lo
   stesso consumo verrebbe contato due volte.
-- Contano solo il prelievo (`<pod>_energia`): l'immissione in rete di
-  E-Distribuzione (`<pod>_immissione`) non è inclusa.
+- Le entità "Consumo ..." contano solo il prelievo (`<pod>_energia`).
+- **Solo E-Distribuzione**: per l'energia immessa in rete (`<pod>_immissione`)
+  ci sono altre quattro entità con le stesse regole: Immissione mese corrente,
+  Immissione mese precedente, Immissione trimestre corrente, Immissione anno
+  corrente. Sono `unknown` sui POD senza impianto.
 
 <details>
 <summary><b>Entità esposte — Duereti / Unareti / RetiPiù / Reti Valtellina Valchiavenna</b></summary>
