@@ -151,6 +151,19 @@ async def test_ciclo_senza_impianto_non_chiede_l_immissione(ciclo, importa):
     assert _grandezze_richieste(ciclo) == ["A1"]
 
 
+async def test_ciclo_espone_se_il_pod_ha_un_impianto(ciclo, importa):
+    """Ai sensori di immissione serve sapere quali POD hanno un impianto."""
+    with freeze_time(OGGI):
+        dati = await ciclo._async_update_data()
+    assert dati["by_pod"][POD_A]["con_impianto"] is True
+
+    ciclo._pod_con_impianto = None
+    ciclo._api.async_get_supplies.return_value = [SENZA_IMPIANTO]
+    with freeze_time(OGGI):
+        dati = await ciclo._async_update_data()
+    assert dati["by_pod"][POD_A]["con_impianto"] is False
+
+
 async def test_ciclo_errore_sull_immissione_non_fa_fallire_ne_accoda(ciclo, importa):
     async def _per_grandezza(pod, data_da, data_a, magnitude):
         if magnitude == "A2":

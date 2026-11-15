@@ -13,8 +13,10 @@ from datetime import date
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
+from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
@@ -95,21 +97,70 @@ def build_edistribuzione_entities(
                 hass, entry, coordinator, pod, _device_info_pod(entry, pod, id_padre)
             )
         )
-        # Mese precedente per fascia (F1-F3), prelevato e immesso.
-        for grandezza in (MAGNITUDE_PRELIEVO, MAGNITUDE_IMMISSIONE):
-            for fascia in FASCE:
-                entities.append(
-                    EdistribuzioneFasciaSensor(
-                        coordinator, entry, pod, grandezza, fascia, id_padre
-                    )
+        # Mese precedente per fascia (F1-F3) del prelievo. Quelli dell'immissione,
+        # come i sensori di periodo dell'immissione, nascono dopo, solo sui POD
+        # con impianto (vedi async_segui_impianti).
+        for fascia in FASCE:
+            entities.append(
+                EdistribuzioneFasciaSensor(
+                    coordinator, entry, pod, MAGNITUDE_PRELIEVO, fascia, id_padre
                 )
-        # Immissione (A2): mese, mese precedente, trimestre e anno, come il prelievo.
-        entities.extend(
-            crea_sensori_immissione(
-                hass, entry, coordinator, pod, _device_info_pod(entry, pod, id_padre)
             )
-        )
     return entities
+
+
+def _entita_immissione(
+    hass, coordinator: EdistribuzioneCoordinator, pod: str, id_padre: str | None
+) -> list[SensorEntity]:
+    """Sensori dell'energia immessa (A2) di un POD con impianto: periodo
+    (mese, mese precedente, trimestre, anno, trimestre precedente) e fasce."""
+    entry = coordinator.entry
+    entities: list[SensorEntity] = [
+        EdistribuzioneFasciaSensor(coordinator, entry, pod, MAGNITUDE_IMMISSIONE, fascia, id_padre)
+        for fascia in FASCE
+    ]
+    entities.extend(
+        crea_sensori_immissione(
+            hass, entry, coordinator, pod, _device_info_pod(entry, pod, id_padre)
+        )
+    )
+    return entities
+
+
+@callback
+def async_segui_impianti(hass, coordinator: EdistribuzioneCoordinator, async_add_entities) -> None:
+    """Aggiunge i sensori di immissione di un POD appena risulta avere un impianto.
+
+    `HasPlant` arriva da getSupplies, che al caricamento della piattaforma non
+    e' ancora stato letto (e puo' fallire): per questo le entita' si creano
+    dopo, al primo giro del coordinator in cui il POD risulta con impianto.
+    Una volta create restano (un impianto che sparisce e' un caso da gestire a
+    mano), e `unique_id` stabili le ritrovano a ogni riavvio.
+    """
+    entry = coordinator.entry
+    aggiunti: set[str] = set()
+
+    @callback
+    def _controlla() -> None:
+        by_pod = (coordinator.data or {}).get("by_pod", {})
+        da_aggiungere = [
+            pod
+            for pod in coordinator.pods
+            if pod not in aggiunti and by_pod.get(pod, {}).get("con_impianto")
+        ]
+        if not da_aggiungere:
+            return
+        id_padre = assicura_dispositivo_padre(
+            hass, entry.entry_id, dict(_device_info_account(entry))
+        )
+        entities: list[SensorEntity] = []
+        for pod in da_aggiungere:
+            aggiunti.add(pod)
+            entities.extend(_entita_immissione(hass, coordinator, pod, id_padre))
+        async_add_entities(entities)
+
+    entry.async_on_unload(coordinator.async_add_listener(_controlla))
+    _controlla()
 
 
 class EdistribuzionePodConfiguratiSensor(SensorEntity):
@@ -258,6 +309,18 @@ class EdistribuzioneFasciaSensor(CoordinatorEntity[EdistribuzioneCoordinator], S
         self._attr_unique_id = f"{entry.entry_id}_{pod}_{tipo}_{fascia.lower()}_mese_precedente"
         self._attr_name = f"{tipo.capitalize()} {fascia} mese precedente"
         self._attr_device_info = _device_info_pod(entry, pod, id_padre)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # A mezzanotte del cambio mese "mese precedente" e' un altro mese: il
+        # valore va riletto subito, senza aspettare il giro del coordinator.
+        self.async_on_remove(
+            async_track_time_change(self.hass, self._a_mezzanotte, hour=0, minute=0, second=30)
+        )
+
+    @callback
+    def _a_mezzanotte(self, _now) -> None:
+        self.async_write_ha_state()
 
     def _fasce_del_mese(self) -> tuple[str, dict]:
         """(AAAAMM atteso, fasce di quel mese per questa grandezza)."""

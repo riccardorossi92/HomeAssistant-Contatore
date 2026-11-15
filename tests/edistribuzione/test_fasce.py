@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from freezegun import freeze_time
@@ -211,3 +211,22 @@ def test_sensore_fascia_senza_dati_e_sconosciuto():
     with freeze_time(OGGI):
         assert _sensore("A1", "F1", {}).native_value is None
         assert _sensore("A2", "F1", {"mese": "202610", "A1": DATI["A1"]}).native_value is None
+
+
+async def test_il_sensore_fascia_si_riaggiorna_a_mezzanotte(hass):
+    sensore = _sensore("A1", "F1", DATI)
+    sensore.hass = hass
+    rimuovi = []
+    sensore.async_on_remove = rimuovi.append
+    sensore.async_write_ha_state = MagicMock()
+    annulla = MagicMock()
+    with (
+        patch.object(s.CoordinatorEntity, "async_added_to_hass", AsyncMock()),
+        patch.object(s, "async_track_time_change", return_value=annulla) as traccia,
+    ):
+        await sensore.async_added_to_hass()
+    traccia.assert_called_once()
+    assert traccia.call_args.kwargs == {"hour": 0, "minute": 0, "second": 30}
+    assert rimuovi == [annulla]
+    traccia.call_args.args[1](None)  # lo scatto della mezzanotte
+    sensore.async_write_ha_state.assert_called_once()

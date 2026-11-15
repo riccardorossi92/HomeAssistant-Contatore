@@ -18,9 +18,9 @@ from homeassistant.core import HomeAssistant
 
 from .const import DISPLAY_NAME, PIVA
 from .coordinator import EdistribuzioneCoordinator
-from .sensor import build_edistribuzione_entities
+from .sensor import async_segui_impianti, build_edistribuzione_entities
 
-__all__ = ["DISPLAY_NAME", "PIVA", "create_coordinator", "build_sensor_entities"]
+__all__ = ["DISPLAY_NAME", "PIVA", "create_coordinator", "build_sensor_entities", "async_segui_entita"]
 
 
 def create_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> EdistribuzioneCoordinator:
@@ -29,3 +29,7 @@ def create_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> Edistribuzion
 
 def build_sensor_entities(hass, coordinator: EdistribuzioneCoordinator, entry: ConfigEntry) -> list:
     return build_edistribuzione_entities(hass, coordinator)
+
+
+def async_segui_entita(hass, coordinator: EdistribuzioneCoordinator, async_add_entities) -> None:
+    async_segui_impianti(hass, coordinator, async_add_entities)

@@ -23,3 +23,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     coordinator = hass.data[DOMAIN][entry.entry_id]
     entità = info["module"].build_sensor_entities(hass, coordinator, entry)
     async_add_entities(entità)
+    # Entità che dipendono da dati letti dopo il caricamento (es. i POD con
+    # impianto di E-Distribuzione): il modulo le aggiunge quando li conosce.
+    segui = getattr(info["module"], "async_segui_entita", None)
+    if segui is not None:
+        segui(hass, coordinator, async_add_entities)
