@@ -24,7 +24,7 @@ recupera lo storico per TUTTI i POD della entry.
 from __future__ import annotations
 
 import logging
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -62,9 +62,14 @@ from .const import (
     orario_casuale,
     orario_da_opzioni,
 )
+from .fasce import fasce_da_risposta, mese_precedente
 from .statistics import async_get_ultima_data_disponibile, async_import_curva_giornaliera
 
 _LOGGER = logging.getLogger(__name__)
+
+# Il mese precedente per fascia esce il 1 del mese, a ora variabile: finché non
+# c'è si riprova, ma non a ogni ciclo.
+INTERVALLO_RIPROVA_FASCE = timedelta(hours=6)
 
 
 def _stesso_giorno_mesi_prima(giorno: date, mesi: int) -> date:
@@ -139,6 +144,10 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         # dati personali (codice fiscale, indirizzo) e HasPlant puo' cambiare.
         self._pod_con_impianto: set[str] | None = None
         self._pod_con_impianto_del: date | None = None
+        # Mese precedente per fascia, per POD: {"mese": "AAAAMM", "A1": {...},
+        # "A2": {...}}. In memoria: dopo un riavvio si rilegge (una chiamata).
+        self._fasce: dict[str, dict] = {}
+        self._fasce_tentativo: dict[str, datetime] = {}
         self._assicura_orario_richiesta()
 
     async def _async_ensure_token(self) -> None:
@@ -408,6 +417,48 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         self._pod_con_impianto_del = oggi
         return self._pod_con_impianto
 
+    async def _async_aggiorna_fasce(self, pod: str) -> None:
+        """Legge il mese precedente per fascia (prelevato e, se il POD ha un
+        impianto, immesso) quando non lo si ha ancora.
+
+        Non fa fallire l'aggiornamento: un errore e' solo un warning e si
+        riprova dopo INTERVALLO_RIPROVA_FASCE."""
+        inizio, fine, anno_mese = mese_precedente(dt_util.now().date())
+        grandezze = [MAGNITUDE_PRELIEVO]
+        if pod in await self._async_pod_con_impianto():
+            grandezze.append(MAGNITUDE_IMMISSIONE)
+
+        attuali = self._fasce.get(pod)
+        if attuali is None or attuali["mese"] != anno_mese:
+            attuali = self._fasce[pod] = {"mese": anno_mese}
+        mancanti = [g for g in grandezze if g not in attuali]
+        if not mancanti:
+            return
+
+        adesso = dt_util.utcnow()
+        ultimo = self._fasce_tentativo.get(pod)
+        if ultimo is not None and adesso - ultimo < INTERVALLO_RIPROVA_FASCE:
+            return
+        self._fasce_tentativo[pod] = adesso
+
+        for grandezza in mancanti:
+            try:
+                righe = await self._api.async_get_monthly_time_of_use(
+                    pod, inizio, fine, magnitude=grandezza
+                )
+            except EdistribuzioneApiError as err:
+                _LOGGER.warning(
+                    "POD %s: errore recuperando le fasce (%s) di %s: %s",
+                    pod,
+                    grandezza,
+                    anno_mese,
+                    err,
+                )
+                continue
+            fasce = fasce_da_risposta(righe, anno_mese)
+            if fasce is not None:
+                attuali[grandezza] = fasce
+
     async def _async_importa_immissione(self, pod: str, data_da: date, data_a: date) -> None:
         """Importa l'immissione (A2) del periodo, se il POD ha un impianto.
 
@@ -492,12 +543,15 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
             # orario in precedenza, ma nessun sensore li legge dalla
             # riduzione a 3 sensori diagnostici (v0.2.3): erano scaricati
             # ogni ora per niente, solo carico inutile verso le API del
-            # distributore. Restano disponibili solo tramite l'API stessa
-            # (self.api.async_get_reading/async_get_monthly_time_of_use),
-            # da richiamare esplicitamente se in futuro serve esporli.
+            # distributore. Fa eccezione il mese precedente per fascia (F1-F3),
+            # letto da _async_aggiorna_fasce al massimo ogni 6 ore e solo
+            # finche' non c'e' (di norma una chiamata al giorno per POD).
             ultima_data_disponibile = await async_get_ultima_data_disponibile(self.hass, pod)
 
+            await self._async_aggiorna_fasce(pod)
+
             by_pod[pod] = {
+                "fasce": dict(self._fasce.get(pod, {})),
                 "ultimo_giorno_curva_richiesto": (
                     ultimo_giorno_richiesto.isoformat() if ultimo_giorno_richiesto else None
                 ),
