@@ -62,6 +62,13 @@ PERIODI: dict[str, tuple[str, str]] = {
     "anno": ("anno_corrente", "Consumo anno corrente"),
 }
 
+# Periodi in più, creati solo dove richiesto (oggi: l'immissione di
+# E-Distribuzione). Il trimestre precedente è l'ultimo trimestre solare chiuso.
+PERIODI_EXTRA: dict[str, tuple[str, str]] = {
+    "trimestre_precedente": ("trimestre_precedente", "Consumo trimestre precedente"),
+}
+_TUTTI_I_PERIODI = {**PERIODI, **PERIODI_EXTRA}
+
 
 def _nome_sensore(tipo: str, nome_consumo: str) -> str:
     """"Consumo mese corrente" -> "Immissione mese corrente" per la serie di immissione."""
@@ -86,6 +93,10 @@ def intervallo_periodo(periodo: str, oggi: date) -> tuple[date, date]:
         return date(oggi.year, 3 * ((oggi.month - 1) // 3) + 1, 1), oggi
     if periodo == "anno":
         return date(oggi.year, 1, 1), oggi
+    if periodo == "trimestre_precedente":
+        inizio_trimestre = date(oggi.year, 3 * ((oggi.month - 1) // 3) + 1, 1)
+        fine = inizio_trimestre - timedelta(days=1)
+        return date(fine.year, 3 * ((fine.month - 1) // 3) + 1, 1), fine
     raise ValueError(f"Periodo sconosciuto: {periodo!r}")
 
 
@@ -151,7 +162,9 @@ class ConsumiPod:
         coordinator,
         pod: str,
         tipo: str = TIPO_PRELIEVO,
+        periodi: tuple[str, ...] = tuple(PERIODI),
     ) -> None:
+        self._periodi = periodi
         self._hass = hass
         self._entry = entry
         self._coordinator = coordinator
@@ -205,7 +218,7 @@ class ConsumiPod:
         # attuale, quindi l'ultimo vince e nessuno vede dati a metà.
         async with self._lock:
             oggi = dt_util.now().date()
-            intervalli = {p: intervallo_periodo(p, oggi) for p in PERIODI}
+            intervalli = {p: intervallo_periodo(p, oggi) for p in self._periodi}
             try:
                 # Il mese precedente, a gennaio, cade nell'anno prima.
                 kwh = await leggi_consumi_giornalieri(
@@ -255,7 +268,7 @@ class ConsumoPeriodoSensor(SensorEntity):
     ) -> None:
         self._consumi = consumi
         self._periodo = periodo
-        suffisso, nome = PERIODI[periodo]
+        suffisso, nome = _TUTTI_I_PERIODI[periodo]
         # Gli unique_id del prelievo sono quelli di prima (non vanno cambiati);
         # l'immissione ha il proprio prefisso.
         prefisso = "consumo" if tipo == TIPO_PRELIEVO else tipo
@@ -321,15 +334,15 @@ def crea_sensori_immissione(
     *,
     mese_corrente: bool = True,
 ) -> list[SensorEntity]:
-    """Gli stessi sensori di periodo di `crea_sensori_consumo`, sull'energia
-    immessa in rete (serie `<pod>_immissione`).
+    """Gli stessi sensori di periodo di `crea_sensori_consumo`, più il trimestre
+    precedente, sull'energia immessa in rete (serie `<pod>_immissione`).
 
     Valgono le stesse regole: `unknown` finché il periodo non ha un giorno
     importato, nessuna state_class (non duplica le statistiche già importate).
     """
-    consumi = ConsumiPod(hass, entry, coordinator, pod, TIPO_IMMISSIONE)
+    periodi = tuple(p for p in (*PERIODI, *PERIODI_EXTRA) if mese_corrente or p != "mese")
+    consumi = ConsumiPod(hass, entry, coordinator, pod, TIPO_IMMISSIONE, periodi)
     return [
         ConsumoPeriodoSensor(consumi, entry, pod, p, device_info, TIPO_IMMISSIONE)
-        for p in PERIODI
-        if mese_corrente or p != "mese"
+        for p in periodi
     ]

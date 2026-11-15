@@ -42,6 +42,11 @@ def _fuso_utc():
         ("trimestre", date(2026, 11, 13), (date(2026, 10, 1), date(2026, 11, 13))),
         ("trimestre", date(2026, 12, 31), (date(2026, 10, 1), date(2026, 12, 31))),
         ("anno", date(2026, 11, 13), (date(2026, 1, 1), date(2026, 11, 13))),
+        ("trimestre_precedente", date(2026, 11, 13), (date(2026, 7, 1), date(2026, 9, 30))),
+        ("trimestre_precedente", date(2026, 10, 1), (date(2026, 7, 1), date(2026, 9, 30))),
+        ("trimestre_precedente", date(2026, 1, 20), (date(2025, 10, 1), date(2025, 12, 31))),
+        ("trimestre_precedente", date(2026, 4, 1), (date(2026, 1, 1), date(2026, 3, 31))),
+        ("trimestre_precedente", date(2026, 7, 15), (date(2026, 4, 1), date(2026, 6, 30))),
     ],
 )
 def test_intervallo_periodo(periodo, oggi, atteso):
@@ -253,7 +258,7 @@ def test_a_mese_chiuso_non_si_crea_il_mese_corrente(hass):
     ]
 
 
-def test_crea_sensori_immissione_quattro_sensori_con_id_propri(hass):
+def test_crea_sensori_immissione_cinque_sensori_con_id_propri(hass):
     entry = MockConfigEntry(domain=DOMAIN, data={}, title="x", entry_id="abc")
     sensori = cp.crea_sensori_immissione(hass, entry, SimpleNamespace(), POD, {"name": "POD"})
     assert [s.unique_id for s in sensori] == [
@@ -261,12 +266,14 @@ def test_crea_sensori_immissione_quattro_sensori_con_id_propri(hass):
         f"abc_{POD}_immissione_mese_precedente",
         f"abc_{POD}_immissione_trimestre_corrente",
         f"abc_{POD}_immissione_anno_corrente",
+        f"abc_{POD}_immissione_trimestre_precedente",
     ]
     assert [s.name for s in sensori] == [
         "Immissione mese corrente",
         "Immissione mese precedente",
         "Immissione trimestre corrente",
         "Immissione anno corrente",
+        "Immissione trimestre precedente",
     ]
     for s in sensori:
         assert s.device_class == SensorDeviceClass.ENERGY
