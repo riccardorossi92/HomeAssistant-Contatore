@@ -455,9 +455,10 @@ sensore e fino a quale giorno ci sono dati.
   stesso consumo verrebbe contato due volte.
 - Le entità "Consumo ..." contano solo il prelievo (`<pod>_energia`).
 - **Solo E-Distribuzione**: per l'energia immessa in rete (`<pod>_immissione`)
-  ci sono altre quattro entità con le stesse regole: Immissione mese corrente,
+  ci sono altre cinque entità con le stesse regole: Immissione mese corrente,
   Immissione mese precedente, Immissione trimestre corrente, Immissione anno
-  corrente. Sono `unknown` sui POD senza impianto.
+  corrente e Immissione trimestre precedente (l'ultimo trimestre solare chiuso).
+  Sono `unknown` sui POD senza impianto.
 
 <details>
 <summary><b>Entità esposte — Duereti / Unareti / RetiPiù / Reti Valtellina Valchiavenna</b></summary>
