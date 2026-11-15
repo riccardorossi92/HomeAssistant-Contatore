@@ -253,6 +253,43 @@ def test_a_mese_chiuso_non_si_crea_il_mese_corrente(hass):
     ]
 
 
+def test_crea_sensori_immissione_quattro_sensori_con_id_propri(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, title="x", entry_id="abc")
+    sensori = cp.crea_sensori_immissione(hass, entry, SimpleNamespace(), POD, {"name": "POD"})
+    assert [s.unique_id for s in sensori] == [
+        f"abc_{POD}_immissione_mese_corrente",
+        f"abc_{POD}_immissione_mese_precedente",
+        f"abc_{POD}_immissione_trimestre_corrente",
+        f"abc_{POD}_immissione_anno_corrente",
+    ]
+    assert [s.name for s in sensori] == [
+        "Immissione mese corrente",
+        "Immissione mese precedente",
+        "Immissione trimestre corrente",
+        "Immissione anno corrente",
+    ]
+    for s in sensori:
+        assert s.device_class == SensorDeviceClass.ENERGY
+        assert s.native_unit_of_measurement == "kWh"
+        assert s.state_class is None
+
+
+async def test_immissione_legge_la_serie_immissione_e_non_quella_del_prelievo(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, title="x")
+    coordinator = SimpleNamespace(async_add_listener=MagicMock(return_value=MagicMock()))
+    consumi = cp.ConsumiPod(hass, entry, coordinator, POD, cp.TIPO_IMMISSIONE)
+    oggi = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
+    with (
+        patch.object(dt_util, "now", return_value=oggi),
+        patch.object(cp, "leggi_consumi_giornalieri", return_value=KWH) as lettura,
+    ):
+        await consumi.async_aggiorna()
+    lettura.assert_awaited_once_with(
+        hass, "contatore_letture:it001e00000009_immissione", date(2026, 1, 1)
+    )
+    assert consumi.valori["mese"][0] == pytest.approx(4.5)
+
+
 async def test_registra_avvia_i_trigger_una_volta_e_li_ferma_con_l_ultimo(hass):
     consumi, entry, coordinator = _consumi(hass)
     entry.add_to_hass(hass)

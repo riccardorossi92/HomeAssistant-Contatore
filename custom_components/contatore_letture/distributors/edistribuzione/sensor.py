@@ -18,7 +18,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ...const import DOMAIN
-from ...consumo_periodo import crea_sensori_consumo
+from ...consumo_periodo import crea_sensori_consumo, crea_sensori_immissione
 from ...device_helpers import assicura_dispositivo_padre, collega_al_padre
 from .coordinator import EdistribuzioneCoordinator
 
@@ -88,6 +88,12 @@ def build_edistribuzione_entities(
         )
         entities.extend(
             crea_sensori_consumo(
+                hass, entry, coordinator, pod, _device_info_pod(entry, pod, id_padre)
+            )
+        )
+        # Immissione (A2): mese, mese precedente, trimestre e anno, come il prelievo.
+        entities.extend(
+            crea_sensori_immissione(
                 hass, entry, coordinator, pod, _device_info_pod(entry, pod, id_padre)
             )
         )
