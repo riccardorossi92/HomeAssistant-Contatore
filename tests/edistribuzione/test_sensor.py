@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import date
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -59,6 +60,63 @@ async def test_build_edistribuzione_entities_conta_account_piu_due_per_pod(hass)
     entry = _entry(hass, pods=[POD, "IT002"])
     coord = SimpleNamespace(data=None, pods=[POD, "IT002"], entry=entry)
     entità = s.build_edistribuzione_entities(hass, coord)
-    # 1 sull'account + 17 per ciascuno dei 2 POD (2 diagnostici + 4 di consumo + 5 di immissione + 6 di fascia)
-    assert len(entità) == 1 + 17 * 2
+    # 1 sull'account + 9 per ciascuno dei 2 POD (2 diagnostici + 4 di consumo + 3 di fascia).
+    # L'immissione non c'e': nasce dopo, solo sui POD con impianto.
+    assert len(entità) == 1 + 9 * 2
     assert "EdistribuzionePodConfiguratiSensor" in {type(e).__name__ for e in entità}
+
+
+def _coord_dinamico(hass, by_pod, pods=(POD,)):
+    entry = _entry(hass, pods=pods)
+    ascoltatori = []
+
+    def _add_listener(cb):
+        ascoltatori.append(cb)
+        return lambda: ascoltatori.remove(cb)
+
+    coord = SimpleNamespace(
+        data={"by_pod": by_pod},
+        pods=list(pods),
+        entry=entry,
+        async_add_listener=_add_listener,
+    )
+    return coord, ascoltatori
+
+
+async def test_immissione_solo_dopo_aver_letto_has_plant(hass):
+    coord, ascoltatori = _coord_dinamico(hass, {POD: {"con_impianto": False}})
+    aggiunte = MagicMock()
+    s.async_segui_impianti(hass, coord, aggiunte)
+    aggiunte.assert_not_called()  # senza impianto (o getSupplies non ancora letto)
+
+    coord.data = {"by_pod": {POD: {"con_impianto": True}}}
+    for cb in list(ascoltatori):
+        cb()
+    aggiunte.assert_called_once()
+    nuove = aggiunte.call_args.args[0]
+    # 3 fasce di immissione + 5 sensori di periodo
+    assert len(nuove) == 8
+    assert sum(isinstance(e, s.EdistribuzioneFasciaSensor) for e in nuove) == 3
+    assert {e.unique_id.split("_", 2)[-1] for e in nuove if "immissione" in e.unique_id}
+
+    # I giri successivi non le aggiungono di nuovo.
+    for cb in list(ascoltatori):
+        cb()
+    aggiunte.assert_called_once()
+
+
+async def test_immissione_gia_nota_al_caricamento_si_crea_subito(hass):
+    coord, _ = _coord_dinamico(hass, {POD: {"con_impianto": True}})
+    aggiunte = MagicMock()
+    s.async_segui_impianti(hass, coord, aggiunte)
+    aggiunte.assert_called_once()
+
+
+async def test_immissione_solo_per_i_pod_con_impianto(hass):
+    altro = "IT002E00000009"
+    coord, _ = _coord_dinamico(
+        hass, {POD: {"con_impianto": True}, altro: {"con_impianto": False}}, pods=[POD, altro]
+    )
+    aggiunte = MagicMock()
+    s.async_segui_impianti(hass, coord, aggiunte)
+    assert all(POD in e.unique_id for e in aggiunte.call_args.args[0])

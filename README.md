@@ -458,12 +458,14 @@ sensore e fino a quale giorno ci sono dati.
   ci sono altre cinque entità con le stesse regole: Immissione mese corrente,
   Immissione mese precedente, Immissione trimestre corrente, Immissione anno
   corrente e Immissione trimestre precedente (l'ultimo trimestre solare chiuso).
-  Sono `unknown` sui POD senza impianto.
+  Si creano solo sui POD con impianto (`HasPlant` di E-Distribuzione), appena
+  l'integrazione lo legge: sugli altri POD non compaiono.
 - **Solo E-Distribuzione, per chi usa le fasce**: sei entità in più con i kWh del
   **mese precedente per fascia**, dal dato ufficiale del contatore: Consumo F1,
   F2, F3 mese precedente e Immissione F1, F2, F3 mese precedente (T1, T2, T3 del
-  portale). Il dato esce il 1° del mese: fino ad allora sono `unknown`, e a ogni
-  cambio mese si azzerano. L'attributo `mese` dice a quale mese si riferiscono.
+  portale; le due di immissione solo sui POD con impianto). Il dato esce il 1° del
+  mese: fino ad allora sono `unknown`, e a ogni cambio mese (a mezzanotte) si
+  azzerano. L'attributo `mese` dice a quale mese si riferiscono.
   Le entità di totale (consumo e immissione) restano quelle di prima.
 
 <details>

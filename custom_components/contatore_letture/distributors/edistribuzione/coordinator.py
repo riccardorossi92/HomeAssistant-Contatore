@@ -493,6 +493,9 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         await self._async_ensure_token()
 
         by_pod: dict[str, dict] = {}
+        # Una volta per giro (in cache per il resto della giornata): serve ai
+        # sensori di immissione, creati solo per i POD con impianto.
+        con_impianto = await self._async_pod_con_impianto()
         for pod in self.pods:
             richiesta = await self._prossima_richiesta(pod)
             kwh_ultimo_giorno_importato = None
@@ -552,6 +555,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
             by_pod[pod] = {
                 "fasce": dict(self._fasce.get(pod, {})),
+                "con_impianto": pod in con_impianto,
                 "ultimo_giorno_curva_richiesto": (
                     ultimo_giorno_richiesto.isoformat() if ultimo_giorno_richiesto else None
                 ),
