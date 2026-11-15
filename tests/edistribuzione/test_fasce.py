@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from freezegun import freeze_time
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.contatore_letture.const import DOMAIN
-from custom_components.contatore_letture.distributors.edistribuzione import coordinator as mod
 from custom_components.contatore_letture.distributors.edistribuzione import sensor as s
 from custom_components.contatore_letture.distributors.edistribuzione.api import (
     EdistribuzioneApiError,
@@ -18,7 +18,6 @@ from custom_components.contatore_letture.distributors.edistribuzione.fasce impor
     fasce_da_risposta,
     mese_precedente,
 )
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .conftest import POD_A
 
