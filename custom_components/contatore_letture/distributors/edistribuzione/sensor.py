@@ -11,16 +11,20 @@ from __future__ import annotations
 from datetime import date
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.const import UnitOfEnergy
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from ...const import DOMAIN
 from ...consumo_periodo import crea_sensori_consumo, crea_sensori_immissione
 from ...device_helpers import assicura_dispositivo_padre, collega_al_padre
+from .const import MAGNITUDE_IMMISSIONE, MAGNITUDE_PRELIEVO
 from .coordinator import EdistribuzioneCoordinator
+from .fasce import FASCE, mese_precedente
 
 
 def _device_info_account(entry: ConfigEntry) -> DeviceInfo:
@@ -91,6 +95,14 @@ def build_edistribuzione_entities(
                 hass, entry, coordinator, pod, _device_info_pod(entry, pod, id_padre)
             )
         )
+        # Mese precedente per fascia (F1-F3), prelevato e immesso.
+        for grandezza in (MAGNITUDE_PRELIEVO, MAGNITUDE_IMMISSIONE):
+            for fascia in FASCE:
+                entities.append(
+                    EdistribuzioneFasciaSensor(
+                        coordinator, entry, pod, grandezza, fascia, id_padre
+                    )
+                )
         # Immissione (A2): mese, mese precedente, trimestre e anno, come il prelievo.
         entities.extend(
             crea_sensori_immissione(
@@ -214,3 +226,56 @@ class EdistribuzioneConsumoGiornoSensor(
     def extra_state_attributes(self):
         dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
         return {"giorno": dati_pod.get("ultimo_giorno_curva_richiesto")}
+
+
+class EdistribuzioneFasciaSensor(CoordinatorEntity[EdistribuzioneCoordinator], SensorEntity):
+    """kWh di una fascia (F1, F2 o F3) nel mese precedente, prelevati o immessi.
+
+    Dato ufficiale del contatore (querymonthlytimeofuse), che E-Distribuzione
+    pubblica il 1 del mese: finche' non c'e' il valore e' `unknown`, e a ogni
+    cambio mese si azzera invece di mostrare il mese di prima. Come i sensori
+    di periodo, senza state_class: non duplica le statistiche importate.
+    """
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+
+    def __init__(
+        self,
+        coordinator: EdistribuzioneCoordinator,
+        entry: ConfigEntry,
+        pod: str,
+        grandezza: str,
+        fascia: str,
+        id_padre: str | None = None,
+    ) -> None:
+        super().__init__(coordinator)
+        self._pod = pod
+        self._grandezza = grandezza
+        self._fascia = fascia
+        tipo = "immissione" if grandezza == MAGNITUDE_IMMISSIONE else "consumo"
+        self._attr_unique_id = f"{entry.entry_id}_{pod}_{tipo}_{fascia.lower()}_mese_precedente"
+        self._attr_name = f"{tipo.capitalize()} {fascia} mese precedente"
+        self._attr_device_info = _device_info_pod(entry, pod, id_padre)
+
+    def _fasce_del_mese(self) -> tuple[str, dict]:
+        """(AAAAMM atteso, fasce di quel mese per questa grandezza)."""
+        _inizio, _fine, anno_mese = mese_precedente(dt_util.now().date())
+        dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
+        fasce = dati_pod.get("fasce") or {}
+        if fasce.get("mese") != anno_mese:
+            return anno_mese, {}
+        return anno_mese, fasce.get(self._grandezza) or {}
+
+    @property
+    def native_value(self) -> float | None:
+        valore = self._fasce_del_mese()[1].get(self._fascia)
+        return None if valore is None else round(valore, 3)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        anno_mese, fasce = self._fasce_del_mese()
+        if not fasce:
+            return {}
+        return {"mese": f"{anno_mese[:4]}-{anno_mese[4:]}"}

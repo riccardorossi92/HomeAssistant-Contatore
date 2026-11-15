@@ -41,6 +41,8 @@ def make_edist_coordinator(hass):
         # Nessuna fornitura con impianto: i test che non riguardano
         # l'immissione non devono arrivare alla rete per getSupplies.
         coordinator._api.async_get_supplies = AsyncMock(return_value=[])
+        # Nemmeno le fasce del mese precedente devono arrivare alla rete.
+        coordinator._api.async_get_monthly_time_of_use = AsyncMock(return_value=[])
         return coordinator
 
     return _make
