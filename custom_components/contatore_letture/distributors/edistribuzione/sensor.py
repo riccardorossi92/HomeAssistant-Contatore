@@ -269,7 +269,16 @@ class EdistribuzioneConsumoGiornoSensor(
             except ValueError:
                 self._ultimo_valore = None
 
-    def _aggiorna_ultimo(self) -> None:
+        # Il coordinator può aver già fatto un giro prima che il sensore
+        # fosse aggiunto: se ha un valore, vale più di quello ripristinato.
+        self._memorizza_ultimo()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._memorizza_ultimo()
+        super()._handle_coordinator_update()
+
+    def _memorizza_ultimo(self) -> None:
         """Se il coordinator ha un valore nuovo lo memorizza, insieme al
         giorno a cui si riferisce; altrimenti resta l'ultimo noto."""
         dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
@@ -280,12 +289,10 @@ class EdistribuzioneConsumoGiornoSensor(
 
     @property
     def native_value(self) -> float | None:
-        self._aggiorna_ultimo()
         return self._ultimo_valore
 
     @property
     def extra_state_attributes(self):
-        self._aggiorna_ultimo()
         return {"giorno": self._ultimo_giorno}
 
 

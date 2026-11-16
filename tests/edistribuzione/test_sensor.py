@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import date
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -52,6 +52,7 @@ def test_consumo_giorno_arrotonda_a_tre_decimali():
         {POD: {"kwh_ultimo_giorno_importato": 1.23456, "ultimo_giorno_importato": "2026-09-02"}}
     )
     sensore = s.EdistribuzioneConsumoGiornoSensor(coord, _entry(), POD)
+    _giro_coordinator(sensore)
     assert sensore.native_value == 1.235
     assert sensore.extra_state_attributes["giorno"] == "2026-09-02"
 
@@ -122,6 +123,14 @@ async def test_immissione_solo_per_i_pod_con_impianto(hass):
     assert all(POD in e.unique_id for e in aggiunte.call_args.args[0])
 
 
+def _giro_coordinator(sensore):
+    """Simula un aggiornamento del coordinator (senza hass: la scrittura
+    dello stato e' sostituita da un mock)."""
+    sensore.async_write_ha_state = MagicMock()
+    sensore._handle_coordinator_update()
+    sensore.async_write_ha_state.assert_called_once()
+
+
 def test_consumo_giorno_mantiene_ultimo_valore_e_giorno():
     """Nei cicli senza dati nuovi il sensore tiene l'ultimo valore ricevuto e
     il giorno a cui si riferisce, non quello ripristinato all'avvio."""
@@ -131,10 +140,49 @@ def test_consumo_giorno_mantiene_ultimo_valore_e_giorno():
     sensore = s.EdistribuzioneConsumoGiornoSensor(coord, _entry(), POD)
     sensore._ultimo_valore = 32.225
     sensore._ultimo_giorno = "2026-11-01"
+    _giro_coordinator(sensore)
     assert sensore.native_value == 10.0
     assert sensore.extra_state_attributes["giorno"] == "2026-11-14"
     coord.data = {
         "by_pod": {POD: {"kwh_ultimo_giorno_importato": None, "ultimo_giorno_importato": None}}
     }
+    _giro_coordinator(sensore)
+    assert sensore.native_value == 10.0
+    assert sensore.extra_state_attributes["giorno"] == "2026-11-14"
+
+
+def test_consumo_giorno_leggere_lo_stato_non_lo_modifica():
+    """Lo stato cambia solo a un giro del coordinator, non leggendo le property."""
+    coord = _coord(
+        {POD: {"kwh_ultimo_giorno_importato": 10.0, "ultimo_giorno_importato": "2026-11-14"}}
+    )
+    sensore = s.EdistribuzioneConsumoGiornoSensor(coord, _entry(), POD)
+    assert sensore.native_value is None
+    assert sensore.extra_state_attributes == {"giorno": None}
+
+
+async def _aggiungi(sensore, ultimo_stato):
+    with (
+        patch.object(s.CoordinatorEntity, "async_added_to_hass", AsyncMock()),
+        patch.object(sensore, "async_get_last_state", AsyncMock(return_value=ultimo_stato)),
+    ):
+        await sensore.async_added_to_hass()
+
+
+async def test_consumo_giorno_ripristina_valore_e_giorno_all_avvio():
+    sensore = s.EdistribuzioneConsumoGiornoSensor(_coord(), _entry(), POD)
+    await _aggiungi(sensore, SimpleNamespace(state="32.225", attributes={"giorno": "2026-11-01"}))
+    assert sensore.native_value == 32.225
+    assert sensore.extra_state_attributes["giorno"] == "2026-11-01"
+
+
+async def test_consumo_giorno_dato_del_coordinator_vince_sul_ripristinato():
+    """Se il coordinator ha gia' un valore quando il sensore viene aggiunto,
+    vale quello e non lo stato salvato prima del riavvio."""
+    coord = _coord(
+        {POD: {"kwh_ultimo_giorno_importato": 10.0, "ultimo_giorno_importato": "2026-11-14"}}
+    )
+    sensore = s.EdistribuzioneConsumoGiornoSensor(coord, _entry(), POD)
+    await _aggiungi(sensore, SimpleNamespace(state="32.225", attributes={"giorno": "2026-11-01"}))
     assert sensore.native_value == 10.0
     assert sensore.extra_state_attributes["giorno"] == "2026-11-14"
