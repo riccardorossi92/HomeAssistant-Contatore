@@ -142,6 +142,23 @@ async def test_ciclo_con_impianto_importa_anche_l_immissione(ciclo, importa):
     assert _grandezze_importate(importa) == ["A1", "A2"]
 
 
+async def test_ciclo_espone_l_ultimo_giorno_immesso(ciclo, importa):
+    with freeze_time(OGGI):
+        dati = await ciclo._async_update_data()
+    pod = dati["by_pod"][POD_A]
+    assert pod["ultimo_giorno_immesso"] == GIORNO.isoformat()
+    assert pod["kwh_ultimo_giorno_immesso"] == pytest.approx(0.5)
+
+
+async def test_ciclo_senza_impianto_non_espone_l_immesso(ciclo, importa):
+    ciclo._api.async_get_supplies.return_value = [SENZA_IMPIANTO]
+    with freeze_time(OGGI):
+        dati = await ciclo._async_update_data()
+    pod = dati["by_pod"][POD_A]
+    assert pod["ultimo_giorno_immesso"] is None
+    assert pod["kwh_ultimo_giorno_immesso"] is None
+
+
 async def test_ciclo_senza_impianto_non_chiede_l_immissione(ciclo, importa):
     ciclo._api.async_get_supplies.return_value = [SENZA_IMPIANTO]
 

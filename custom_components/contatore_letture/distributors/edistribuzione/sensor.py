@@ -116,9 +116,12 @@ def _entita_immissione(
     (mese, mese precedente, trimestre, anno, trimestre precedente) e fasce."""
     entry = coordinator.entry
     entities: list[SensorEntity] = [
+        EdistribuzioneImmissioneGiornoSensor(coordinator, entry, pod, id_padre)
+    ]
+    entities.extend(
         EdistribuzioneFasciaSensor(coordinator, entry, pod, MAGNITUDE_IMMISSIONE, fascia, id_padre)
         for fascia in FASCE
-    ]
+    )
     entities.extend(
         crea_sensori_immissione(
             hass, entry, coordinator, pod, _device_info_pod(entry, pod, id_padre)
@@ -245,14 +248,21 @@ class EdistribuzioneConsumoGiornoSensor(
     _attr_native_unit_of_measurement = "kWh"
     _attr_icon = "mdi:lightning-bolt"
 
+    # Chiavi dei dati del coordinator, id e nome: la sottoclasse
+    # dell'immissione ne cambia solo i valori.
+    _chiave_kwh = "kwh_ultimo_giorno_importato"
+    _chiave_giorno = "ultimo_giorno_importato"
+    _suffisso_id = "consumo_giorno"
+    _nome = "Consumo ultimo giorno importato"
+
     def __init__(
         self, coordinator: EdistribuzioneCoordinator, entry: ConfigEntry, pod: str,
         id_padre: str | None = None,
     ) -> None:
         super().__init__(coordinator)
         self._pod = pod
-        self._attr_unique_id = f"{entry.entry_id}_{pod}_consumo_giorno"
-        self._attr_name = "Consumo ultimo giorno importato"
+        self._attr_unique_id = f"{entry.entry_id}_{pod}_{self._suffisso_id}"
+        self._attr_name = self._nome
         self._attr_device_info = _device_info_pod(entry, pod, id_padre)
         # Ultimo valore valido (kWh) e giorno a cui si riferisce: restano
         # nei cicli senza dati nuovi e si ripristinano dopo un riavvio.
@@ -282,10 +292,10 @@ class EdistribuzioneConsumoGiornoSensor(
         """Se il coordinator ha un valore nuovo lo memorizza, insieme al
         giorno a cui si riferisce; altrimenti resta l'ultimo noto."""
         dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
-        valore = dati_pod.get("kwh_ultimo_giorno_importato")
+        valore = dati_pod.get(self._chiave_kwh)
         if valore is not None:
             self._ultimo_valore = round(valore, 3)
-            self._ultimo_giorno = dati_pod.get("ultimo_giorno_importato")
+            self._ultimo_giorno = dati_pod.get(self._chiave_giorno)
 
     @property
     def native_value(self) -> float | None:
@@ -294,6 +304,17 @@ class EdistribuzioneConsumoGiornoSensor(
     @property
     def extra_state_attributes(self):
         return {"giorno": self._ultimo_giorno}
+
+
+class EdistribuzioneImmissioneGiornoSensor(EdistribuzioneConsumoGiornoSensor):
+    """kWh immessi nell'ultimo giorno importato di un POD con impianto.
+    Come il consumo, mantiene l'ultimo valore ricevuto e il suo giorno."""
+
+    _chiave_kwh = "kwh_ultimo_giorno_immesso"
+    _chiave_giorno = "ultimo_giorno_immesso"
+    _suffisso_id = "immissione_giorno"
+    _nome = "Immissione ultimo giorno importato"
+    _attr_icon = "mdi:transmission-tower-import"
 
 
 class EdistribuzioneFasciaSensor(CoordinatorEntity[EdistribuzioneCoordinator], SensorEntity):
