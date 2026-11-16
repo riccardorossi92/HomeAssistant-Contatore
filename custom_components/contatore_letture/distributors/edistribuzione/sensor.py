@@ -270,7 +270,10 @@ class EdistribuzioneConsumoGiornoSensor(
         dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
         valore = dati_pod.get("kwh_ultimo_giorno_importato")
         if valore is not None:
-            return round(valore, 3)
+            # Memorizzo l'ultimo valore valido: nei cicli senza dati nuovi
+            # il sensore deve mantenere questo, non il valore ripristinato
+            # all'avvio (piu' vecchio).
+            self._ripristinato = round(valore, 3)
         return self._ripristinato
 
     @property
