@@ -254,32 +254,39 @@ class EdistribuzioneConsumoGiornoSensor(
         self._attr_unique_id = f"{entry.entry_id}_{pod}_consumo_giorno"
         self._attr_name = "Consumo ultimo giorno importato"
         self._attr_device_info = _device_info_pod(entry, pod, id_padre)
-        self._ripristinato: float | None = None
+        # Ultimo valore valido (kWh) e giorno a cui si riferisce: restano
+        # nei cicli senza dati nuovi e si ripristinano dopo un riavvio.
+        self._ultimo_valore: float | None = None
+        self._ultimo_giorno: str | None = None
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         ultimo_stato = await self.async_get_last_state()
         if ultimo_stato and ultimo_stato.state not in (None, "unknown", "unavailable"):
             try:
-                self._ripristinato = float(ultimo_stato.state)
+                self._ultimo_valore = float(ultimo_stato.state)
+                self._ultimo_giorno = ultimo_stato.attributes.get("giorno")
             except ValueError:
-                self._ripristinato = None
+                self._ultimo_valore = None
 
-    @property
-    def native_value(self) -> float | None:
+    def _aggiorna_ultimo(self) -> None:
+        """Se il coordinator ha un valore nuovo lo memorizza, insieme al
+        giorno a cui si riferisce; altrimenti resta l'ultimo noto."""
         dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
         valore = dati_pod.get("kwh_ultimo_giorno_importato")
         if valore is not None:
-            # Memorizzo l'ultimo valore valido: nei cicli senza dati nuovi
-            # il sensore deve mantenere questo, non il valore ripristinato
-            # all'avvio (piu' vecchio).
-            self._ripristinato = round(valore, 3)
-        return self._ripristinato
+            self._ultimo_valore = round(valore, 3)
+            self._ultimo_giorno = dati_pod.get("ultimo_giorno_importato")
+
+    @property
+    def native_value(self) -> float | None:
+        self._aggiorna_ultimo()
+        return self._ultimo_valore
 
     @property
     def extra_state_attributes(self):
-        dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
-        return {"giorno": dati_pod.get("ultimo_giorno_curva_richiesto")}
+        self._aggiorna_ultimo()
+        return {"giorno": self._ultimo_giorno}
 
 
 class EdistribuzioneFasciaSensor(CoordinatorEntity[EdistribuzioneCoordinator], SensorEntity):

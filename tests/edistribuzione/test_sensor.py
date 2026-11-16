@@ -49,7 +49,7 @@ def test_ultima_data_disponibile_senza_dati():
 
 def test_consumo_giorno_arrotonda_a_tre_decimali():
     coord = _coord(
-        {POD: {"kwh_ultimo_giorno_importato": 1.23456, "ultimo_giorno_curva_richiesto": "2026-09-02"}}
+        {POD: {"kwh_ultimo_giorno_importato": 1.23456, "ultimo_giorno_importato": "2026-09-02"}}
     )
     sensore = s.EdistribuzioneConsumoGiornoSensor(coord, _entry(), POD)
     assert sensore.native_value == 1.235
@@ -121,12 +121,20 @@ async def test_immissione_solo_per_i_pod_con_impianto(hass):
     s.async_segui_impianti(hass, coord, aggiunte)
     assert all(POD in e.unique_id for e in aggiunte.call_args.args[0])
 
-def test_consumo_giorno_mantiene_ultimo_valore():
-    """Nei cicli senza dati nuovi il sensore tiene l'ultimo valore ricevuto,
-    non quello ripristinato all'avvio."""
-    coord = _coord({POD: {"kwh_ultimo_giorno_importato": 10.0}})
+
+def test_consumo_giorno_mantiene_ultimo_valore_e_giorno():
+    """Nei cicli senza dati nuovi il sensore tiene l'ultimo valore ricevuto e
+    il giorno a cui si riferisce, non quello ripristinato all'avvio."""
+    coord = _coord(
+        {POD: {"kwh_ultimo_giorno_importato": 10.0, "ultimo_giorno_importato": "2026-11-14"}}
+    )
     sensore = s.EdistribuzioneConsumoGiornoSensor(coord, _entry(), POD)
-    sensore._ripristinato = 32.225
+    sensore._ultimo_valore = 32.225
+    sensore._ultimo_giorno = "2026-11-01"
     assert sensore.native_value == 10.0
-    coord.data = {"by_pod": {POD: {"kwh_ultimo_giorno_importato": None}}}
+    assert sensore.extra_state_attributes["giorno"] == "2026-11-14"
+    coord.data = {
+        "by_pod": {POD: {"kwh_ultimo_giorno_importato": None, "ultimo_giorno_importato": None}}
+    }
     assert sensore.native_value == 10.0
+    assert sensore.extra_state_attributes["giorno"] == "2026-11-14"

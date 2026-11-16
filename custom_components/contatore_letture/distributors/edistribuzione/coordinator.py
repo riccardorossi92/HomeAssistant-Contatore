@@ -499,6 +499,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         for pod in self.pods:
             richiesta = await self._prossima_richiesta(pod)
             kwh_ultimo_giorno_importato = None
+            ultimo_giorno_importato = None
             ultimo_giorno_richiesto = None
             if richiesta is not None:
                 data_da, data_a = richiesta
@@ -532,6 +533,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                             self._accoda_giorno(pod, giorno)
 
                     kwh_ultimo_giorno_importato = _kwh_del_giorno(curva, max(ricevuti)) if ricevuti else None
+                    ultimo_giorno_importato = max(ricevuti).isoformat() if ricevuti else None
 
                     # Senza prelievo non c'e' ancora nulla da abbinare: il
                     # periodo e' in coda e l'immissione si chiede con lui.
@@ -563,6 +565,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                     ultima_data_disponibile.isoformat() if ultima_data_disponibile else None
                 ),
                 "kwh_ultimo_giorno_importato": kwh_ultimo_giorno_importato,
+                "ultimo_giorno_importato": ultimo_giorno_importato,
             }
 
         return {"by_pod": by_pod}
