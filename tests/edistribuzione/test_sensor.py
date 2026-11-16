@@ -120,3 +120,13 @@ async def test_immissione_solo_per_i_pod_con_impianto(hass):
     aggiunte = MagicMock()
     s.async_segui_impianti(hass, coord, aggiunte)
     assert all(POD in e.unique_id for e in aggiunte.call_args.args[0])
+
+def test_consumo_giorno_mantiene_ultimo_valore():
+    """Nei cicli senza dati nuovi il sensore tiene l'ultimo valore ricevuto,
+    non quello ripristinato all'avvio."""
+    coord = _coord({POD: {"kwh_ultimo_giorno_importato": 10.0}})
+    sensore = s.EdistribuzioneConsumoGiornoSensor(coord, _entry(), POD)
+    sensore._ripristinato = 32.225
+    assert sensore.native_value == 10.0
+    coord.data = {"by_pod": {POD: {"kwh_ultimo_giorno_importato": None}}}
+    assert sensore.native_value == 10.0
