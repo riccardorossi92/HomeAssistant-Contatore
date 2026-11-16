@@ -6,6 +6,7 @@ from datetime import date
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -96,7 +97,7 @@ class PcfUltimoImportSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
         self._attr_unique_id = f"{entry.entry_id}_ultimo_import"
         self._attr_name = f"{display_name} - Ultimo import"
         self._attr_device_info = _device_info_account(entry, display_name)
-        self._ripristinato: str | None = None
+        self._ultimo_valore: str | None = None
 
     @property
     def available(self) -> bool:
@@ -122,15 +123,24 @@ class PcfUltimoImportSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
         await super().async_added_to_hass()
         ultimo_stato = await self.async_get_last_state()
         if ultimo_stato and ultimo_stato.state not in (None, "unknown", "unavailable"):
-            self._ripristinato = ultimo_stato.state
+            self._ultimo_valore = ultimo_stato.state
+        self._memorizza_ultimo()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._memorizza_ultimo()
+        super()._handle_coordinator_update()
+
+    def _memorizza_ultimo(self) -> None:
+        """Mentre si aspetta un file nuovo i dati del coordinator non hanno
+        `ultimo_aggiornamento`: resta l'ultimo noto."""
+        valore = (self.coordinator.data or {}).get("ultimo_aggiornamento")
+        if valore is not None:
+            self._ultimo_valore = valore
 
     @property
     def native_value(self):
-        if self.coordinator.data:
-            valore = self.coordinator.data.get("ultimo_aggiornamento")
-            if valore is not None:
-                return valore
-        return self._ripristinato
+        return self._ultimo_valore
 
     @property
     def extra_state_attributes(self):
@@ -225,7 +235,10 @@ class PcfConsumoPeriodoSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
         self._attr_unique_id = f"{entry.entry_id}_{pod}_consumo_periodo"
         self._attr_name = "Consumo ultimo periodo"
         self._attr_device_info = _device_info_pod(entry, pod, display_name, id_padre)
-        self._ripristinato: float | None = None
+        # Ultimo valore valido (kWh) e periodo a cui si riferisce: restano
+        # mentre si aspetta un file nuovo e si ripristinano dopo un riavvio.
+        self._ultimo_valore: float | None = None
+        self._ultimo_periodo: str | None = None
 
     async def async_added_to_hass(self) -> None:
         """Recupera l'ultimo valore noto dopo un riavvio (vedi
@@ -234,23 +247,35 @@ class PcfConsumoPeriodoSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
         ultimo_stato = await self.async_get_last_state()
         if ultimo_stato and ultimo_stato.state not in (None, "unknown", "unavailable"):
             try:
-                self._ripristinato = float(ultimo_stato.state)
+                self._ultimo_valore = float(ultimo_stato.state)
+                self._ultimo_periodo = ultimo_stato.attributes.get("periodo")
             except ValueError:
-                self._ripristinato = None
+                self._ultimo_valore = None
+        self._memorizza_ultimo()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._memorizza_ultimo()
+        super()._handle_coordinator_update()
+
+    def _memorizza_ultimo(self) -> None:
+        """Se il coordinator ha un totale nuovo per il POD lo memorizza,
+        insieme al periodo; altrimenti resta l'ultimo noto."""
+        dati = self.coordinator.data or {}
+        valore = dati.get("totale_kwh_periodo_per_pod", {}).get(self._pod)
+        if valore is not None:
+            self._ultimo_valore = valore
+            self._ultimo_periodo = dati.get("periodo_importato")
 
     @property
     def native_value(self) -> float | None:
-        if self.coordinator.data:
-            valore = self.coordinator.data.get("totale_kwh_periodo_per_pod", {}).get(self._pod)
-            if valore is not None:
-                return valore
-        return self._ripristinato
+        return self._ultimo_valore
 
     @property
     def extra_state_attributes(self):
-        if self.coordinator.data:
-            return {"periodo": self.coordinator.data.get("periodo_importato")}
-        return {}
+        if self._ultimo_periodo is None:
+            return {}
+        return {"periodo": self._ultimo_periodo}
 
 
 class PcfStatoAttesaSensor(SensorEntity):

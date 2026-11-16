@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -39,6 +40,13 @@ def _coord(**dati):
     )
 
 
+def _giro_coordinator(sensore):
+    """Simula un aggiornamento del coordinator (la scrittura dello stato e'
+    sostituita da un mock: niente hass)."""
+    sensore.async_write_ha_state = MagicMock()
+    sensore._handle_coordinator_update()
+
+
 def test_ultimo_import_valore_e_disponibilita():
     coord = _coord(
         ultimo_aggiornamento="2026-09-01",
@@ -47,6 +55,7 @@ def test_ultimo_import_valore_e_disponibilita():
         ultimo_errore=None,
     )
     sensore = s.PcfUltimoImportSensor(coord, _entry(), "Duereti")
+    _giro_coordinator(sensore)
     assert sensore.native_value == "2026-09-01"
     assert sensore.extra_state_attributes["stato"] == "ok"
     assert sensore.available is True
@@ -57,9 +66,24 @@ def test_ultimo_import_valore_e_disponibilita():
 
 def test_ultimo_import_senza_dati_usa_il_ripristino():
     sensore = s.PcfUltimoImportSensor(_coord(), _entry(), "Duereti")
+    _giro_coordinator(sensore)
     assert sensore.native_value is None
-    sensore._ripristinato = "2026-08-31"
+    sensore._ultimo_valore = "2026-08-31"
+    _giro_coordinator(sensore)
     assert sensore.native_value == "2026-08-31"
+
+
+def test_ultimo_import_resta_mentre_si_aspetta_il_file():
+    """Durante 'richiesta inviata, in attesa del file' i dati del coordinator
+    non hanno ultimo_aggiornamento: resta l'ultimo noto, lo stato cambia."""
+    coord = _coord(ultimo_aggiornamento="2026-09-30", stato="ok")
+    sensore = s.PcfUltimoImportSensor(coord, _entry(), "Duereti")
+    sensore._ultimo_valore = "2026-08-31"
+    _giro_coordinator(sensore)
+    coord.data = {"stato": "richiesta inviata, in attesa del file"}
+    _giro_coordinator(sensore)
+    assert sensore.native_value == "2026-09-30"
+    assert sensore.extra_state_attributes["stato"] == "richiesta inviata, in attesa del file"
 
 
 def test_ultima_data_disponibile_per_pod():
@@ -77,8 +101,23 @@ def test_consumo_periodo_per_pod():
         periodo_importato="2026-09-01 - 2026-09-02",
     )
     sensore = s.PcfConsumoPeriodoSensor(coord, _entry(), POD, "Duereti")
+    _giro_coordinator(sensore)
     assert sensore.native_value == 12.5
     assert sensore.extra_state_attributes["periodo"] == "2026-09-01 - 2026-09-02"
+
+
+def test_consumo_periodo_resta_mentre_si_aspetta_il_file():
+    coord = _coord(
+        totale_kwh_periodo_per_pod={POD: 12.5},
+        periodo_importato="2026-09-01 - 2026-09-30",
+    )
+    sensore = s.PcfConsumoPeriodoSensor(coord, _entry(), POD, "Duereti")
+    sensore._ultimo_valore = 3.0
+    _giro_coordinator(sensore)
+    coord.data = {"stato": "richiesta inviata, in attesa del file", "periodo": "2026-10-01 - 2026-10-31"}
+    _giro_coordinator(sensore)
+    assert sensore.native_value == 12.5
+    assert sensore.extra_state_attributes == {"periodo": "2026-09-01 - 2026-09-30"}
 
 
 async def test_stato_attesa_conta_i_minuti():

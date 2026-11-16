@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import date
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -46,11 +47,19 @@ def test_ultima_data_disponibile_senza_dati():
     assert sensore.native_value is None
 
 
+def _giro_coordinator(sensore):
+    """Simula un aggiornamento del coordinator (la scrittura dello stato e'
+    sostituita da un mock: niente hass)."""
+    sensore.async_write_ha_state = MagicMock()
+    sensore._handle_coordinator_update()
+
+
 def test_consumo_mese_arrotonda_a_tre_decimali():
     coord = _coord(
         {POD: {"kwh_ultimo_mese_importato": 1.23456, "ultimo_mese_importato": "2026-08"}}
     )
     sensore = s.AretiConsumoMeseSensor(coord, _entry(), POD)
+    _giro_coordinator(sensore)
     assert sensore.native_value == 1.235
     assert sensore.extra_state_attributes["mese"] == "2026-08"
 
@@ -67,3 +76,25 @@ async def test_build_areti_entities_conta_account_piu_due_per_pod(hass):
     # 1 sull'account + 5 per ciascuno dei 2 POD (2 diagnostici + 3 di periodo, senza il mese corrente)
     assert len(entità) == 1 + 5 * 2
     assert "AretiPodConfiguratiSensor" in {type(e).__name__ for e in entità}
+
+
+def test_consumo_mese_mantiene_ultimo_valore_e_mese():
+    """Nei giri senza un mese nuovo restano l'ultimo valore e il suo mese;
+    il prossimo mese da importare segue invece il coordinator."""
+    coord = _coord(
+        {POD: {"kwh_ultimo_mese_importato": 100.0, "ultimo_mese_importato": "2026-09",
+               "mese_da_importare": "2026-10"}}
+    )
+    sensore = s.AretiConsumoMeseSensor(coord, _entry(), POD)
+    sensore._ultimo_valore = 80.0
+    sensore._ultimo_mese = "2026-08"
+    _giro_coordinator(sensore)
+    coord.data = {"by_pod": {POD: {"kwh_ultimo_mese_importato": None,
+                                   "ultimo_mese_importato": None,
+                                   "mese_da_importare": "2026-10"}}}
+    _giro_coordinator(sensore)
+    assert sensore.native_value == 100.0
+    assert sensore.extra_state_attributes == {
+        "mese": "2026-09",
+        "prossimo_mese_da_importare": "2026-10",
+    }

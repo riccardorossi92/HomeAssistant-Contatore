@@ -9,6 +9,7 @@ from datetime import date
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -148,29 +149,46 @@ class AretiConsumoMeseSensor(CoordinatorEntity[AretiCoordinator], RestoreEntity,
         self._attr_unique_id = f"{entry.entry_id}_{pod}_consumo_mese"
         self._attr_name = "Consumo ultimo mese importato"
         self._attr_device_info = _device_info_pod(entry, pod, id_padre)
-        self._ripristinato: float | None = None
+        # Ultimo valore valido (kWh) e mese a cui si riferisce: restano nei
+        # cicli senza un mese nuovo e si ripristinano dopo un riavvio.
+        self._ultimo_valore: float | None = None
+        self._ultimo_mese: str | None = None
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         ultimo_stato = await self.async_get_last_state()
         if ultimo_stato and ultimo_stato.state not in (None, "unknown", "unavailable"):
             try:
-                self._ripristinato = float(ultimo_stato.state)
+                self._ultimo_valore = float(ultimo_stato.state)
+                self._ultimo_mese = ultimo_stato.attributes.get("mese")
             except ValueError:
-                self._ripristinato = None
+                self._ultimo_valore = None
+        # Il coordinator può aver già fatto un giro prima che il sensore
+        # fosse aggiunto: se ha un valore, vale più di quello ripristinato.
+        self._memorizza_ultimo()
 
-    @property
-    def native_value(self) -> float | None:
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._memorizza_ultimo()
+        super()._handle_coordinator_update()
+
+    def _memorizza_ultimo(self) -> None:
+        """Se il coordinator ha un valore nuovo lo memorizza, insieme al
+        mese a cui si riferisce; altrimenti resta l'ultimo noto."""
         dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
         valore = dati_pod.get("kwh_ultimo_mese_importato")
         if valore is not None:
-            return round(valore, 3)
-        return self._ripristinato
+            self._ultimo_valore = round(valore, 3)
+            self._ultimo_mese = dati_pod.get("ultimo_mese_importato")
+
+    @property
+    def native_value(self) -> float | None:
+        return self._ultimo_valore
 
     @property
     def extra_state_attributes(self):
         dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
         return {
-            "mese": dati_pod.get("ultimo_mese_importato"),
+            "mese": self._ultimo_mese,
             "prossimo_mese_da_importare": dati_pod.get("mese_da_importare"),
         }
