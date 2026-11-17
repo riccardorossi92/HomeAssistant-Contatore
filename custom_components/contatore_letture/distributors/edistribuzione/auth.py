@@ -1098,10 +1098,8 @@ class EdistribuzioneAuthClient:
             # un login altrimenti valido.
             _LOGGER.warning(
                 "State OAuth nella risposta non corrisponde a quello inviato "
-                "(atteso %r, ricevuto %r) - procedo comunque, ma segnalalo se "
-                "il login inizia a fallire qui",
-                self._oauth_state,
-                state_match.group(1),
+                "(valori non loggati) - procedo comunque, ma segnalalo se "
+                "il login inizia a fallire qui"
             )
         auth_code = unquote(code_match.group(1))
 
