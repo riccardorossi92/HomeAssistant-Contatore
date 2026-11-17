@@ -296,7 +296,7 @@ class TestBeginLoginSenzaFwuid:
         salvate = []
         monkeypatch.setattr(auth, "_get_following_redirects", _finto_get)
         monkeypatch.setattr(
-            auth, "_salva_pagina_debug", lambda html, nome: salvate.append(client._host)
+            auth, "_salva_pagina_debug", lambda html, nome, *_: salvate.append(client._host)
         )
         with pytest.raises(auth.EdistribuzioneBloccoAntibot):
             await client.async_begin_login("mario@example.com", "pw")
