@@ -24,10 +24,13 @@ jobs:
 
       - name: Run update script
         id: update
+        # La shell di default degli step e' "bash -e": senza set +e lo step si
+        # fermerebbe all'uscita 1 dello script (snapshot cambiato) prima di
+        # scrivere exit_code, e la PR qui sotto non partirebbe mai.
         run: |
+          set +e
           python3 scripts/update_istat_snapshot.py
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
-        continue-on-error: true
 
       - name: Create Pull Request
         if: steps.update.outputs.exit_code == '1'
