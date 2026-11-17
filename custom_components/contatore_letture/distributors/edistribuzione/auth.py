@@ -24,12 +24,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import html as html_lib
 import json
 import logging
 import re
 import secrets
+import shutil
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -160,6 +162,50 @@ def _oscura_credenziali(testo: str, *segreti: str) -> str:
     return testo
 
 
+# Parametri di URL e chiavi JSON che nelle pagine del login portano una
+# credenziale di sessione (codice di autorizzazione, token, cookie di
+# sessione). In un file di debug allegato a una issue non servono: se ne
+# toglie il valore e resta il nome, che aiuta a capire che pagina era.
+_RE_PARAMETRI_SEGRETI = re.compile(
+    r"(?i)\b(access_token|refresh_token|id_token|code|sid|oauth_token|"
+    r"frontdoor_token|otp)=([^&\"'\s<>;]+)"
+)
+_RE_JSON_SEGRETI = re.compile(
+    r'(?i)("(?:access_token|refresh_token|id_token|sid|token|aura\.token)"\s*:\s*)"[^"]*"'
+)
+# Campi hidden dei form Visualforce legati alla sessione (ViewState e i suoi
+# MAC/CSRF): blob di migliaia di caratteri, inutili per capire la pagina.
+_RE_INPUT = re.compile(r"<input\b[^>]*>", re.IGNORECASE)
+_RE_NOME_INPUT_SEGRETO = re.compile(
+    r'name="[^"]*(?:ViewState|CSRF|token|sid)[^"]*"', re.IGNORECASE
+)
+_RE_VALUE = re.compile(r'value="[^"]*"', re.IGNORECASE)
+_RE_EMAIL = re.compile(r"[\w.+-]+(?:@|%40)[\w-]+(?:\.[\w-]+)+")
+
+
+def _oscura_input_segreto(match: re.Match[str]) -> str:
+    tag = match.group(0)
+    if not _RE_NOME_INPUT_SEGRETO.search(tag):
+        return tag
+    return _RE_VALUE.sub('value="***"', tag)
+
+
+def _oscura_per_debug(testo: str, segreti: tuple[str, ...] = ()) -> str:
+    """Prepara una pagina del login per un file o una riga di log di debug.
+
+    Oltre a email e password (se il chiamante le conosce) toglie ogni
+    indirizzo email, i token e il codice di autorizzazione negli URL e nei
+    JSON, e il valore dei campi ViewState/CSRF dei form. Struttura, titoli
+    e messaggi del portale restano: sono quelli che servono a capire perche'
+    il login si e' fermato.
+    """
+    testo = _oscura_credenziali(testo, *segreti)
+    testo = _RE_PARAMETRI_SEGRETI.sub(r"\1=***", testo)
+    testo = _RE_JSON_SEGRETI.sub(r'\1"***"', testo)
+    testo = _RE_INPUT.sub(_oscura_input_segreto, testo)
+    return _RE_EMAIL.sub("***@***", testo)
+
+
 def _messaggio_rifiuto_login(payload: dict, return_value: object) -> str:
     """Il motivo del rifiuto come lo da' il server: di solito e' il
     returnValue stesso (una stringa senza il prefisso "OK:"), ma se l'azione
@@ -190,34 +236,63 @@ def _scrivi_pagina_debug(html: str, nome_file: str) -> None:
     _LOGGER.error("Pagina completa salvata in %s", percorso.resolve())
 
 
-def _salva_pagina_debug(html: str, nome_file: str) -> None:
+def rimuovi_pagine_debug() -> None:
+    """Cancella contatore_letture/debug/ e, se resta vuota, la cartella che
+    la contiene. I file sono sovrascritti a ogni tentativo ma, senza questa
+    pulizia, l'ultimo resterebbe sul disco per sempre. I/O sincrono: va
+    chiamata fuori dall'event loop (vedi _fuori_dal_loop)."""
+    shutil.rmtree(_DIR_DEBUG, ignore_errors=True)
+    with contextlib.suppress(OSError):
+        _DIR_DEBUG.parent.rmdir()
+
+
+def _fuori_dal_loop(funzione, *argomenti) -> None:
+    """Esegue una funzione di I/O su disco in un executor se c'e' un event
+    loop in corso (Home Assistant segnala l'I/O sincrono con "Detected
+    blocking call", visto in un log reale il 13/09/2026, prodotto dalla 0.6.1
+    su consent_page_debug.html), direttamente altrimenti (test,
+    scripts/verify_edistribuzione_login.py).
+
+    Deliberatamente non atteso: e' manutenzione best-effort, non deve
+    rallentare ne' far fallire il login se il disco e' lento o pieno.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        funzione(*argomenti)
+        return
+    loop.run_in_executor(None, funzione, *argomenti)
+
+
+def _salva_pagina_debug(html: str, nome_file: str, segreti: tuple[str, ...] = ()) -> None:
     """Scrive la pagina in contatore_letture/debug/, accanto a
     configuration.yaml, solo se il log di debug dell'integrazione e' attivo
     (best-effort: se il filesystem non e' scrivibile in questo contesto non
     blocca nulla) e logga il percorso, cosi' e' richiedibile all'utente in
     una segnalazione senza dovergli far catturare una HAR.
 
-    La scrittura e' delegata a un executor: qui siamo dentro l'event loop di
-    Home Assistant, che segnala l'I/O sincrono con "Detected blocking call
-    to write_text" (visto in un log reale il 13/09/2026, prodotto dalla
-    0.6.1 su consent_page_debug.html). Fuori da un event loop (test,
-    scripts/verify_edistribuzione_login.py) scrive direttamente.
+    La pagina passa sempre da _oscura_per_debug prima di arrivare sul disco:
+    l'utente la allega a una issue pubblica.
     """
     if not _LOGGER.isEnabledFor(logging.DEBUG):
         return
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        _scrivi_pagina_debug(html, nome_file)
+    _fuori_dal_loop(_scrivi_pagina_debug, _oscura_per_debug(html, segreti), nome_file)
+
+
+def _pulisci_pagine_debug() -> None:
+    """Dopo un accesso riuscito le pagine di un tentativo precedente non
+    servono piu': si cancellano, a meno che il log di debug sia ancora
+    attivo (l'utente sta raccogliendo informazioni per una segnalazione)."""
+    if _LOGGER.isEnabledFor(logging.DEBUG):
         return
-    # Deliberatamente non atteso: e' un dump diagnostico best-effort, non
-    # deve rallentare ne' far fallire il login se il disco e' lento o pieno
-    # (_scrivi_pagina_debug logga da se' l'esito).
-    loop.run_in_executor(None, _scrivi_pagina_debug, html, nome_file)
+    _fuori_dal_loop(rimuovi_pagine_debug)
 
 
 def _log_parsing_failure_context(
-    html: str, campo_cercato: str, nome_file_debug: str = "otp_page_debug.html"
+    html: str,
+    campo_cercato: str,
+    nome_file_debug: str = "otp_page_debug.html",
+    segreti: tuple[str, ...] = (),
 ) -> None:
     """Logga titolo + un'anteprima della pagina quando un campo atteso non
     si trova - serve a distinguere "regex sbagliato" (il campo c'e' ma in
@@ -234,11 +309,11 @@ def _log_parsing_failure_context(
         "Campo '%s' non trovato. Titolo pagina: %r. Lunghezza: %d caratteri. "
         "Primi 300 caratteri: %r",
         campo_cercato,
-        title,
+        _oscura_per_debug(title, segreti),
         len(html),
-        html[:300],
+        _oscura_per_debug(html[:300], segreti),
     )
-    _salva_pagina_debug(html, nome_file_debug)
+    _salva_pagina_debug(html, nome_file_debug, segreti)
 
 _MAX_REDIRECT_HOPS = 15
 
@@ -504,6 +579,9 @@ class EdistribuzioneAuthClient:
         # invece di lasciarlo aspettare un OTP che non arrivera' mai
         # (issue #2).
         self.otp_invio_confermato: bool | None = None
+        # Email e password del tentativo in corso, solo per toglierle dai
+        # dump di debug (vedi _oscura_per_debug): mai loggate ne' salvate.
+        self._segreti_debug: tuple[str, ...] = ()
         self._ultima_risposta_e_schermata_iniziale = False
 
     @property
@@ -540,6 +618,7 @@ class EdistribuzioneAuthClient:
         funzionato.
         """
         self._host = SF_HOST_PRINCIPALE
+        self._segreti_debug = (email, password)
         try:
             await self._async_begin_login_su_host(email, password)
         except EdistribuzioneBloccoAntibot:
@@ -617,7 +696,9 @@ class EdistribuzioneAuthClient:
                     landing_status,
                     landing_url,
                 )
-                _salva_pagina_debug(login_page_html, "login_page_debug.html")
+                _salva_pagina_debug(
+                    login_page_html, "login_page_debug.html", self._segreti_debug
+                )
             raise EdistribuzioneBloccoAntibot(
                 f"Richiesta bloccata dalla protezione anti-bot del portale "
                 f"(HTTP {landing_status} su {landing_url})"
@@ -632,7 +713,10 @@ class EdistribuzioneAuthClient:
             # forma che i regex non riconoscono) senza dover chiedere una
             # cattura HAR per scoprirlo.
             _log_parsing_failure_context(
-                login_page_html, "fwuid su pagina di login", "login_page_debug.html"
+                login_page_html,
+                "fwuid su pagina di login",
+                "login_page_debug.html",
+                self._segreti_debug,
             )
             raise EdistribuzioneParsingError(
                 f"fwuid not found on login page (HTTP {landing_status}, "
@@ -889,7 +973,7 @@ class EdistribuzioneAuthClient:
             body = await _leggi_testo(resp)
 
         if _contiene(body, _MARCATORI_TROPPE_SESSIONI):
-            _salva_pagina_debug(body, "otp_send_debug.html")
+            _salva_pagina_debug(body, "otp_send_debug.html", self._segreti_debug)
             raise EdistribuzioneTroppeSessioni(body[:500])
 
         self.otp_invio_confermato = _contiene(body, _MARCATORI_OTP_INVIATO)
@@ -912,7 +996,7 @@ class EdistribuzioneAuthClient:
                 _MARCATORI_OTP_INVIATO,
                 len(body),
             )
-            _salva_pagina_debug(body, "otp_send_debug.html")
+            _salva_pagina_debug(body, "otp_send_debug.html", self._segreti_debug)
 
         self._parse_otp_page(body)
 
@@ -936,7 +1020,7 @@ class EdistribuzioneAuthClient:
             body = await _leggi_testo(resp)
 
         if _contiene(body, _MARCATORI_TROPPE_SESSIONI):
-            _salva_pagina_debug(body, "otp_submit_response_debug.html")
+            _salva_pagina_debug(body, "otp_submit_response_debug.html", self._segreti_debug)
             raise EdistribuzioneTroppeSessioni(body[:500])
 
         if "Codice OTP" in body and "errato" in body.lower():
@@ -945,8 +1029,12 @@ class EdistribuzioneAuthClient:
         # Pull the "Location" meta tag content directly.
         loc_match = re.search(r'name="Location"\s+content="([^"]+)"', body)
         if not loc_match:
-            _log_parsing_failure_context(body, "meta Location dopo l'invio dell'OTP")
-            _salva_pagina_debug(body, "otp_submit_response_debug.html")
+            _log_parsing_failure_context(
+                body,
+                "meta Location dopo l'invio dell'OTP",
+                segreti=self._segreti_debug,
+            )
+            _salva_pagina_debug(body, "otp_submit_response_debug.html", self._segreti_debug)
             raise EdistribuzioneParsingError(
                 "Redirect (meta Location) non trovato nella risposta dopo "
                 f"l'invio dell'OTP (risposta lunga {len(body)} caratteri - "
@@ -988,8 +1076,12 @@ class EdistribuzioneAuthClient:
                 state_match = re.search(r"[?&]state=([^&'\"]+)", consent_html)
 
         if not code_match:
-            _log_parsing_failure_context(consent_html, "authorization code sulla pagina di consenso")
-            _salva_pagina_debug(consent_html, "consent_page_debug.html")
+            _log_parsing_failure_context(
+                consent_html,
+                "authorization code sulla pagina di consenso",
+                segreti=self._segreti_debug,
+            )
+            _salva_pagina_debug(consent_html, "consent_page_debug.html", self._segreti_debug)
             raise EdistribuzioneParsingError(
                 "Could not find authorization code in consent page response "
                 f"(pagina lunga {len(consent_html)} caratteri - vedi log per un'anteprima)"
@@ -1013,7 +1105,10 @@ class EdistribuzioneAuthClient:
             )
         auth_code = unquote(code_match.group(1))
 
-        return await self._async_exchange_code(auth_code)
+        tokens = await self._async_exchange_code(auth_code)
+        self._segreti_debug = ()
+        _pulisci_pagine_debug()
+        return tokens
 
     async def _async_approva_consenso(self, html: str) -> str | None:
         """Preme "Consenti" sulla schermata di consenso OAuth di Salesforce.
@@ -1210,7 +1305,9 @@ class EdistribuzioneAuthClient:
             raise EdistribuzioneRedirectNonValido("token_mancanti", ", ".join(mancanti))
 
         _LOGGER.info("Accesso dal browser riuscito")
-        return self._tokens_from_payload(parametri)
+        tokens = self._tokens_from_payload(parametri)
+        _pulisci_pagine_debug()
+        return tokens
 
     async def async_refresh_access_token(self, refresh_token: str) -> OAuthTokens:
         """Get a fresh access_token. No Aura/OTP involved - this is the path
@@ -1378,7 +1475,7 @@ class EdistribuzioneAuthClient:
                 rf'<input[^>]*name="{re.escape(field_name)}"[^>]*>', html
             )
             if not tag_match:
-                _log_parsing_failure_context(html, field_name)
+                _log_parsing_failure_context(html, field_name, segreti=self._segreti_debug)
                 raise EdistribuzioneParsingError(
                     f"Campo '{field_name}' non trovato sulla pagina OTP "
                     f"(pagina lunga {len(html)} caratteri - vedi log per un'anteprima)"
