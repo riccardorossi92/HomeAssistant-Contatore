@@ -19,6 +19,7 @@ import json
 import logging
 from pathlib import Path
 
+import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -33,6 +34,7 @@ ISTAT_CSV_URL = (
 # Content-Type application/octet-stream, quindi va decodificato a mano).
 ISTAT_CSV_ENCODING = "cp1252"
 SNAPSHOT_PATH = Path(__file__).parent / "data" / "istat_comuni_snapshot.json"
+_TIMEOUT = aiohttp.ClientTimeout(total=30)
 
 
 async def async_get_comuni_tree(hass: HomeAssistant) -> ComuniTree:
@@ -55,7 +57,7 @@ def _load_snapshot() -> ComuniTree:
 
 async def _async_fetch_live(hass: HomeAssistant) -> ComuniTree:
     session = async_get_clientsession(hass)
-    async with session.get(ISTAT_CSV_URL, timeout=30) as resp:
+    async with session.get(ISTAT_CSV_URL, timeout=_TIMEOUT) as resp:
         resp.raise_for_status()
         grezzo = await resp.read()
 

@@ -596,6 +596,21 @@ data:
   entry_id: <opzionale, se hai più istanze Duereti/Unareti/RetiPiù/RE.V.V.>
 ```
 
+## Credenziali e segnalazioni
+
+Come in ogni integrazione di Home Assistant, credenziali e token restano
+nella configurazione di Home Assistant (`.storage/core.config_entries`) in
+chiaro: chi può leggere quel file, o un backup non cifrato, può leggerli.
+Tieni cifrati i backup che escono dal server.
+
+Per segnalare un problema allega la **diagnostica** (**Impostazioni →
+Dispositivi e servizi → Contatore Letture → ⋮ → Scarica diagnostica**): ha la
+configurazione e lo stato dell'ultimo aggiornamento senza password, email,
+token, Client ID/Secret ID e codici fiscali. Con il log di debug attivo,
+E-Distribuzione salva le pagine del login in `contatore_letture/debug/`,
+accanto a `configuration.yaml`, già ripulite da credenziali e token; si
+cancellano da sole al primo accesso riuscito con il log di debug spento.
+
 ## Documentazione tecnica
 
 Dettagli di reverse engineering dei protocolli (endpoint, gotcha,
