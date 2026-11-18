@@ -332,5 +332,27 @@ class TestFallbackFormIssue21:
 
     def test_action_fuori_dal_portale_non_riceve_le_credenziali(self):
         pagina = PAGINA_LOGIN.replace("https://smartpod.ireti.it", "https://evil.example")
-        with pytest.raises(auth.IretiAuthError, match="Form di login"):
+        with pytest.raises(auth.IretiHostNonAmmesso, match="evil.example"):
             auth.IretiAuthClient._trova_action_login(pagina)
+
+    @pytest.mark.asyncio
+    async def test_action_fuori_dal_portale_nessun_post_delle_credenziali(self):
+        class _SessioneFormAltrove(_SessioneForm):
+            def get(self, url, params=None, headers=None):
+                super().get(url, params=params, headers=headers)
+                return _RispostaGenerica(
+                    200, PAGINA_LOGIN.replace("https://smartpod.ireti.it", "https://evil.example")
+                )
+
+        sessione = _SessioneFormAltrove()
+        with pytest.raises(auth.IretiHostNonAmmesso):
+            await auth.IretiAuthClient(sessione).async_login("utente", "a<b")
+        # Il password grant (bloccato dal WAF) e la pagina, nessun POST al form.
+        assert [(m, u.rsplit("/", 1)[-1]) for m, u, _ in sessione.richieste] == [
+            ("POST", "token"),
+            ("GET", "auth"),
+        ]
+
+    def test_form_senza_action_di_login_resta_non_trovato(self):
+        with pytest.raises(auth.IretiAuthError, match="Form di login Ireti non trovato"):
+            auth.IretiAuthClient._trova_action_login("<html><form action=\"/altro\"></form>")

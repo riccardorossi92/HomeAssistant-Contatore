@@ -40,6 +40,7 @@ from .const import (
     BASE_URL,
     CLIENT_ID,
     HEADERS_PAGINA,
+    HOST_LOGIN_AMMESSI,
     REDIRECT_URI,
     TOKEN_URL,
 )
@@ -54,6 +55,46 @@ class IretiAuthError(Exception):
 class IretiInvalidCredentials(IretiAuthError):
     """Username o password rifiutati da Keycloak (errore OAuth2 standard,
     tipicamente invalid_grant)."""
+
+
+class IretiHostNonAmmesso(IretiAuthError):
+    """L'action del form di login punta fuori da HOST_LOGIN_AMMESSI (o non e'
+    https): le credenziali non vengono mandate."""
+
+
+def _host_ammesso(host: str) -> bool:
+    """True se l'host e' in HOST_LOGIN_AMMESSI, o ne e' un sottodominio per
+    le voci che iniziano con "."."""
+    return any(
+        host.endswith(voce) if voce.startswith(".") else host == voce
+        for voce in HOST_LOGIN_AMMESSI
+    )
+
+
+def _verifica_host(url: str, passo: str) -> None:
+    """Alza IretiHostNonAmmesso se l'URL non e' https su un host di
+    HOST_LOGIN_AMMESSI. Log ed errore dicono quale host e a che passo del
+    login, come per E-Distribuzione e Areti; nel messaggio solo schema e
+    host, perche' il resto dell'URL contiene il codice di sessione di
+    Keycloak."""
+    parti = urlsplit(url)
+    schema = parti.scheme.lower()
+    host = (parti.hostname or "").lower()
+    if schema == "https" and _host_ammesso(host):
+        return
+    if not schema:
+        motivo = "e' un indirizzo relativo, non previsto a questo passo"
+    elif schema != "https":
+        motivo = "non usa https"
+    else:
+        motivo = "non e' tra quelli ammessi"
+    messaggio = (
+        f"Accesso Ireti interrotto al passo \"{passo}\": il portale ha indicato "
+        f"{schema}://{host}, che {motivo}. Se e' un host legittimo del portale va "
+        "aggiunto a HOST_LOGIN_AMMESSI in distributors/ireti/const.py."
+    )
+    _LOGGER.error(messaggio)
+    raise IretiHostNonAmmesso(messaggio)
 
 
 class _IretiWafBlock(IretiAuthError):
@@ -230,7 +271,6 @@ class IretiAuthClient:
             if trovata and "login-actions/authenticate" in trovata.group(1):
                 action = html.unescape(trovata.group(1))
                 # Le credenziali vanno solo al portale, mai altrove.
-                if action.startswith(BASE_URL + "/"):
-                    return action
-                break
+                _verifica_host(action, "form di login Keycloak")
+                return action
         raise IretiAuthError("Form di login Ireti non trovato nella pagina")
