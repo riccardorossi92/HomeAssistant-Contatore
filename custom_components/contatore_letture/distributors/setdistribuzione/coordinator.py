@@ -455,3 +455,9 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 f"Nessun dato importato per il periodo {data_da} - {data_a}. "
                 + "; ".join(fallimenti)
             )
+
+        # Il recupero scrive solo statistiche e non passa dal giro automatico:
+        # senza questo avviso i sensori calcolati dalle statistiche (consumo
+        # del mese precedente, del trimestre, dell'anno) restano al valore di
+        # prima fino al giro successivo.
+        self.async_update_listeners()

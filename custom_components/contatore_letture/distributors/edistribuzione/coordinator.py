@@ -747,6 +747,12 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 + "; ".join(fallimenti)
             )
 
+        # Il recupero scrive solo statistiche e non passa dal giro automatico:
+        # senza questo avviso i sensori calcolati dalle statistiche (consumo
+        # del mese precedente, del trimestre, dell'anno) restano al valore di
+        # prima fino al giro successivo.
+        self.async_update_listeners()
+
     @property
     def api(self) -> EdistribuzioneApiClient:
         """Expose the API client for on-demand calls."""

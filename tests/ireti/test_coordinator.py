@@ -321,9 +321,12 @@ class TestRecuperaStorico:
     async def test_successo_non_solleva(self, hass, coordinator, _import_statistiche):
         self._api.async_get_measures_loadprofiles = AsyncMock(return_value=[LOAD_PROFILE_REALE])
 
+        coordinator.async_update_listeners = Mock()
+
         await coordinator.async_recupera_storico(DATA_DA, DATA_A)
 
         _import_statistiche.assert_awaited()
+        coordinator.async_update_listeners.assert_called_once()
 
 
 def test_kwh_del_giorno_somma_entrambi_gli_elementi_del_giorno_da_25_ore():

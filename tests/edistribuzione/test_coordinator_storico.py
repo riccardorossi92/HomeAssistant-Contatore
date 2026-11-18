@@ -7,7 +7,7 @@ nei log (issue #4).
 from __future__ import annotations
 
 from datetime import date
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from freezegun import freeze_time
@@ -110,11 +110,13 @@ async def test_successo_non_solleva(
     coordinator._api.async_get_daily_load_profile = AsyncMock(
         return_value=_curva([DATA_DA, DATA_A])
     )
+    coordinator.async_update_listeners = Mock()
 
     with freeze_time(OGGI):
         await coordinator.async_recupera_storico(DATA_DA, DATA_A)
 
     _import_statistiche.assert_awaited_once()
+    coordinator.async_update_listeners.assert_called_once()
 
 
 async def test_fallimento_parziale_resta_un_successo(

@@ -102,6 +102,11 @@ async def test_successo_non_solleva(hass, coordinator, _import_statistiche):
         return_value={"elementiCurve": [{"data": "01/07/2026", "valore": "1,5"}]}
     )
 
+    coordinator.async_update_listeners = Mock()
+
     await coordinator.async_recupera_storico(DATA_DA, DATA_A)
 
     _import_statistiche.assert_awaited_once()
+    # I sensori calcolati dalle statistiche (mese precedente, trimestre,
+    # anno) si aggiornano solo se il coordinator avvisa gli ascoltatori.
+    coordinator.async_update_listeners.assert_called_once()

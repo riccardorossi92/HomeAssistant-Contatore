@@ -430,10 +430,12 @@ class TestRecuperaStorico:
             (2026, 10): _giorni(2026, 10, 1, 31),
         })
         monkeypatch.setattr(coordinator, "_async_login", AsyncMock(return_value=api))
+        coordinator.async_update_listeners = Mock()
 
         await coordinator.async_recupera_storico(date(2026, 9, 15), date(2026, 10, 10))
 
         assert _mesi_chiesti(api) == [(2026, 9), (2026, 10)]
+        coordinator.async_update_listeners.assert_called_once()
         giorni = [len(ore) // 24 for _, ore in statistiche["importate"]]
         assert giorni == [16, 10]  # 15-30/9 e 1-10/10
 

@@ -264,10 +264,12 @@ class TestRecuperaStorico:
     async def test_importa_a_blocchi(self, hass, coordinator, statistiche, monkeypatch):
         api = _api_finta()
         monkeypatch.setattr(coordinator, "_async_login", AsyncMock(return_value=api))
+        coordinator.async_update_listeners = Mock()
 
         await coordinator.async_recupera_storico(date(2026, 8, 1), date(2026, 9, 30))
 
         assert len(_giorni_chiesti(api)) == 61
+        coordinator.async_update_listeners.assert_called_once()
         # 61 giorni = blocchi da 31 + 30: due scritture, non 61.
         assert [len(ore) // 24 for ore in statistiche["importate"]] == [31, 30]
 
