@@ -15,8 +15,10 @@ from custom_components.contatore_letture.distributors.edistribuzione.const impor
 
 
 def test_elenco_degli_host_in_una_sola_costante():
-    assert "private.e-distribuzione.it" in HOST_LOGIN_AMMESSI
-    assert "edistribuzione.my.salesforce.com" in HOST_LOGIN_AMMESSI
+    # Confronto con ==, non "in": e' la lista degli host, non una sottostringa
+    # di un URL (CodeQL py/incomplete-url-substring-sanitization).
+    assert any(voce == "private.e-distribuzione.it" for voce in HOST_LOGIN_AMMESSI)
+    assert any(voce == "edistribuzione.my.salesforce.com" for voce in HOST_LOGIN_AMMESSI)
     assert all(voce == voce.lower() for voce in HOST_LOGIN_AMMESSI)
 
 
