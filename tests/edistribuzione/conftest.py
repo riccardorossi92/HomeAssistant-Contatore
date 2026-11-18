@@ -5,6 +5,7 @@ __init__ non fa I/O, e i client auth/api creati restano inutilizzati.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -38,6 +39,12 @@ def make_edist_coordinator(hass):
         )
         entry.add_to_hass(hass)
         coordinator = create_coordinator(hass, entry)
+        # Il token si rinnova alla prima chiamata alle API del giro: nei test
+        # il rinnovo non deve arrivare alla rete (stesso refresh_token, la
+        # entry non cambia).
+        coordinator._auth.async_refresh_access_token = AsyncMock(
+            return_value=SimpleNamespace(access_token="AT", refresh_token="rt")
+        )
         # Nessuna fornitura con impianto: i test che non riguardano
         # l'immissione non devono arrivare alla rete per getSupplies.
         coordinator._api.async_get_supplies = AsyncMock(return_value=[])
