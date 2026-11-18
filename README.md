@@ -200,7 +200,11 @@ Dopo aver scelto il comune, il wizard chiede la modalità.
    e **non** è l'indirizzo nella barra del browser: è un testo molto lungo
    che inizia con `eneldist://redirect`. Nella scheda **Network** cerca la
    riga con stato **302**, cliccala e in **Headers** → **Response
-   Headers** copia il valore di **Location**. In alternativa, nella scheda
+   Headers** copia il valore di **Location**. Se invece hai premuto
+   **Consenti**, non c'è nessun 302: clicca la richiesta
+   **AuthorizationPage** (metodo POST, stato 200), apri la scheda
+   **Response** (Risposta) e copia tutto il testo, oppure solo la parte
+   che inizia con `eneldist://redirect`. In alternativa, nella scheda
    **Console** può comparire una riga rossa `Failed to launch
    'eneldist://redirect…'`: copiala intera. Se il testo copiato non
    contiene `eneldist://redirect`, non è quello giusto. Se gli strumenti
