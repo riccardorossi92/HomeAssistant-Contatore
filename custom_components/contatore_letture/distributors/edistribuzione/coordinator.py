@@ -148,6 +148,9 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         # "A2": {...}}. In memoria: dopo un riavvio si rilegge (una chiamata).
         self._fasce: dict[str, dict] = {}
         self._fasce_tentativo: dict[str, datetime] = {}
+        # True quando l'access_token e' gia' stato rinnovato in questo giro:
+        # vedi _async_api_pronta.
+        self._token_rinnovato_nel_giro = False
         self._assicura_orario_richiesta()
 
     async def _async_ensure_token(self) -> None:
@@ -169,11 +172,28 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
             raise UpdateFailed(f"Token refresh failed: {err}") from err
 
         self._api.update_token(tokens.access_token)
+        self._token_rinnovato_nel_giro = True
 
         if tokens.refresh_token != refresh_token:
             new_data = dict(self.entry.data)
             new_data[CONF_REFRESH_TOKEN] = tokens.refresh_token
             self.hass.config_entries.async_update_entry(self.entry, data=new_data)
+
+    async def _async_api_pronta(self) -> EdistribuzioneApiClient:
+        """Il client delle API con un access_token rinnovato in questo giro.
+
+        Il coordinator gira ogni ora ma chiama le API di rado: la curva una
+        volta al giorno dopo l'orario configurato (piu' gli arretrati),
+        getSupplies una volta al giorno, le fasce finche' il mese precedente
+        non c'e'. Rinnovare il token in apertura di ogni giro faceva 24
+        richieste al giorno al token endpoint, dove E-Distribuzione applica
+        gia' i suoi blocchi (app_blocked, antibot), per una o due chiamate
+        utili. Qui il rinnovo avviene alla prima chiamata del giro e vale per
+        tutte le altre dello stesso giro.
+        """
+        if not self._token_rinnovato_nel_giro:
+            await self._async_ensure_token()
+        return self._api
 
     # ------------------------------------------------------------------
     # Orario configurabile + coda dei giorni da riprovare, PER POD
@@ -403,7 +423,7 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         if self._pod_con_impianto is not None and self._pod_con_impianto_del == oggi:
             return self._pod_con_impianto
         try:
-            forniture = await self._api.async_get_supplies()
+            forniture = await (await self._async_api_pronta()).async_get_supplies()
         except EdistribuzioneApiError as err:
             _LOGGER.warning(
                 "Impossibile leggere le forniture da E-Distribuzione, per ora non "
@@ -443,7 +463,8 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
         for grandezza in mancanti:
             try:
-                righe = await self._api.async_get_monthly_time_of_use(
+                api = await self._async_api_pronta()
+                righe = await api.async_get_monthly_time_of_use(
                     pod, inizio, fine, magnitude=grandezza
                 )
             except EdistribuzioneApiError as err:
@@ -468,7 +489,8 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         if pod not in await self._async_pod_con_impianto():
             return
         try:
-            curva = await self._api.async_get_daily_load_profile(
+            api = await self._async_api_pronta()
+            curva = await api.async_get_daily_load_profile(
                 pod, data_da, data_a, magnitude=MAGNITUDE_IMMISSIONE
             )
         except EdistribuzioneApiError as err:
@@ -490,7 +512,8 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
     # ------------------------------------------------------------------
 
     async def _async_update_data(self) -> dict:
-        await self._async_ensure_token()
+        # Il token si rinnova solo se in questo giro serve chiamare le API.
+        self._token_rinnovato_nel_giro = False
 
         by_pod: dict[str, dict] = {}
         # Una volta per giro (in cache per il resto della giornata): serve ai
@@ -504,8 +527,9 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
             if richiesta is not None:
                 data_da, data_a = richiesta
                 ultimo_giorno_richiesto = data_a
+                api = await self._async_api_pronta()
                 try:
-                    curva = await self._api.async_get_daily_load_profile(
+                    curva = await api.async_get_daily_load_profile(
                         pod, data_da, data_a, magnitude=MAGNITUDE_PRELIEVO
                     )
                 except EdistribuzioneApiError as err:
