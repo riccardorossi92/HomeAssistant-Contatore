@@ -43,6 +43,21 @@ SF_BASE = f"https://{SF_HOST_PRINCIPALE}/PortaleClienti"
 SF_HOST_TOKEN = "edistribuzione.my.salesforce.com"
 OAUTH_TOKEN_URL_DIRETTO = f"https://{SF_HOST_TOKEN}/services/oauth2/token"
 
+# Host su cui il login puo' seguire redirect, pagine-ponte e form indicati dal
+# portale (vedi auth._verifica_host). Un indirizzo fuori da questi, o non
+# https, interrompe l'accesso: li' finirebbero i campi dei form e il codice
+# OTP. Le voci che iniziano con "." valgono per tutti i sottodomini (le pagine
+# Visualforce del login flow possono passare da *.force.com). Se il login si
+# ferma su un host legittimo, il log dice quale: basta aggiungerlo qui.
+HOST_LOGIN_AMMESSI = (
+    *SF_HOSTS,
+    SF_HOST_TOKEN,
+    ".e-distribuzione.it",
+    ".force.com",
+    ".salesforce.com",
+    ".site.com",
+)
+
 OAUTH_AUTHORIZE_URL = f"{SF_BASE}/services/oauth2/authorize"
 OAUTH_TOKEN_URL = f"{SF_BASE}/services/oauth2/token"
 OAUTH_USERINFO_URL = f"{SF_BASE}/services/oauth2/userinfo"

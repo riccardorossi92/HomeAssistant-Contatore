@@ -17,6 +17,19 @@ LOGIN_URL = f"{BASE_URL}/portaleareti/AretiLoginURL"
 AURA_URL = f"{BASE_URL}/portaleareti/s/sfsites/aura"
 HOME_URL = f"{BASE_URL}/portaleareti/s/"
 
+# Host su cui il login puo' seguire il redirect dopo le credenziali e le
+# pagine-ponte (vedi auth._verifica_host). Un indirizzo fuori da questi, o non
+# https, interrompe l'accesso invece di portarci la sessione. Le voci che
+# iniziano con "." valgono per tutti i sottodomini. Se il login si ferma su un
+# host legittimo, il log dice quale: basta aggiungerlo qui.
+HOST_LOGIN_AMMESSI = (
+    "areariservataclienti.areti.it",
+    ".areti.it",
+    ".force.com",
+    ".salesforce.com",
+    ".site.com",
+)
+
 DISPLAY_NAME = "Areti"
 PIVA = "05816611007"  # confermata via scheda operatore ARERA (Id operatore 338, gruppo Acea)
 

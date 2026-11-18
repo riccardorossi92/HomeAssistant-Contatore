@@ -46,11 +46,16 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from html import unescape as _unescape_html
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import aiohttp
 
-from .const import BASE_URL, HOME_URL, LOGIN_URL
+from .const import (
+    BASE_URL,
+    HOME_URL,
+    HOST_LOGIN_AMMESSI,
+    LOGIN_URL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -215,6 +220,45 @@ class AretiParsingError(AretiAuthError):
     """
 
 
+class AretiHostNonAmmesso(AretiParsingError):
+    """Il portale ha indicato un indirizzo fuori dai domini attesi (o non
+    https) durante il login: non lo si segue."""
+
+
+def _host_ammesso(host: str) -> bool:
+    """True se l'host e' in HOST_LOGIN_AMMESSI, o ne e' un sottodominio per
+    le voci che iniziano con "."."""
+    return any(
+        host.endswith(voce) if voce.startswith(".") else host == voce
+        for voce in HOST_LOGIN_AMMESSI
+    )
+
+
+def _verifica_host(url: str, passo: str) -> None:
+    """Alza AretiHostNonAmmesso se l'URL non e' https su un host di
+    HOST_LOGIN_AMMESSI. Log ed errore dicono quale host e a che passo del
+    login (vedi edistribuzione/auth.py); nel messaggio solo schema e host,
+    perche' il resto dell'URL puo' contenere il ticket di sessione."""
+    parti = urlsplit(url)
+    schema = parti.scheme.lower()
+    host = (parti.hostname or "").lower()
+    if schema == "https" and _host_ammesso(host):
+        return
+    if not schema:
+        motivo = "e' un indirizzo relativo, non previsto a questo passo"
+    elif schema != "https":
+        motivo = "non usa https"
+    else:
+        motivo = "non e' tra quelli ammessi"
+    messaggio = (
+        f"Accesso Areti interrotto al passo \"{passo}\": il portale ha indicato "
+        f"{schema}://{host}, che {motivo}. Se e' un host legittimo del portale va "
+        "aggiunto a HOST_LOGIN_AMMESSI in distributors/areti/const.py."
+    )
+    _LOGGER.error(messaggio)
+    raise AretiHostNonAmmesso(messaggio)
+
+
 @dataclass
 class AretiAuraContext:
     """Tutto il necessario per chiamare l'endpoint Aura (api.py) dopo un
@@ -302,6 +346,7 @@ class AretiAuthClient:
                 or "Login rifiutato: nessun header 'Location' nella risposta."
             )
 
+        _verifica_host(location, "redirect dopo le credenziali")
         async with self._session.get(
             location, headers={**headers, "Referer": LOGIN_URL}
         ) as resp:
@@ -385,6 +430,7 @@ class AretiAuthClient:
             if not match:
                 return html
             prossimo_url = _unescape_html(match.group(1))
+            _verifica_host(prossimo_url, "pagina-ponte dopo il login")
             _LOGGER.debug("Login Areti: seguo il ponte verso %s", prossimo_url)
             async with self._session.get(
                 prossimo_url, headers={**headers, "Referer": url_attuale}
