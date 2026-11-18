@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 
+import aiohttp
 from bs4 import BeautifulSoup
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -21,6 +22,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 _LOGGER = logging.getLogger(__name__)
 
 ARERA_SEARCH_URL = "https://www.arera.it/area-operatori/ricerca-operatori"
+_TIMEOUT = aiohttp.ClientTimeout(total=20)
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Home Assistant contatore_letture integration; "
@@ -58,7 +60,7 @@ async def async_query_distributore(
 
     try:
         async with session.get(
-            ARERA_SEARCH_URL, params=params, headers=_HEADERS, timeout=20
+            ARERA_SEARCH_URL, params=params, headers=_HEADERS, timeout=_TIMEOUT
         ) as resp:
             resp.raise_for_status()
             html = await resp.text()
