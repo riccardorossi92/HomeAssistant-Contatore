@@ -20,6 +20,13 @@ TOKEN_URL = f"{BASE_URL}/auth/realms/{REALM}/protocol/openid-connect/token"
 AUTH_URL = f"{BASE_URL}/auth/realms/{REALM}/protocol/openid-connect/auth"
 REDIRECT_URI = f"{BASE_URL}/"
 
+# Host a cui il login a form puo' mandare le credenziali (l'action del form
+# di Keycloak, vedi auth._verifica_host): https e solo questi. Le voci che
+# iniziano con "." valgono per tutti i sottodomini. Se Ireti sposta Keycloak
+# e il login si ferma, il log dice quale host e' stato rifiutato: basta
+# aggiungerlo qui.
+HOST_LOGIN_AMMESSI = ("smartpod.ireti.it",)
+
 DISPLAY_NAME = "Ireti"
 # Confermata via query ARERA live (comune di Torino, 18/09/2026): "IRETI
 # S.P.A.", Id operatore 3045, gruppo IREN. E' la chiave che fa scattare
