@@ -41,6 +41,7 @@ import aiohttp
 
 from .const import (
     AURA_ENDPOINT,
+    HOST_LOGIN_AMMESSI,
     LOGINFLOW_URL,
     OAUTH_AUTHORIZE_URL,
     OAUTH_CLIENT_ID,
@@ -470,6 +471,53 @@ class EdistribuzioneParsingError(EdistribuzioneAuthError):
     """
 
 
+class EdistribuzioneHostNonAmmesso(EdistribuzioneParsingError):
+    """Il portale ha indicato un indirizzo fuori dai domini attesi (o non
+    https) durante il login: redirect, pagina-ponte o form. Non lo si segue,
+    perche' li' finirebbero i campi del form e il codice OTP."""
+
+
+def _host_ammesso(host: str) -> bool:
+    """True se l'host e' in HOST_LOGIN_AMMESSI, o ne e' un sottodominio per
+    le voci che iniziano con "."."""
+    return any(
+        host.endswith(voce) if voce.startswith(".") else host == voce
+        for voce in HOST_LOGIN_AMMESSI
+    )
+
+
+def _verifica_host(url: object, passo: str) -> None:
+    """Alza EdistribuzioneHostNonAmmesso se un URL assoluto http(s) non e'
+    https o non punta a un host di HOST_LOGIN_AMMESSI.
+
+    'passo' dice a che punto del login si e' (es. "frontdoor dopo le
+    credenziali"): finisce nel log e nell'errore insieme all'host rifiutato,
+    cosi' un host legittimo bloccato si riconosce subito e si aggiunge alla
+    costante. Nel messaggio solo schema e host: il resto dell'URL puo'
+    contenere token.
+
+    URL relativi (risolti dal chiamante sull'host attivo) e schemi diversi da
+    http(s), come eneldist:// dell'app, passano: non sono richieste che
+    partono da qui verso un altro host.
+    """
+    parti = urlsplit(str(url))
+    schema = parti.scheme.lower()
+    if schema not in ("http", "https"):
+        return
+    host = (parti.hostname or "").lower()
+    if schema == "https" and _host_ammesso(host):
+        return
+    motivo = "non e' tra quelli ammessi" if schema == "https" else "non usa https"
+    messaggio = (
+        f"Accesso E-Distribuzione interrotto al passo \"{passo}\": il portale "
+        f"ha indicato {schema}://{host}, che {motivo}. Se e' un host legittimo "
+        "del portale va aggiunto a HOST_LOGIN_AMMESSI in "
+        "distributors/edistribuzione/const.py."
+    )
+    _LOGGER.error(messaggio)
+    raise EdistribuzioneHostNonAmmesso(messaggio)
+
+
 async def _get_following_redirects(
     session: aiohttp.ClientSession,
     url: str,
@@ -477,6 +525,7 @@ async def _get_following_redirects(
     params: dict | None = None,
     headers: dict | None = None,
     riscrivi=_identita,
+    passo: str = "redirect",
 ) -> aiohttp.ClientResponse:
     """GET seguendo i redirect a mano invece di allow_redirects=True.
 
@@ -497,12 +546,16 @@ async def _get_following_redirects(
     personalizzato dietro Imperva, e seguirlo cosi' com'e' farebbe atterrare
     sulla pagina antibot invece che a destinazione.
 
+    'passo' descrive la richiesta per il controllo degli host (vedi
+    _verifica_host); i redirect successivi lo riportano con il loro numero.
+
     Ritorna la risposta finale (status < 300, nessun altro Location);
     il chiamante e' responsabile di chiudere/consumare 'resp' come al solito.
     """
+    _verifica_host(url, passo)
     resp = await session.get(url, params=params, headers=headers, allow_redirects=False)
 
-    for _ in range(_MAX_REDIRECT_HOPS):
+    for numero_hop in range(1, _MAX_REDIRECT_HOPS + 1):
         location = resp.headers.get("Location")
         if location is None:
             return resp
@@ -511,6 +564,7 @@ async def _get_following_redirects(
         location_url = aiohttp.client.URL(location, encoded=True)
         next_url = location_url if location_url.is_absolute() else resp.url.join(location_url)
         next_url = aiohttp.client.URL(riscrivi(str(next_url)), encoded=True)
+        _verifica_host(next_url, f"{passo}, redirect {numero_hop}")
         resp = await session.get(next_url, headers=headers, allow_redirects=False)
 
     resp.close()
@@ -663,6 +717,7 @@ class EdistribuzioneAuthClient:
             params=params,
             headers=headers,
             riscrivi=self._su_host,
+            passo="authorize OAuth verso la pagina di login",
         )
         login_page_html = await resp.text()
         # Il parametro 'startURL' della pagina su cui atterriamo contiene un
@@ -864,7 +919,11 @@ class EdistribuzioneAuthClient:
         # l'ordine cronologico reale di una HAR il 20/08/2026: la pagina di
         # frontdoor.jsp NON e' mai il form OTP, e' solo un ponte.
         resp = await _get_following_redirects(
-            self._session, frontdoor_url, headers=headers, riscrivi=self._su_host
+            self._session,
+            frontdoor_url,
+            headers=headers,
+            riscrivi=self._su_host,
+            passo="frontdoor dopo le credenziali",
         )
         bridge_html = await resp.text()
         resp.close()
@@ -872,7 +931,11 @@ class EdistribuzioneAuthClient:
 
         otp_form_url = self._su_host(self._extract_js_redirect_url(bridge_html))
         resp = await _get_following_redirects(
-            self._session, otp_form_url, headers=headers, riscrivi=self._su_host
+            self._session,
+            otp_form_url,
+            headers=headers,
+            riscrivi=self._su_host,
+            passo="pagina del codice OTP",
         )
         otp_page_html = await resp.text()
         resp.close()
@@ -1044,6 +1107,7 @@ class EdistribuzioneAuthClient:
         if next_url.startswith("/"):
             next_url = self._origin + next_url
         next_url = self._su_host(next_url)
+        _verifica_host(next_url, "redirect dopo il codice OTP")
 
         # This page normally triggers a JS redirect to eneldist://redirect?code=...
         # We can't follow a custom URL scheme with aiohttp, so scrape the code
@@ -1124,6 +1188,7 @@ class EdistribuzioneAuthClient:
 
         action_url, dati = form
         action_url = self._su_host(action_url)
+        _verifica_host(action_url, "form di consenso OAuth")
         _LOGGER.info(
             "Schermata di consenso OAuth rilevata (prima autorizzazione di "
             "questo account): confermo con %r", dati.get("save")
@@ -1525,3 +1590,4 @@ class EdistribuzioneAuthClient:
             self._flow.form_action_url = (
                 self._su_host(action) if action.startswith("http") else f"{self._origin}{action}"
             )
+            _verifica_host(self._flow.form_action_url, "form del codice OTP")
