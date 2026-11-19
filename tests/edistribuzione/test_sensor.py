@@ -95,8 +95,9 @@ async def test_immissione_solo_dopo_aver_letto_has_plant(hass):
         cb()
     aggiunte.assert_called_once()
     nuove = aggiunte.call_args.args[0]
-    # 3 fasce di immissione + 5 sensori di periodo
-    assert len(nuove) == 8
+    # 1 immissione ultimo giorno + 3 fasce di immissione + 5 sensori di periodo
+    assert len(nuove) == 9
+    assert sum(isinstance(e, s.EdistribuzioneImmissioneGiornoSensor) for e in nuove) == 1
     assert sum(isinstance(e, s.EdistribuzioneFasciaSensor) for e in nuove) == 3
     assert {e.unique_id.split("_", 2)[-1] for e in nuove if "immissione" in e.unique_id}
 
@@ -186,3 +187,27 @@ async def test_consumo_giorno_dato_del_coordinator_vince_sul_ripristinato():
     await _aggiungi(sensore, SimpleNamespace(state="32.225", attributes={"giorno": "2026-11-01"}))
     assert sensore.native_value == 10.0
     assert sensore.extra_state_attributes["giorno"] == "2026-11-14"
+
+
+def test_immissione_giorno_mantiene_ultimo_valore_e_giorno():
+    """Come il consumo: nei cicli senza dati nuovi restano l'ultimo valore
+    immesso e il suo giorno, e il consumo non interferisce."""
+    coord = _coord(
+        {
+            POD: {
+                "kwh_ultimo_giorno_immesso": 3.4567,
+                "ultimo_giorno_immesso": "2026-11-15",
+                "kwh_ultimo_giorno_importato": 16.8,
+                "ultimo_giorno_importato": "2026-11-14",
+            }
+        }
+    )
+    sensore = s.EdistribuzioneImmissioneGiornoSensor(coord, _entry(), POD)
+    _giro_coordinator(sensore)
+    assert sensore.native_value == 3.457
+    assert sensore.extra_state_attributes["giorno"] == "2026-11-15"
+    assert sensore.unique_id.endswith(f"_{POD}_immissione_giorno")
+    coord.data = {"by_pod": {POD: {"kwh_ultimo_giorno_immesso": None}}}
+    _giro_coordinator(sensore)
+    assert sensore.native_value == 3.457
+    assert sensore.extra_state_attributes["giorno"] == "2026-11-15"

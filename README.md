@@ -498,6 +498,7 @@ di salvare.
 | POD configurati | Account | Quanti e quali POD in questa istanza |
 | Ultima data disponibile | POD | Ultimo giorno per cui esistono dati importati |
 | Consumo ultimo giorno importato | POD | kWh dell'ultimo giorno importato |
+| Immissione ultimo giorno importato | POD | kWh immessi nell'ultimo giorno ricevuto (solo POD con impianto); l'attributo `giorno` indica a che giorno si riferiscono |
 
 </details>
 
