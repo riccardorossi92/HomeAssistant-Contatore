@@ -23,7 +23,7 @@ from urllib.parse import quote
 
 import aiohttp
 
-from .const import API_BASE, HEADERS_BROWSER, HEADERS_ORIGINE_PORTALE
+from .const import API_BASE, GRANDEZZA_PRELIEVO, HEADERS_BROWSER, HEADERS_ORIGINE_PORTALE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -115,25 +115,53 @@ class SetDistribuzioneApiClient:
         return list(risultato.values())
 
     async def async_get_consumi_giorno(
-        self, fiscal_code: str, profilo: str, contract_id: str, pod: str, giorno: date
+        self, fiscal_code: str, profilo: str, contract_id: str, pod: str, giorno: date,
+        grandezza: str = GRANDEZZA_PRELIEVO,
     ) -> list[dict[str, Any]]:
         """Le ore di un giorno, ciascuna con 'hour', 'total' e 'quarters'
         (4 valori in kWh). Lista vuota se il giorno non è ancora
         disponibile: nella cattura un giorno non pubblicato semplicemente
         manca dall'elenco mensile, la risposta del dettaglio per un giorno
-        così non è mai stata vista (vuota o 404, entrambe gestite)."""
-        corpo = await self._get(
-            f"/secure/utility/{quote(fiscal_code, safe='')}/{quote(contract_id, safe='')}"
-            "/consumption",
+        così non è mai stata vista (vuota o 404, entrambe gestite).
+        'grandezza' è A1 (prelievo) o A2 (immissione): stessa forma."""
+        return await self._async_consumi(
+            fiscal_code, contract_id,
             {
                 "consumptionRange": "F1_F2_F3",
-                "consumptionType": "A1",
+                "consumptionType": grandezza,
                 "day": giorno.day,
                 "month": giorno.month - 1,
                 "profile": profilo,
                 "supplyPoint": pod,
                 "year": giorno.year,
             },
+        )
+
+    async def async_get_mesi_anno(
+        self, fiscal_code: str, profilo: str, contract_id: str, pod: str, anno: int,
+        grandezza: str,
+    ) -> list[dict[str, Any]]:
+        """Un elemento per mese dell'anno ('month' 1-based, 'total',
+        'estimated'): una sola richiesta, usata per sapere se il POD immette
+        energia in rete."""
+        return await self._async_consumi(
+            fiscal_code, contract_id,
+            {
+                "consumptionRange": "F1_F2_F3",
+                "consumptionType": grandezza,
+                "profile": profilo,
+                "supplyPoint": pod,
+                "year": anno,
+            },
+        )
+
+    async def _async_consumi(
+        self, fiscal_code: str, contract_id: str, params: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        corpo = await self._get(
+            f"/secure/utility/{quote(fiscal_code, safe='')}/{quote(contract_id, safe='')}"
+            "/consumption",
+            params,
             vuoto_se_404=True,
         )
         if corpo is None:

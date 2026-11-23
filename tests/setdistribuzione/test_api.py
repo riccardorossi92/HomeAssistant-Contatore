@@ -145,6 +145,33 @@ class TestConsumiGiorno:
         }
 
     @pytest.mark.asyncio
+    async def test_immissione_cambia_solo_consumption_type(self):
+        client, sessione = _client(_Risposta(200, CONSUMI_GIORNO_12_10_2026))
+        await client.async_get_consumi_giorno(
+            "XXXX", "Retail_SET", "0100000001", "IT999E00000001", date(2026, 10, 12),
+            grandezza="A2",
+        )
+        assert sessione.richieste[0]["params"]["consumptionType"] == "A2"
+
+    @pytest.mark.asyncio
+    async def test_mesi_dell_anno(self):
+        mesi = {"message": "ok", "data": {"total": 339.108, "consumptions": [
+            {"month": 4, "total": 339.108, "estimated": False},
+        ]}}
+        client, sessione = _client(_Risposta(200, mesi))
+        risultato = await client.async_get_mesi_anno(
+            "XXXX", "Retail_SET", "0100000001", "IT999E00000001", 2026, "A2"
+        )
+        assert risultato == [{"month": 4, "total": 339.108, "estimated": False}]
+        assert sessione.richieste[0]["params"] == {
+            "consumptionRange": "F1_F2_F3",
+            "consumptionType": "A2",
+            "profile": "Retail_SET",
+            "supplyPoint": "IT999E00000001",
+            "year": 2026,
+        }
+
+    @pytest.mark.asyncio
     async def test_ore_dalla_risposta_reale(self):
         client, _ = _client(_Risposta(200, CONSUMI_GIORNO_12_10_2026))
         ore = await client.async_get_consumi_giorno(

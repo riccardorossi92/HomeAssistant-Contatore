@@ -152,7 +152,8 @@ teleriscaldamento del gruppo).
 ### Consumi
 
 `GET /secure/utility/{fiscalCode}/{contractId}/consumption` con
-`consumptionRange=F1_F2_F3`, `consumptionType=A1`, `profile`,
+`consumptionRange=F1_F2_F3`, `consumptionType=A1` (prelievo) o `A2`
+(immissione, stessa forma della risposta), `profile`,
 `supplyPoint={POD}`, `year`, e opzionalmente `month` e `day`. Tre
 livelli di dettaglio:
 
@@ -210,6 +211,14 @@ fatturazione: c'è il dettaglio a 15 minuti e il flag `estimated` per ora.
   nelle statistiche, il ciclo non contatta il portale.
 - **`recupera_storico`**: limite di cortesia di 366 giorni per azione
   (una chiamata al giorno).
+- **Immissione (A2)**, come E-Distribuzione: solo sui POD con impianto,
+  per gli stessi giorni del prelievo e senza coda propria (un errore è
+  solo un avviso). Le forniture non hanno un campo "impianto": lo si
+  ricava, una volta al giorno, dal livello annuale di `A2`. Su un POD con
+  impianto entrato in esercizio ad aprile 2026 i mesi precedenti (e tutto
+  il 2025) sono `estimated: true` a zero, quelli dopo misurati: un POD ha
+  un impianto se l'anno in corso o il precedente ha un mese non stimato e
+  maggiore di zero.
 - **Cambio ora** (verificato il 25/10/2026): nei giorni da 23 o 25 ore
   l'API restituisce comunque 24 elementi. Nel giorno da 25 ore le due
   02:00 sono già sommate in un solo elemento, che si importa nella prima

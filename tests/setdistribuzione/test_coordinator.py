@@ -96,32 +96,48 @@ def statistiche(monkeypatch):
     async def _ultima(hass, pod):
         return stato["ultima"]
 
-    async def _importa(hass, pod, ore):
-        stato["importate"].append(ore)
+    async def _importa(hass, pod, ore, *, immissione=False):
+        stato["immesse" if immissione else "importate"].append(ore)
+
+    stato["immesse"] = []
 
     monkeypatch.setattr(modulo, "async_get_ultima_data_disponibile", _ultima)
     monkeypatch.setattr(modulo, "async_import_ore", _importa)
     return stato
 
 
-def _api_finta(consumi=None, errore_il: date | None = None):
-    """API finta: per ogni giorno le ore reali, o quelle di 'consumi'."""
+MESI_CON_IMPIANTO = [
+    {"month": 3, "total": 0, "estimated": True},
+    {"month": 4, "total": 339.108, "estimated": False},
+]
+MESI_SENZA_IMPIANTO = [{"month": m, "total": 0, "estimated": True} for m in range(1, 13)]
+
+
+def _api_finta(consumi=None, errore_il: date | None = None, mesi_a2=None, errore_a2=False):
+    """API finta: per ogni giorno le ore reali, o quelle di 'consumi'.
+    L'immissione (A2) è la stessa curva; 'mesi_a2' decide se c'è un impianto."""
     api = Mock()
     api.async_get_pod_account = AsyncMock(return_value=[RIFERIMENTO])
 
-    async def _consumi(fiscal_code, profilo, contract_id, pod, giorno):
-        if giorno == errore_il:
+    async def _consumi(fiscal_code, profilo, contract_id, pod, giorno, grandezza="A1"):
+        if giorno == errore_il or (grandezza == "A2" and errore_a2):
             raise SetDistribuzioneApiError("HTTP 500")
         if consumi is not None:
             return consumi.get(giorno, [])
         return _ore_del(giorno)
 
     api.async_get_consumi_giorno = AsyncMock(side_effect=_consumi)
+    api.async_get_mesi_anno = AsyncMock(
+        return_value=MESI_SENZA_IMPIANTO if mesi_a2 is None else mesi_a2
+    )
     return api
 
 
-def _giorni_chiesti(api) -> list[date]:
-    return [c.args[4] for c in api.async_get_consumi_giorno.call_args_list]
+def _giorni_chiesti(api, grandezza="A1") -> list[date]:
+    return [
+        c.args[4] for c in api.async_get_consumi_giorno.call_args_list
+        if c.kwargs.get("grandezza", "A1") == grandezza
+    ]
 
 
 class TestLogin:
@@ -212,6 +228,80 @@ class TestCicloAutomatico:
         with pytest.raises(UpdateFailed, match="non risulta"):
             await coordinator._async_update_data()
         assert "2026-10-12" in coordinator.entry.data[CONF_GIORNI_DA_RIPROVARE][POD]
+
+
+@freeze_time("2026-10-13 20:00:00")
+class TestImmissione:
+    async def test_senza_impianto_solo_prelievo(self, hass, coordinator, statistiche, monkeypatch):
+        api = _api_finta()
+        monkeypatch.setattr(coordinator, "_async_login", AsyncMock(return_value=api))
+
+        dati = await coordinator._async_update_data()
+
+        assert _giorni_chiesti(api, "A2") == []
+        assert statistiche["immesse"] == []
+        assert dati["by_pod"][POD]["con_impianto"] is False
+        # Anno corrente e precedente, entrambi senza mesi misurati.
+        assert [c.args[4] for c in api.async_get_mesi_anno.call_args_list] == [2026, 2025]
+
+    async def test_con_impianto_importa_anche_l_immissione(
+        self, hass, coordinator, statistiche, monkeypatch
+    ):
+        api = _api_finta(mesi_a2=MESI_CON_IMPIANTO)
+        monkeypatch.setattr(coordinator, "_async_login", AsyncMock(return_value=api))
+
+        dati = await coordinator._async_update_data()
+
+        assert _giorni_chiesti(api, "A2") == [date(2026, 10, 12)]
+        assert len(statistiche["immesse"][0]) == 24
+        assert dati["by_pod"][POD]["con_impianto"] is True
+        assert dati["by_pod"][POD]["ultimo_giorno_immesso"] == "2026-10-12"
+        assert dati["by_pod"][POD]["kwh_ultimo_giorno_immesso"] == pytest.approx(7.858, abs=1e-3)
+
+    async def test_impianto_riletto_una_volta_al_giorno(
+        self, hass, coordinator, statistiche, monkeypatch
+    ):
+        api = _api_finta(mesi_a2=MESI_CON_IMPIANTO)
+        monkeypatch.setattr(coordinator, "_async_login", AsyncMock(return_value=api))
+        await coordinator._async_update_data()
+        statistiche["ultima"] = None
+        await coordinator._async_update_data()
+        assert api.async_get_mesi_anno.await_count == 1
+
+    async def test_errore_immissione_non_blocca_il_prelievo(
+        self, hass, coordinator, statistiche, monkeypatch
+    ):
+        api = _api_finta(mesi_a2=MESI_CON_IMPIANTO, errore_a2=True)
+        monkeypatch.setattr(coordinator, "_async_login", AsyncMock(return_value=api))
+
+        dati = await coordinator._async_update_data()
+
+        assert len(statistiche["importate"][0]) == 24
+        assert statistiche["immesse"] == []
+        assert dati["by_pod"][POD]["ultimo_giorno_immesso"] is None
+        assert not coordinator.entry.data.get(CONF_GIORNI_DA_RIPROVARE)
+
+    async def test_errore_lettura_impianto_solo_prelievo(
+        self, hass, coordinator, statistiche, monkeypatch
+    ):
+        api = _api_finta()
+        api.async_get_mesi_anno = AsyncMock(side_effect=SetDistribuzioneApiError("HTTP 500"))
+        monkeypatch.setattr(coordinator, "_async_login", AsyncMock(return_value=api))
+
+        dati = await coordinator._async_update_data()
+
+        assert len(statistiche["importate"][0]) == 24
+        assert dati["by_pod"][POD]["con_impianto"] is False
+
+    async def test_recupera_storico_con_impianto(self, hass, coordinator, statistiche, monkeypatch):
+        api = _api_finta(mesi_a2=MESI_CON_IMPIANTO)
+        monkeypatch.setattr(coordinator, "_async_login", AsyncMock(return_value=api))
+        coordinator.async_update_listeners = Mock()
+
+        await coordinator.async_recupera_storico(date(2026, 8, 1), date(2026, 9, 30))
+
+        assert len(_giorni_chiesti(api, "A2")) == 61
+        assert [len(ore) // 24 for ore in statistiche["immesse"]] == [31, 30]
 
 
 class TestOrarioRichiesta:
