@@ -27,7 +27,7 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | E-Distribuzione | Accesso dal browser, oppure solo POD (caricamento manuale del CSV) | `recupera_storico` (solo configurazioni automatiche) | L'accesso dal browser non è autorizzato da E-Distribuzione e può smettere di funzionare (vedi l'avviso sotto) |
 | Areti | Email + password | `recupera_storico` | |
 | Ireti | Username + password | `recupera_storico` | Giorno da 25 ore (25/10/2026) da ricontrollare; POD di produzione non supportati |
-| SET Distribuzione | Email + password | `recupera_storico` | Giorni da 23 e da 25 ore (cambio d'ora) non ancora riscontrati su dati reali |
+| SET Distribuzione | Email + password | `recupera_storico` | |
 | Edyna | Nome utente + password | `recupera_storico` | Giorno da 23 ore (cambio d'ora di marzo 2027) non ancora osservato; POD di produzione e immissione non supportati |
 
 > [!WARNING]
