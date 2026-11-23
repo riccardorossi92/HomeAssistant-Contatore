@@ -302,6 +302,8 @@ class TestImmissione:
 
         assert len(_giorni_chiesti(api, "A2")) == 61
         assert [len(ore) // 24 for ore in statistiche["immesse"]] == [31, 30]
+        assert coordinator.data["by_pod"][POD]["con_impianto"] is True
+        assert coordinator.data["by_pod"][POD]["ultimo_giorno_immesso"] == "2026-09-30"
 
 
 class TestOrarioRichiesta:

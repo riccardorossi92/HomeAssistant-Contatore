@@ -499,6 +499,8 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
         fallimenti: list[str] = []
         giorni_importati = 0
+        dati = dict(self.data or {})
+        by_pod = {pod: dict(valori) for pod, valori in dati.get("by_pod", {}).items()}
 
         for pod_corrente in pod_da_recuperare:
             rif = riferimenti.get(pod_corrente)
@@ -509,6 +511,8 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 continue
 
             trovati = 0
+            dati_pod = by_pod.setdefault(pod_corrente, {})
+            dati_pod["con_impianto"] = pod_corrente in con_impianto
             for blocco in blocchi:
                 ricevuti: dict[date, dict[datetime, float]] = {}
                 for giorno in blocco:
@@ -528,7 +532,10 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                     await async_import_ore(self.hass, pod_corrente, ore_blocco)
                     self._rimuovi_dalla_coda(pod_corrente, sorted(ricevuti))
                     if pod_corrente in con_impianto:
-                        await self._async_importa_immissione(api, rif, sorted(ricevuti))
+                        immesso = await self._async_importa_immissione(api, rif, sorted(ricevuti))
+                        if immesso is not None:
+                            dati_pod["ultimo_giorno_immesso"] = immesso[0].isoformat()
+                            dati_pod["kwh_ultimo_giorno_immesso"] = immesso[1]
                 trovati += len(ricevuti)
 
             giorni_importati += trovati
@@ -549,4 +556,5 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         # senza questo avviso i sensori calcolati dalle statistiche (consumo
         # del mese precedente, del trimestre, dell'anno) restano al valore di
         # prima fino al giro successivo.
-        self.async_update_listeners()
+        dati["by_pod"] = by_pod
+        self.async_set_updated_data(dati)
