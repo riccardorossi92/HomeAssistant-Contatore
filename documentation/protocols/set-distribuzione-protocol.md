@@ -210,6 +210,12 @@ fatturazione: c'è il dettaglio a 15 minuti e il flag `estimated` per ora.
   nelle statistiche, il ciclo non contatta il portale.
 - **`recupera_storico`**: limite di cortesia di 366 giorni per azione
   (una chiamata al giorno).
+- **Cambio ora** (verificato il 25/10/2026): nei giorni da 23 o 25 ore
+  l'API restituisce comunque 24 elementi. Nel giorno da 25 ore le due
+  02:00 sono già sommate in un solo elemento, che si importa nella prima
+  02:00 (la seconda resta senza punto: il totale del giorno è esatto, la
+  ripartizione fra le due ore non è ricavabile). Nel giorno da 23 ore
+  l'elemento delle 02:00 è un segnaposto `estimated` a zero e si scarta.
 
 ## Conferma su installazione reale
 
@@ -219,16 +225,9 @@ storico (`recupera_storico`) è stato importato senza problemi.
 
 ## Cosa resta aperto
 
-1. **Cambio ora**: nessuna cattura contiene un giorno da 23 o 25 ore.
-   L'integrazione importa un giorno solo se il numero di ore coincide con
-   la durata reale della giornata (23/24/25), mappando l'i-esima ora come
-   tempo trascorso dalla mezzanotte (lo schema verificato per Ireti). Se
-   il portale restituisce sempre 24 ore anche in quei giorni, il giorno
-   viene scartato con un avviso nei log: è il primo punto da controllare
-   dopo il 25/10/2026.
-2. **Risposta per un giorno non ancora pubblicato** (lista vuota o 404):
+1. **Risposta per un giorno non ancora pubblicato** (lista vuota o 404):
    mai vista, entrambe trattate come "non ancora disponibile".
-3. **Valori `estimated`**: importati come gli altri; non sappiamo se il
+2. **Valori `estimated`**: importati come gli altri; non sappiamo se il
    portale li corregge in seguito né quando.
 
 ## Verifica da terminale

@@ -20,13 +20,9 @@ quarters, in kWh: il picco di potenza che il portale riporta per lo stesso
 giorno ("1,828 kW") è esattamente il quarto d'ora più alto (0,457 kWh) x 4.
 'month' qui è 1-based, a differenza del parametro della richiesta.
 
-Cambio ora: mai osservato (la cattura non contiene un giorno da 23 o 25
-ore). Si importa un giorno solo se il numero di ore torna con la durata
-reale della giornata locale, ricavata dal database dei fusi di Home
-Assistant; con 23 o 25 elementi l'ora i-esima è il tempo trascorso dalla
-mezzanotte (come verificato per Ireti), non l'ora sul quadrante. Un giorno
-che non torna viene scartato con un avviso invece di importare dati
-disallineati, e resta in coda (vedi coordinator.py).
+Cambio ora, verificato il 25/10/2026: l'API restituisce 24 elementi anche
+nei giorni da 23 o 25 ore. Le due 02:00 autunnali sono già sommate in un
+solo elemento; quella primaverile è un segnaposto stimato a zero.
 """
 from __future__ import annotations
 
@@ -87,7 +83,9 @@ def ore_del_giorno(consumi: list[dict[str, Any]], giorno: date) -> dict[datetime
         return None
 
     attese = ore_attese(giorno)
-    if len(elementi) != attese:
+    # Cambio ora: 24 etichette civili su una giornata da 23 o 25 ore.
+    cambio_ora = len(elementi) == 24 and attese in (23, 25)
+    if len(elementi) != attese and not cambio_ora:
         _LOGGER.warning(
             "Consumi SET Distribuzione del %s: %d ore ricevute, attese %d - giorno "
             "non importato (incompleto o schema cambiato?)",
@@ -98,6 +96,18 @@ def ore_del_giorno(consumi: list[dict[str, Any]], giorno: date) -> dict[datetime
     # sorted è stabile: in un giorno da 25 ore l'ora ripetuta resta
     # nell'ordine in cui arriva.
     ordinati = sorted(elementi, key=lambda c: c.get("hour") if isinstance(c.get("hour"), int) else -1)
+
+    if cambio_ora and attese == 23:
+        # L'elemento delle 02:00 è il segnaposto dell'ora che non esiste.
+        if not ordinati[2].get("estimated") or _kwh_ora(ordinati[2]):
+            _LOGGER.warning(
+                "Consumi SET Distribuzione del %s: l'ora 02:00 inesistente non è il "
+                "segnaposto stimato a zero atteso - giorno non importato",
+                giorno,
+            )
+            return None
+        del ordinati[2]
+
     mezzanotte = _mezzanotte_utc(giorno)
     ore: dict[datetime, float] = {}
     for indice, elemento in enumerate(ordinati):
@@ -109,7 +119,10 @@ def ore_del_giorno(consumi: list[dict[str, Any]], giorno: date) -> dict[datetime
                 giorno, elemento.get("hour"),
             )
             return None
-        ore[mezzanotte + indice * _UN_ORA] = kwh
+        # Giorno da 25 ore: le due 02:00 sono fuse nell'elemento 2, la
+        # seconda resta senza punto e le ore dopo restano sul quadrante.
+        salto = 1 if cambio_ora and attese == 25 and indice > 2 else 0
+        ore[mezzanotte + (indice + salto) * _UN_ORA] = kwh
     if any(c.get("estimated") for c in elementi):
         _LOGGER.debug("Consumi SET Distribuzione del %s: contiene valori stimati", giorno)
     return ore
