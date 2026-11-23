@@ -2,9 +2,8 @@
 risposta reale ai bucket orari UTC. Solo funzioni pure: la scrittura vera
 passa da statistics_common, coperta altrove.
 
-Fuso Europe/Rome, come il portale: i giorni di cambio ora non sono mai
-stati osservati, i test fissano il comportamento scelto (vedi docstring
-del modulo).
+Fuso Europe/Rome, come il portale: i test dei giorni di cambio ora
+fissano il comportamento scelto (vedi docstring del modulo).
 """
 from __future__ import annotations
 
@@ -96,6 +95,27 @@ def test_giorno_da_23_ore():
     assert max(ore) == datetime(2026, 3, 29, 21, tzinfo=UTC)
 
 
-def test_24_ore_nel_giorno_da_25_scartato():
+def test_24_ore_nel_giorno_da_25_fuse():
     giorno = date(2026, 10, 25)
+    ore = st.ore_del_giorno(_ore(giorno, 24), giorno)
+    assert len(ore) == 24
+    # La prima 02:00 (00:00 UTC) ha il valore fuso, la seconda resta senza punto.
+    assert datetime(2026, 10, 25, 0, tzinfo=UTC) in ore
+    assert datetime(2026, 10, 25, 1, tzinfo=UTC) not in ore
+    assert max(ore) == datetime(2026, 10, 25, 22, tzinfo=UTC)
+    assert sum(ore.values()) == pytest.approx(2.4)
+
+
+def test_24_ore_nel_giorno_da_23_senza_segnaposto():
+    giorno = date(2026, 3, 29)
+    curva = _ore(giorno, 24)
+    curva[2].update(estimated=True, total=0.0)
+    ore = st.ore_del_giorno(curva, giorno)
+    assert len(ore) == 23
+    assert max(ore) == datetime(2026, 3, 29, 21, tzinfo=UTC)
+    assert sum(ore.values()) == pytest.approx(2.3)
+
+
+def test_24_ore_nel_giorno_da_23_senza_segnaposto_valido_scartato():
+    giorno = date(2026, 3, 29)
     assert st.ore_del_giorno(_ore(giorno, 24), giorno) is None
