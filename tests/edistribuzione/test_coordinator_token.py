@@ -1,5 +1,7 @@
 """Rinnovo del token nel coordinator: un refresh_token scaduto chiede un
-nuovo accesso (reauth), un blocco di E-Distribuzione si riprova e basta."""
+nuovo accesso (reauth), un blocco di E-Distribuzione si riprova e basta.
+Le voci ancora sul client OAuth precedente chiedono un nuovo accesso anche
+quando E-Distribuzione rifiuta quel client."""
 from __future__ import annotations
 
 from datetime import timedelta
@@ -18,6 +20,7 @@ from custom_components.contatore_letture.distributors.edistribuzione import coor
 from custom_components.contatore_letture.distributors.edistribuzione.auth import (
     EdistribuzioneAppBloccata,
     EdistribuzioneBloccoAntibot,
+    EdistribuzioneClientNonValido,
     EdistribuzioneTokenNonValido,
 )
 from custom_components.contatore_letture.distributors.edistribuzione.const import (
@@ -41,7 +44,9 @@ async def test_refresh_token_scaduto_chiede_un_nuovo_accesso(make_edist_coordina
     [EdistribuzioneAppBloccata("app_blocked"), EdistribuzioneBloccoAntibot("Imperva")],
 )
 async def test_blocco_di_e_distribuzione_si_riprova(make_edist_coordinator, errore):
-    coordinator = make_edist_coordinator()
+    coordinator = make_edist_coordinator(
+        data={edist_const.CONF_CLIENT_ID_OAUTH: edist_const.OAUTH_CLIENT_ID}
+    )
     coordinator._auth.async_refresh_access_token = AsyncMock(side_effect=errore)
     with pytest.raises(UpdateFailed):
         await coordinator._async_ensure_token()
@@ -121,3 +126,48 @@ async def test_entry_con_client_salvato_si_rinnova_con_quello(make_edist_coordin
         "rt",
         edist_const.OAUTH_CLIENT_ID,
     )
+
+
+@pytest.mark.parametrize(
+    "errore",
+    [
+        EdistribuzioneClientNonValido("invalid_client_id"),
+        EdistribuzioneAppBloccata("app_blocked"),
+    ],
+)
+async def test_client_precedente_rifiutato_chiede_un_nuovo_accesso(
+    make_edist_coordinator, errore
+):
+    """Voce senza client salvato (creata prima di novembre 2026): se
+    E-Distribuzione rifiuta il client precedente, riprovare ogni ora non
+    serve; il nuovo accesso dal browser passa al client nuovo."""
+    coordinator = make_edist_coordinator()
+    coordinator._auth.async_refresh_access_token = AsyncMock(side_effect=errore)
+    with pytest.raises(ConfigEntryAuthFailed, match="nuovo accesso"):
+        await coordinator._async_ensure_token()
+    assert coordinator._auth.async_refresh_access_token.await_args.args[1] == (
+        edist_const.OAUTH_CLIENT_ID_PRECEDENTE
+    )
+
+
+async def test_client_precedente_con_antibot_si_riprova(make_edist_coordinator):
+    """L'antibot non dipende dal client: anche con quello precedente si riprova."""
+    coordinator = make_edist_coordinator()
+    coordinator._auth.async_refresh_access_token = AsyncMock(
+        side_effect=EdistribuzioneBloccoAntibot("Imperva")
+    )
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_ensure_token()
+
+
+async def test_client_attuale_rifiutato_non_chiede_un_nuovo_accesso(make_edist_coordinator):
+    """Un nuovo accesso userebbe lo stesso client: niente reauth, e il
+    messaggio dice che serve un aggiornamento dell'integrazione."""
+    coordinator = make_edist_coordinator(
+        data={edist_const.CONF_CLIENT_ID_OAUTH: edist_const.OAUTH_CLIENT_ID}
+    )
+    coordinator._auth.async_refresh_access_token = AsyncMock(
+        side_effect=EdistribuzioneClientNonValido("invalid_client_id")
+    )
+    with pytest.raises(UpdateFailed, match="aggiornamento"):
+        await coordinator._async_ensure_token()
