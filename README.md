@@ -24,26 +24,11 @@ Invece di dover sapere in anticipo quale distributore ti serve,
 | Unareti | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | |
 | RetiPiù | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | Non ancora provato con credenziali reali (stesso protocollo di Duereti e Unareti) |
 | Reti Valtellina Valchiavenna | Client ID + Secret ID | `recupera_storico`, `recupera_ticket` | Non ancora provato con credenziali reali (stesso protocollo di Duereti e Unareti) |
-| E-Distribuzione | Accesso dal browser, oppure solo POD (caricamento manuale del CSV) | `recupera_storico` (solo configurazioni automatiche) | L'accesso dal browser non è autorizzato da E-Distribuzione e può smettere di funzionare (vedi l'avviso sotto) |
+| E-Distribuzione | Accesso dal browser, oppure solo POD (caricamento manuale del CSV) | `recupera_storico` (solo configurazioni automatiche) | |
 | Areti | Email + password | `recupera_storico` | |
 | Ireti | Username + password | `recupera_storico` | Giorno da 25 ore (25/10/2026) da ricontrollare; POD di produzione non supportati |
 | SET Distribuzione | Email + password | `recupera_storico` | |
 | Edyna | Nome utente + password | `recupera_storico` | Giorno da 23 ore (cambio d'ora di marzo 2027) non ancora osservato; POD di produzione e immissione non supportati |
-
-> [!WARNING]
-> **E-Distribuzione: login automatico bloccato, accesso dal browser**
-> ([issue #11](https://github.com/riccardorossi92/HomeAssistant-Contatore/issues/11)).
-> Da ottobre 2026 il portale E-Distribuzione blocca il login automatico
-> dell'integrazione con email, password e OTP. Al suo posto ci sono due
-> strade: l'**accesso dal browser** (accedi una volta sul sito ufficiale da
-> un computer, apri un link di autorizzazione e incolli in Home Assistant
-> l'indirizzo che ti restituisce; poi il download giornaliero è automatico)
-> e il **caricamento manuale** del CSV della pagina
-> [Curve di carico](https://private.e-distribuzione.it/PortaleClienti/s/curvedicarico).
-> L'accesso dal browser usa il client dell'app ufficiale e non è
-> autorizzato da E-Distribuzione: può smettere di funzionare in qualsiasi
-> momento. Il caricamento manuale non dipende da nessun accesso non
-> ufficiale.
 
 Per i comuni serviti da un distributore non ancora supportato, il wizard di
 configurazione permette comunque di selezionarlo manualmente se sai che è
