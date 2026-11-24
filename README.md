@@ -324,8 +324,7 @@ distributore:
 
 | Distributore | Aggiungere/rimuovere POD | Orario della richiesta giornaliera |
 | --- | :---: | :---: |
-| Duereti, Unareti, RetiPiù, Reti Valtellina Valchiavenna | sì | no (importano a mese chiuso, vedi sotto) |
-| Areti | sì | no (importa a mese chiuso, vedi sotto) |
+| Duereti, Unareti, RetiPiù, Reti Valtellina Valchiavenna, Areti | sì | no (importano a mese chiuso, vedi sotto) |
 | E-Distribuzione | sì | sì |
 | Ireti, SET Distribuzione, Edyna | no | no (vedi sotto) |
 
