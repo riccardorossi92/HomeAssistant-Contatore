@@ -238,10 +238,10 @@ Per importare i dati:
 Ripeti dal punto 1 quando vuoi aggiornare i dati: i giorni già importati
 vengono sovrascritti, senza doppioni.
 
-Lo **scaricamento automatico con password e OTP** resta nel wizard ma non
-è selezionabile finché E-Distribuzione blocca il login automatico. Le
-configurazioni automatiche create prima continuano a funzionare finché il
-rinnovo del loro accesso riesce; quando scade, si riaccede dal browser.
+Lo **scaricamento automatico con password e OTP** non compare nel wizard
+finché E-Distribuzione blocca il login automatico. Le configurazioni
+automatiche create prima continuano a funzionare finché il rinnovo del loro
+accesso riesce; quando scade, si riaccede dal browser.
 
 </details>
 

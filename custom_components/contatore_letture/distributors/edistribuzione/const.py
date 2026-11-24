@@ -242,7 +242,7 @@ MODALITA_BROWSER = "browser"
 
 # Da ottobre 2026 il login automatico con password e OTP e' bloccato (issue
 # #11): Imperva su private.e-distribuzione.it, "Errore Tecnico" su
-# my.site.com. Nel wizard resta visibile ma non selezionabile; l'accesso
+# my.site.com. Nel wizard non compare tra le scelte; l'accesso
 # dal browser (MODALITA_BROWSER) lo sostituisce. Rimettere True quando
 # torna a funzionare.
 SCARICAMENTO_AUTOMATICO_DISPONIBILE = False

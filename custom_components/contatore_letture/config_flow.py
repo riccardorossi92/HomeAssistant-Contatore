@@ -556,7 +556,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         login automatico con password e OTP.
 
         Finche' SCARICAMENTO_AUTOMATICO_DISPONIBILE e' False il login con
-        password resta nell'elenco, con il motivo, ma sceglierlo da' errore:
+        password e OTP non compare nell'elenco: E-Distribuzione lo blocca e
         i selettori di Home Assistant non hanno opzioni disattivate."""
         from .distributors.edistribuzione.const import (
             CONF_MODALITA,
@@ -572,26 +572,28 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_edistribuzione_manuale_pod()
             if user_input[CONF_MODALITA] == MODALITA_BROWSER:
                 return await self.async_step_edistribuzione_browser()
-            if SCARICAMENTO_AUTOMATICO_DISPONIBILE:
-                return await self.async_step_edistribuzione_user()
-            errors[CONF_MODALITA] = "automatico_non_disponibile"
+            return await self.async_step_edistribuzione_user()
 
-        etichetta_automatico = "Scaricamento automatico con password e OTP"
-        if not SCARICAMENTO_AUTOMATICO_DISPONIBILE:
-            etichetta_automatico += " (non disponibile: bloccato da ottobre 2026)"
+        opzioni = [
+            {
+                "value": MODALITA_BROWSER,
+                "label": "Scaricamento automatico, accesso dal browser",
+            },
+            {"value": MODALITA_MANUALE, "label": "Caricamento manuale curve"},
+        ]
+        if SCARICAMENTO_AUTOMATICO_DISPONIBILE:
+            opzioni.append(
+                {
+                    "value": MODALITA_AUTOMATICA,
+                    "label": "Scaricamento automatico con password e OTP",
+                }
+            )
         return self.async_show_form(
             step_id="edistribuzione_modalita",
             data_schema=vol.Schema({
                 vol.Required(CONF_MODALITA, default=MODALITA_BROWSER): SelectSelector(
                     SelectSelectorConfig(
-                        options=[
-                            {
-                                "value": MODALITA_BROWSER,
-                                "label": "Scaricamento automatico, accesso dal browser",
-                            },
-                            {"value": MODALITA_MANUALE, "label": "Caricamento manuale curve"},
-                            {"value": MODALITA_AUTOMATICA, "label": etichetta_automatico},
-                        ],
+                        options=opzioni,
                         mode=selector.SelectSelectorMode.LIST,
                     )
                 )

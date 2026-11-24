@@ -61,14 +61,22 @@ async def test_e_distribuzione_chiede_la_modalita(hass):
     assert res["step_id"] == "edistribuzione_modalita"
 
 
-async def test_automatico_non_selezionabile_finche_disattivato(hass, monkeypatch):
+def _valori_modalita(res) -> list[str]:
+    schema = res["data_schema"].schema
+    selettore = next(v for k, v in schema.items() if k == "modalita")
+    return [o["value"] for o in selettore.config["options"]]
+
+
+async def test_automatico_non_in_elenco_finche_disattivato(hass, monkeypatch):
     monkeypatch.setattr(edist_const, "SCARICAMENTO_AUTOMATICO_DISPONIBILE", False)
     res = await _fino_a_modalita(hass)
-    res = await hass.config_entries.flow.async_configure(
-        res["flow_id"], {"modalita": "automatica"}
-    )
-    assert res["step_id"] == "edistribuzione_modalita"
-    assert res["errors"] == {"modalita": "automatico_non_disponibile"}
+    assert _valori_modalita(res) == ["browser", "manuale"]
+
+
+async def test_automatico_in_elenco_quando_riattivato(hass, monkeypatch):
+    monkeypatch.setattr(edist_const, "SCARICAMENTO_AUTOMATICO_DISPONIBILE", True)
+    res = await _fino_a_modalita(hass)
+    assert _valori_modalita(res) == ["browser", "manuale", "automatica"]
 
 
 async def test_automatico_riattivato_porta_al_login(hass, monkeypatch):
