@@ -273,11 +273,12 @@ async def _sonda_curl(impersonate: str) -> None:
 def _richieste_sonda():
     # Authorize con i soli parametri pubblici dell'app (nessun dato utente):
     # e' l'endpoint su cui il blocco e' stato osservato nei log (issue #8).
+    # client_id dell'app aggiornata a novembre 2026, lo stesso di
+    # OAUTH_CLIENT_ID in distributors/edistribuzione/const.py.
     params_auth = {
         "response_type": "code",
         "client_id": (
-            "3MVG9Rd3qC6oMalUVUXDfNEIi52RXSZMsndjnAnbka4R4Amhq6QrTj2U2Zw0sjyqOlFViLC"
-            ".cTpau8fPEBV0V"
+            "3MVG9Rd3qC6oMalUVUXDfNEIi5wmqcb6MVZMb_WQdp_fCJ1zvnx6ufi2J4KW7ikvzlMVVbdwYjeEMAZrdrYoP"
         ),
         "redirect_uri": "eneldist://redirect",
         "display": "touch",
