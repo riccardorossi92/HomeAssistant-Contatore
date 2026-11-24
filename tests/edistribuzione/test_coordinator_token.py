@@ -11,6 +11,9 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from custom_components.contatore_letture.distributors.edistribuzione import (
+    const as edist_const,
+)
 from custom_components.contatore_letture.distributors.edistribuzione import coordinator as mod
 from custom_components.contatore_letture.distributors.edistribuzione.auth import (
     EdistribuzioneAppBloccata,
@@ -90,3 +93,31 @@ async def test_un_solo_rinnovo_per_giro_anche_con_piu_chiamate(hass, make_edist_
     assert rinnovo.await_count == 2
     assert coordinator._api.async_get_supplies.await_count == 1
     assert coordinator._api.async_get_daily_load_profile.await_count == 2
+
+
+async def test_entry_senza_client_salvato_si_rinnova_con_il_precedente(make_edist_coordinator):
+    """Le entry create prima di novembre 2026 hanno un refresh_token del
+    client precedente: vale solo con quello."""
+    coordinator = make_edist_coordinator()
+    coordinator._auth.async_refresh_access_token = AsyncMock(
+        return_value=SimpleNamespace(access_token="AT", refresh_token="rt")
+    )
+    await coordinator._async_ensure_token()
+    assert coordinator._auth.async_refresh_access_token.await_args.args == (
+        "rt",
+        edist_const.OAUTH_CLIENT_ID_PRECEDENTE,
+    )
+
+
+async def test_entry_con_client_salvato_si_rinnova_con_quello(make_edist_coordinator):
+    coordinator = make_edist_coordinator(
+        data={edist_const.CONF_CLIENT_ID_OAUTH: edist_const.OAUTH_CLIENT_ID}
+    )
+    coordinator._auth.async_refresh_access_token = AsyncMock(
+        return_value=SimpleNamespace(access_token="AT", refresh_token="rt")
+    )
+    await coordinator._async_ensure_token()
+    assert coordinator._auth.async_refresh_access_token.await_args.args == (
+        "rt",
+        edist_const.OAUTH_CLIENT_ID,
+    )

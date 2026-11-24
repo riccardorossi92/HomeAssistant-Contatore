@@ -59,6 +59,7 @@ from .const import (
     MAX_MESI_PER_RICHIESTA,
     MAX_MESI_STORICO,
     RITARDO_DATI_GIORNI,
+    client_id_della_entry,
     orario_casuale,
     orario_da_opzioni,
 )
@@ -156,7 +157,9 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
     async def _async_ensure_token(self) -> None:
         refresh_token = self.entry.data[CONF_REFRESH_TOKEN]
         try:
-            tokens = await self._auth.async_refresh_access_token(refresh_token)
+            tokens = await self._auth.async_refresh_access_token(
+                refresh_token, client_id_della_entry(self.entry.data)
+            )
         except EdistribuzioneTokenNonValido as err:
             # refresh_token scaduto o revocato (cambio password, sessioni
             # chiuse dal portale...): solo un nuovo accesso lo sostituisce.

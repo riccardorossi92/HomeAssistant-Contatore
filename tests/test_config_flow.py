@@ -1208,6 +1208,7 @@ async def test_edist_browser_crea_entry_automatica(hass, _arera_sconosciuto, bro
     assert res["type"] == FlowResultType.CREATE_ENTRY
     assert res["data"][CONF_PODS] == ["IT001E00000009"]
     assert res["data"][CONF_REFRESH_TOKEN] == "ref-browser"
+    assert res["data"]["client_id_oauth"] == edist_const.OAUTH_CLIENT_ID
     browser_mocks.api.async_get_supplies.assert_awaited_once()
     browser_mocks_auth.token_da_redirect_browser.assert_called_once_with(REDIRECT_OK)
 
@@ -1255,6 +1256,9 @@ async def test_edist_reauth_dal_browser_aggiorna_refresh_token(hass, browser_moc
     assert res["type"] == FlowResultType.ABORT
     assert res["reason"] == "reauth_successful"
     assert entry.data[CONF_REFRESH_TOKEN] == "ref-browser"
+    # Il vecchio refresh_token era del client precedente: il nuovo e' del
+    # client attuale, e da qui in poi si rinnova con quello.
+    assert entry.data["client_id_oauth"] == edist_const.OAUTH_CLIENT_ID
     assert entry.data[CONF_PODS] == ["IT001E00000009"]
 
 

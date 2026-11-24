@@ -71,7 +71,21 @@ LOGINFLOW_URL = f"{SF_BASE}/loginflow/loginFlow.apexp"
 # Reusing Enel's own client_id is what makes headless login possible, but note
 # this is a third-party client relying on Enel's infrastructure - treat it as
 # fragile and be ready for it to be revoked/changed without notice.
+#
+# Novembre 2026: l'app aggiornata (iOS 1.5.4, Android 1.5.8, imposte con
+# ForceUpdate da checkVersion) usa un client nuovo. Verificato il 24/11/2026
+# con un HAR dell'app (login, scambio del code, getSupplies) e con l'accesso
+# dal browser: response_type=token restituisce access_token e
+# refresh_token, senza la pagina "Consenti" che il client precedente
+# mostrava (issue #12). I nuovi accessi usano OAUTH_CLIENT_ID.
 OAUTH_CLIENT_ID = (
+    "3MVG9Rd3qC6oMalUVUXDfNEIi5wmqcb6MVZMb_WQdp_fCJ1zvnx6ufi2J4KW7ikvzlMVVbdwYjeEMAZrdrYoP"
+)
+# Client dell'app fino a ottobre 2026. Un refresh_token vale solo con il
+# client che lo ha emesso, quindi le entry create prima di salvare
+# CONF_CLIENT_ID_OAUTH continuano a rinnovarsi con questo, finche'
+# E-Distribuzione lo accetta; al primo nuovo accesso passano al nuovo.
+OAUTH_CLIENT_ID_PRECEDENTE = (
     "3MVG9Rd3qC6oMalUVUXDfNEIi52RXSZMsndjnAnbka4R4Amhq6QrTj2U2Zw0sjyqOlFViLC"
     ".cTpau8fPEBV0V"
 )
@@ -100,6 +114,14 @@ DEFAULT_UPDATE_INTERVAL_MINUTES = 60
 
 CONF_PODS = "pods"  # lista di codici POD (stringhe), non dict come pcf_common: qui non serve un dato fiscale per POD, sono tutti sulla stessa utenza gia' autenticata
 CONF_REFRESH_TOKEN = "refresh_token"
+# client_id con cui e' stato emesso CONF_REFRESH_TOKEN; assente nelle entry
+# create prima di novembre 2026 (vedi OAUTH_CLIENT_ID_PRECEDENTE).
+CONF_CLIENT_ID_OAUTH = "client_id_oauth"
+
+
+def client_id_della_entry(dati: Mapping[str, Any]) -> str:
+    """client_id da usare per rinnovare il refresh_token di una entry."""
+    return dati.get(CONF_CLIENT_ID_OAUTH) or OAUTH_CLIENT_ID_PRECEDENTE
 CONF_ACCESS_TOKEN = "access_token"
 
 DISPLAY_NAME = "E-Distribuzione"

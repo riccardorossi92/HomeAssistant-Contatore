@@ -81,9 +81,15 @@ il login: genera il link e riceve i token.
    `startURL`.
 3. Il portale rimanda a
    `eneldist://redirect#access_token=…&refresh_token=…&instance_url=…&state=…`.
-   Un browser desktop non sa aprirlo: Chrome lo riporta in Console
-   (`Failed to launch 'eneldist://redirect#…' because the scheme does not
-   have a registered handler.`). L'utente incolla quella riga nel wizard.
+   Non con un redirect HTTP: l'authorize risponde 302 verso
+   `RemoteAccessAuthorizationPage.apexp`, che risponde 200 con uno script
+   (`handleRedirect('eneldist://…')`, `window.location.replace(…)`,
+   `window.location.href = …`, l'indirizzo ripetuto tre volte tra apici;
+   HAR di Safari del 24/11/2026). Un browser desktop non sa aprirlo:
+   l'utente copia il testo della scheda Response di quella richiesta, o la
+   riga di Chrome in Console (`Failed to launch 'eneldist://redirect#…'
+   because the scheme does not have a registered handler.`), e lo incolla
+   nel wizard.
 4. `auth.token_da_redirect_browser` estrae l'indirizzo dal testo, controlla
    lo `state` e la presenza di `access_token` e `refresh_token`. I valori
    si decodificano con `unquote`, non come form: un `+` nel token è un più
@@ -99,6 +105,27 @@ POD della configurazione.
 
 Stesso approccio di maurobraggio/HomeAssistant-EDistribuzione e
 fabioscarparo/HomeAssistant-EDistribuzione (v0.8.0), 13/10/2026.
+
+### Client OAuth (novembre 2026)
+
+L'app aggiornata (iOS 1.5.4, Android 1.5.8; `checkVersion` le impone con
+`ForceUpdate: true`) usa un client nuovo, `OAUTH_CLIENT_ID` in `const.py`.
+Verificato il 24/11/2026: HAR dell'app (login, scambio `code → token` su
+`private.e-distribuzione.it` riuscito, `userinfo`, `getSupplies`) e accesso
+dal browser con `response_type=token`, che restituisce `access_token` e
+`refresh_token` senza la pagina "Consenti" mostrata dal client precedente
+(issue #12). Lo scope restituito è `id api web refresh_token openid`.
+
+Un `refresh_token` vale solo con il client che lo ha emesso: le entry
+salvano il client in `client_id_oauth` e quelle create prima, che non ce
+l'hanno, si rinnovano con `OAUTH_CLIENT_ID_PRECEDENTE` finché
+E-Distribuzione lo accetta. Al primo nuovo accesso passano al client nuovo.
+
+Nella stessa versione il portale carica `PED_RecaptchaBridge`
+(reCAPTCHA Enterprise, legato a `PED_OtpSecurityConfig`): il 24/11 nessuna
+richiesta del login lo inviava ancora (`loginUser` e i passi dell'OTP con
+gli stessi parametri di prima). Al browser non cambia nulla; per un ritorno
+al login automatico con password sarebbe un ostacolo in più.
 
 ## Flusso di login (email + password + OTP)
 

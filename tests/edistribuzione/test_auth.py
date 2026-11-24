@@ -877,6 +877,7 @@ class _SessioneTokenPerHost:
     def post(self, url, data=None, headers=None, allow_redirects=None):
         self.url_chiamati.append(url)
         self.ultimi_headers = headers
+        self.ultimi_dati = data
         for host, risposta in self._risposte.items():
             if url.startswith(f"https://{host}/"):
                 return risposta
@@ -1107,6 +1108,30 @@ class TestAccessoBrowser:
         )
         assert (tokens.access_token, tokens.refresh_token) == ("A", "R")
 
+    def test_risposta_intera_della_pagina_di_autorizzazione(self):
+        """Forma reale del 24/11/2026: niente 302, l'indirizzo sta in uno
+        script della risposta di RemoteAccessAuthorizationPage, ripetuto
+        tre volte tra apici."""
+        client, _, state = self._client_con_link()
+        redirect = (
+            "eneldist://redirect#access_token=00D%21AQ&refresh_token=5Aep+x%3D"
+            "&instance_url=https%3A%2F%2Fedistribuzione.my.salesforce.com"
+            f"&state={state}&scope=id+api+web+refresh_token+openid&token_type=Bearer"
+        )
+        pagina = (
+            "<script>function redirectOnLoad() { if (this.SfdcApp) { "
+            f"SfdcApp.projectOneNavigator.handleRedirect('{redirect}'); }} else "
+            f"if (window.location.replace){{ window.location.replace('{redirect}');"
+            f"}} else {{ window.location.href ='{redirect}'; }} }}</script>"
+        )
+        tokens = client.token_da_redirect_browser(pagina)
+        assert (tokens.access_token, tokens.refresh_token) == ("00D!AQ", "5Aep+x=")
+
+    def test_link_con_il_client_nuovo(self):
+        _, url, _ = self._client_con_link()
+        assert f"client_id={auth.OAUTH_CLIENT_ID}" in urlparse(url).query
+        assert auth.OAUTH_CLIENT_ID != sys.modules["edistribuzione_test.const"].OAUTH_CLIENT_ID_PRECEDENTE
+
     def test_testo_senza_redirect(self):
         client, url, _ = self._client_con_link()
         with pytest.raises(auth.EdistribuzioneRedirectNonValido) as err:
@@ -1154,6 +1179,20 @@ class TestAccessoBrowser:
             client.token_da_redirect_browser(
                 f"eneldist://redirect#error=app_blocked&state={state}"
             )
+
+
+class TestRefreshClientId:
+    async def test_refresh_con_il_client_indicato(self):
+        session = _SessioneTokenPerHost({SF_HOST_TOKEN: _RispostaToken(TOKEN_OK)})
+        client = auth.EdistribuzioneAuthClient(session)
+        await client.async_refresh_access_token("RT", sys.modules["edistribuzione_test.const"].OAUTH_CLIENT_ID_PRECEDENTE)
+        assert session.ultimi_dati["client_id"] == sys.modules["edistribuzione_test.const"].OAUTH_CLIENT_ID_PRECEDENTE
+
+    async def test_refresh_senza_client_usa_quello_nuovo(self):
+        session = _SessioneTokenPerHost({SF_HOST_TOKEN: _RispostaToken(TOKEN_OK)})
+        client = auth.EdistribuzioneAuthClient(session)
+        await client.async_refresh_access_token("RT")
+        assert session.ultimi_dati["client_id"] == auth.OAUTH_CLIENT_ID
 
 
 class TestRefreshTokenScaduto:

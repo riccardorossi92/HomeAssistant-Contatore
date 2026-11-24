@@ -42,8 +42,11 @@ from .const import (
 )
 from .distributors import DISTRIBUTOR_REGISTRY, PIVA_TO_KEY
 from .distributors.edistribuzione.const import (
+    CONF_CLIENT_ID_OAUTH,
     CONF_ORA_RICHIESTA,
     CONF_ORARIO_RICHIESTA,
+    OAUTH_CLIENT_ID,
+    client_id_della_entry,
     orario_casuale,
     orario_da_opzioni,
 )
@@ -863,6 +866,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "comune": self._comune_name,
                     CONF_PODS: pods,
                     CONF_REFRESH_TOKEN: self._edistribuzione_refresh_token,
+                    CONF_CLIENT_ID_OAUTH: OAUTH_CLIENT_ID,
                 },
                 # Orario casuale per installazione (vedi orario_casuale):
                 # modificabile dalle opzioni.
@@ -1730,6 +1734,7 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 nuovi_dati = {
                     **self._reauth_entry.data,
                     CONF_REFRESH_TOKEN: tokens.refresh_token,
+                    CONF_CLIENT_ID_OAUTH: OAUTH_CLIENT_ID,
                 }
                 self.hass.config_entries.async_update_entry(self._reauth_entry, data=nuovi_dati)
                 await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
@@ -1793,7 +1798,11 @@ class ContatoreLettureConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         self.hass.config_entries.async_update_entry(
             self._reauth_entry,
-            data={**self._reauth_entry.data, CONF_REFRESH_TOKEN: tokens.refresh_token},
+            data={
+                **self._reauth_entry.data,
+                CONF_REFRESH_TOKEN: tokens.refresh_token,
+                CONF_CLIENT_ID_OAUTH: OAUTH_CLIENT_ID,
+            },
         )
         await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
         return self.async_abort(reason="reauth_successful")
@@ -2105,7 +2114,8 @@ class ContatoreLettureOptionsFlow(config_entries.OptionsFlow):
         auth = EdistribuzioneAuthClient(session)
         try:
             tokens = await auth.async_refresh_access_token(
-                self.config_entry.data[CONF_REFRESH_TOKEN]
+                self.config_entry.data[CONF_REFRESH_TOKEN],
+                client_id_della_entry(self.config_entry.data),
             )
         except Exception:  # noqa: BLE001
             _LOGGER.exception("Refresh del token E-Distribuzione fallito nelle opzioni")

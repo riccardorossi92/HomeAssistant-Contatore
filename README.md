@@ -190,28 +190,26 @@ Dopo aver scelto il comune, il wizard chiede la modalità.
 2. Nella stessa finestra, **prima** di aprire il secondo link, apri gli
    strumenti per sviluppatori (**F12**, o **⌥⌘I** su Mac), vai nella
    scheda **Network** (Rete) e spunta **Preserve log** (Mantieni log). Poi
-   apri il link di autorizzazione. Se compare una pagina con **Consenti**
-   (succede la prima volta che un account autorizza l'app), premilo. La
-   pagina resta bianca o mostra un errore e la barra degli indirizzi non
-   cambia (per esempio resta su `…/AuthorizationPage`): è normale,
-   l'indirizzo finale è pensato per l'app e non compare lì.
+   apri il link di autorizzazione. Se compare una pagina con **Consenti**,
+   premilo (di solito non compare). La pagina resta bianca o mostra un
+   errore e la barra degli indirizzi non cambia: è normale, l'indirizzo
+   finale è pensato per l'app e non compare lì.
 3. Ora serve l'**indirizzo finale**, che si trova solo negli strumenti per
    sviluppatori. **Non** è il link di autorizzazione che hai appena aperto
    e **non** è l'indirizzo nella barra del browser: è un testo molto lungo
-   che inizia con `eneldist://redirect`. Nella scheda **Network** cerca la
-   riga con stato **302**, cliccala e in **Headers** → **Response
-   Headers** copia il valore di **Location**. Se invece hai premuto
-   **Consenti**, non c'è nessun 302: clicca la richiesta
-   **AuthorizationPage** (metodo POST, stato 200), apri la scheda
-   **Response** (Risposta) e copia tutto il testo, oppure solo la parte
-   che inizia con `eneldist://redirect`. In alternativa, nella scheda
-   **Console** può comparire una riga rossa `Failed to launch
+   che inizia con `eneldist://redirect`. Il portale non lo manda con un
+   redirect HTTP ma con uno script dentro la pagina: nella scheda
+   **Network** clicca la richiesta **RemoteAccessAuthorizationPage.apexp**
+   (stato 200; se hai premuto Consenti, la richiesta **AuthorizationPage**
+   con metodo POST), apri la scheda **Response** (Risposta) e copia tutto
+   il testo. L'integrazione ci trova da sola l'indirizzo. In alternativa,
+   nella scheda **Console** può comparire una riga rossa `Failed to launch
    'eneldist://redirect…'`: copiala intera. Se il testo copiato non
    contiene `eneldist://redirect`, non è quello giusto. Se gli strumenti
-   per sviluppatori si aprono solo dopo, la riga di solito non c'è più:
-   riapri il link di autorizzazione con la scheda Network già aperta. Se il
-   browser chiede di aprire un'app, annulla: l'indirizzo va copiato, non
-   aperto.
+   per sviluppatori si aprono solo dopo, la richiesta di solito non c'è
+   più: riapri il link di autorizzazione con la scheda Network già aperta.
+   Se il browser chiede di aprire un'app, annulla: l'indirizzo va
+   copiato, non aperto.
 4. Incollalo nel wizard e scegli i POD.
 
 Servono due link perché il portale arriva all'indirizzo finale solo con un

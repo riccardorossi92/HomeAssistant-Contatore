@@ -1372,7 +1372,9 @@ class EdistribuzioneAuthClient:
         _pulisci_pagine_debug()
         return tokens
 
-    async def async_refresh_access_token(self, refresh_token: str) -> OAuthTokens:
+    async def async_refresh_access_token(
+        self, refresh_token: str, client_id: str = OAUTH_CLIENT_ID
+    ) -> OAuthTokens:
         """Get a fresh access_token. No Aura/OTP involved - this is the path
         the integration should use on every normal startup/renewal.
 
@@ -1388,7 +1390,7 @@ class EdistribuzioneAuthClient:
         """
         self._host = SF_HOST_PRINCIPALE
         try:
-            return await self._async_refresh_su_url(refresh_token, OAUTH_TOKEN_URL_DIRETTO)
+            return await self._async_refresh_su_url(refresh_token, OAUTH_TOKEN_URL_DIRETTO, client_id)
         except (EdistribuzioneBloccoAntibot, EdistribuzioneAppBloccata) as err_diretto:
             _LOGGER.warning(
                 "Refresh del token rifiutato su %s (%s), riprovo su %s",
@@ -1397,15 +1399,17 @@ class EdistribuzioneAuthClient:
                 SF_HOST_PRINCIPALE,
             )
             try:
-                return await self._async_refresh_su_url(refresh_token, OAUTH_TOKEN_URL)
+                return await self._async_refresh_su_url(refresh_token, OAUTH_TOKEN_URL, client_id)
             except EdistribuzioneAuthError:
                 raise err_diretto from None
 
-    async def _async_refresh_su_url(self, refresh_token: str, url: str) -> OAuthTokens:
+    async def _async_refresh_su_url(
+        self, refresh_token: str, url: str, client_id: str
+    ) -> OAuthTokens:
         data = {
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
-            "client_id": OAUTH_CLIENT_ID,
+            "client_id": client_id,
         }
         async with self._session.post(url, data=data, headers=_HEADERS_TOKEN) as resp:
             # Testo letto sempre, anche con status 200: la pagina "Pardon Our
