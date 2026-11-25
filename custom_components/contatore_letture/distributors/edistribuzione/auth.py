@@ -392,6 +392,27 @@ class EdistribuzioneTokenNonValido(EdistribuzioneAuthError):
     app_blocked che dipendono da E-Distribuzione e vanno solo riprovati."""
 
 
+class EdistribuzioneClientNonValido(EdistribuzioneAuthError):
+    """Il token endpoint rifiuta il client OAuth ("invalid_client_id" o
+    "invalid_client"), non il refresh_token: succede quando E-Distribuzione
+    dismette un client dell'app (vedi const.OAUTH_CLIENT_ID_PRECEDENTE).
+    Riprovare non serve, e nemmeno ripiegare sul portale."""
+
+
+# Codici OAuth con cui Salesforce rifiuta il client_id stesso.
+_ERRORI_CLIENT_NON_VALIDO = ("invalid_client_id", "invalid_client")
+
+
+def _errore_oauth(testo: str) -> str | None:
+    """Il campo "error" di una risposta OAuth in JSON, se c'e'."""
+    try:
+        payload = json.loads(testo)
+    except json.JSONDecodeError:
+        return None
+    errore = payload.get("error") if isinstance(payload, dict) else None
+    return errore if isinstance(errore, str) else None
+
+
 class EdistribuzioneRedirectNonValido(EdistribuzioneAuthError):
     """Il testo incollato alla fine dell'accesso dal browser non e' usabile.
 
@@ -1419,6 +1440,10 @@ class EdistribuzioneAuthClient:
             _verifica_app_non_bloccata(text)
             if resp.status != 200 and '"invalid_grant"' in text:
                 raise EdistribuzioneTokenNonValido(
+                    f"refresh_token exchange failed ({resp.status}): {text[:300]}"
+                )
+            if resp.status != 200 and _errore_oauth(text) in _ERRORI_CLIENT_NON_VALIDO:
+                raise EdistribuzioneClientNonValido(
                     f"refresh_token exchange failed ({resp.status}): {text[:300]}"
                 )
             if resp.status != 200:

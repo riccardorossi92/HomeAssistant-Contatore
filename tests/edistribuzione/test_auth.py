@@ -1195,6 +1195,40 @@ class TestRefreshClientId:
         assert session.ultimi_dati["client_id"] == auth.OAUTH_CLIENT_ID
 
 
+class TestRefreshClientNonValido:
+    """Il token endpoint rifiuta il client stesso, non il refresh_token:
+    succede quando E-Distribuzione dismette un client dell'app."""
+
+    @pytest.mark.parametrize(
+        "corpo",
+        [
+            '{"error":"invalid_client_id","error_description":"client identifier invalid"}',
+            '{"error":"invalid_client","error_description":"invalid client credentials"}',
+        ],
+    )
+    async def test_client_rifiutato_ha_eccezione_dedicata_e_non_ripiega(self, corpo):
+        session = _SessioneTokenPerHost({SF_HOST_TOKEN: _RispostaToken(corpo, status=400)})
+        client = auth.EdistribuzioneAuthClient(session)
+        with pytest.raises(auth.EdistribuzioneClientNonValido):
+            await client.async_refresh_access_token("RT")
+        assert len(session.url_chiamati) == 1  # il portale userebbe lo stesso client
+
+    async def test_altri_errori_restano_generici(self):
+        session = _SessioneTokenPerHost({
+            SF_HOST_TOKEN: _RispostaToken('{"error":"unsupported_grant_type"}', status=400),
+            auth.SF_HOST_PRINCIPALE: _RispostaToken('{"error":"x"}', status=400),
+        })
+        client = auth.EdistribuzioneAuthClient(session)
+        with pytest.raises(auth.EdistribuzioneAuthError) as errore:
+            await client.async_refresh_access_token("RT")
+        assert not isinstance(errore.value, auth.EdistribuzioneClientNonValido)
+        assert not isinstance(errore.value, auth.EdistribuzioneTokenNonValido)
+
+    def test_client_non_valido_e_sottoclasse_di_auth_error(self):
+        assert issubclass(auth.EdistribuzioneClientNonValido, auth.EdistribuzioneAuthError)
+        assert not issubclass(auth.EdistribuzioneClientNonValido, auth.EdistribuzioneTokenNonValido)
+
+
 class TestRefreshTokenScaduto:
     async def test_invalid_grant_ha_eccezione_dedicata(self):
         session = _SessioneTokenPerHost({

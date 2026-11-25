@@ -40,8 +40,10 @@ from homeassistant.util import dt as dt_util
 from ...const import DOMAIN
 from .api import EdistribuzioneApiClient, EdistribuzioneApiError
 from .auth import (
+    EdistribuzioneAppBloccata,
     EdistribuzioneAuthClient,
     EdistribuzioneAuthError,
+    EdistribuzioneClientNonValido,
     EdistribuzioneTokenNonValido,
 )
 from .const import (
@@ -58,6 +60,7 @@ from .const import (
     MAX_GIORNI_IN_CODA,
     MAX_MESI_PER_RICHIESTA,
     MAX_MESI_STORICO,
+    OAUTH_CLIENT_ID_PRECEDENTE,
     RITARDO_DATI_GIORNI,
     client_id_della_entry,
     orario_casuale,
@@ -156,10 +159,9 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
     async def _async_ensure_token(self) -> None:
         refresh_token = self.entry.data[CONF_REFRESH_TOKEN]
+        client_id = client_id_della_entry(self.entry.data)
         try:
-            tokens = await self._auth.async_refresh_access_token(
-                refresh_token, client_id_della_entry(self.entry.data)
-            )
+            tokens = await self._auth.async_refresh_access_token(refresh_token, client_id)
         except EdistribuzioneTokenNonValido as err:
             # refresh_token scaduto o revocato (cambio password, sessioni
             # chiuse dal portale...): solo un nuovo accesso lo sostituisce.
@@ -168,10 +170,30 @@ class EdistribuzioneCoordinator(DataUpdateCoordinator[dict]):
             raise ConfigEntryAuthFailed(
                 f"Accesso E-Distribuzione scaduto, serve un nuovo accesso: {err}"
             ) from err
+        except (EdistribuzioneClientNonValido, EdistribuzioneAppBloccata) as err:
+            if client_id == OAUTH_CLIENT_ID_PRECEDENTE:
+                # Voce creata prima del client nuovo (novembre 2026): il suo
+                # refresh_token vale solo con il client vecchio, e quando
+                # E-Distribuzione lo rifiuta riprovare ogni ora non serve.
+                # Un nuovo accesso dal browser usa il client nuovo e lo salva
+                # nella voce, mantenendo POD, opzioni e storico.
+                raise ConfigEntryAuthFailed(
+                    "E-Distribuzione non accetta piu' il client dell'app con cui e' "
+                    f"stato fatto l'accesso, serve un nuovo accesso: {err}"
+                ) from err
+            if isinstance(err, EdistribuzioneClientNonValido):
+                # Il client attuale dell'integrazione rifiutato: un nuovo
+                # accesso userebbe lo stesso client, serve una versione
+                # aggiornata dell'integrazione.
+                raise UpdateFailed(
+                    "E-Distribuzione non accetta il client OAuth di questa versione "
+                    f"dell'integrazione, serve un aggiornamento: {err}"
+                ) from err
+            raise UpdateFailed(f"Token refresh failed: {err}") from err
         except EdistribuzioneAuthError as err:
-            # Antibot, app_blocked, rete: dipende da E-Distribuzione e il
-            # token resta valido, quindi si riprova al ciclo successivo
-            # invece di chiedere un nuovo accesso che non cambierebbe nulla.
+            # Antibot, rete: dipende da E-Distribuzione e il token resta
+            # valido, quindi si riprova al ciclo successivo invece di
+            # chiedere un nuovo accesso che non cambierebbe nulla.
             raise UpdateFailed(f"Token refresh failed: {err}") from err
 
         self._api.update_token(tokens.access_token)
