@@ -283,6 +283,16 @@ l'accesso dal browser. Antibot e `app_blocked` invece restano
 `UpdateFailed` e si riprova al ciclo successivo, perché un nuovo accesso
 non li risolverebbe.
 
+Eccezione: le voci ancora sul client OAuth precedente
+(`OAUTH_CLIENT_ID_PRECEDENTE`, create prima della 0.17.2). Se il token
+endpoint rifiuta il client (`invalid_client_id`, `invalid_client`:
+`EdistribuzioneClientNonValido`) o risponde `app_blocked`, il coordinator
+chiede un nuovo accesso (`ConfigEntryAuthFailed`): il reauth usa il client
+nuovo e lo salva nella voce. Con il client attuale `invalid_client` resta
+`UpdateFailed` (un nuovo accesso userebbe lo stesso client: serve una
+versione aggiornata dell'integrazione) e `app_blocked` si riprova come
+sopra.
+
 ## API dati (MuleSoft)
 
 Header comuni: `Authorization: Bearer <access_token>`, `Method_User: <nome
