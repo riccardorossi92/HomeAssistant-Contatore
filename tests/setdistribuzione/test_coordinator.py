@@ -91,10 +91,17 @@ async def coordinator(hass):
 @pytest.fixture
 def statistiche(monkeypatch):
     """Statistiche finte: ultima data configurabile, import registrato."""
-    stato = {"ultima": None, "importate": []}
+    stato = {
+        "ultima": None,
+        "importate": [],
+        "immissione_esistente": False,
+    }
 
     async def _ultima(hass, pod):
         return stato["ultima"]
+
+    async def _esiste_immissione(hass, pod):
+        return stato["immissione_esistente"]
 
     async def _importa(hass, pod, ore, *, immissione=False):
         stato["immesse" if immissione else "importate"].append(ore)
@@ -102,6 +109,7 @@ def statistiche(monkeypatch):
     stato["immesse"] = []
 
     monkeypatch.setattr(modulo, "async_get_ultima_data_disponibile", _ultima)
+    monkeypatch.setattr(modulo, "async_esiste_immissione", _esiste_immissione)
     monkeypatch.setattr(modulo, "async_import_ore", _importa)
     return stato
 
@@ -257,6 +265,34 @@ class TestImmissione:
         assert dati["by_pod"][POD]["con_impianto"] is True
         assert dati["by_pod"][POD]["ultimo_giorno_immesso"] == "2026-10-12"
         assert dati["by_pod"][POD]["kwh_ultimo_giorno_immesso"] == pytest.approx(7.858, abs=1e-3)
+
+    async def test_riavvio_riprende_impianto_dalla_serie_esistente(
+        self, hass, coordinator, statistiche, monkeypatch
+    ):
+        """Dopo un riavvio, prima del ciclo con login, un POD che ha già
+        una serie di immissione resta "con impianto": i sensori non
+        diventano non disponibili."""
+        statistiche["immissione_esistente"] = True
+        statistiche["ultima"] = date(2026, 10, 12)
+        login = AsyncMock()
+        monkeypatch.setattr(coordinator, "_async_login", login)
+
+        dati = await coordinator._async_update_data()
+
+        login.assert_not_called()
+        assert dati["by_pod"][POD]["con_impianto"] is True
+
+    async def test_riavvio_senza_serie_immissione_nessun_impianto(
+        self, hass, coordinator, statistiche, monkeypatch
+    ):
+        statistiche["ultima"] = date(2026, 10, 12)
+        login = AsyncMock()
+        monkeypatch.setattr(coordinator, "_async_login", login)
+
+        dati = await coordinator._async_update_data()
+
+        login.assert_not_called()
+        assert dati["by_pod"][POD]["con_impianto"] is False
 
     async def test_impianto_riletto_una_volta_al_giorno(
         self, hass, coordinator, statistiche, monkeypatch

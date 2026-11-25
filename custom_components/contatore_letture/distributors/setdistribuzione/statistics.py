@@ -151,3 +151,15 @@ async def async_import_ore(
 async def async_get_ultima_data_disponibile(hass: HomeAssistant, pod: str) -> date | None:
     """Ultima data (locale) presente nelle external statistics del POD."""
     return await async_ultima_data_disponibile(hass, sanitize_statistic_id(pod))
+
+
+async def async_esiste_immissione(hass: HomeAssistant, pod: str) -> bool:
+    """True se per il POD esiste già una serie di immissione importata.
+
+    Dopo un riavvio il controllo sul portale (che richiede un login) non è
+    ancora stato fatto: la presenza della serie dimostra che il POD era già
+    stato riconosciuto con impianto, quindi i sensori di immissione non
+    devono sparire nell'attesa del ciclo serale."""
+    return await async_ultima_data_disponibile(
+        hass, sanitize_statistic_id(pod, "immissione")
+    ) is not None

@@ -29,7 +29,10 @@ Design (il "perché" in documentation/protocols/set-distribuzione-protocol.md):
     un campo "impianto" nelle forniture: un POD ne ha uno se nell'anno
     (o nel precedente) c'è un mese di immissione misurato, non stimato e
     maggiore di zero. Si controlla una volta al giorno, nei cicli che
-    fanno già il login.
+    fanno già il login. Dopo un riavvio, finché quel controllo non è stato
+    fatto, valgono come "con impianto" i POD che hanno già una serie di
+    immissione importata: altrimenti i sensori resterebbero non
+    disponibili fino al ciclo serale.
 """
 from __future__ import annotations
 
@@ -71,7 +74,12 @@ from .const import (
     orario_casuale,
     orario_da_opzioni,
 )
-from .statistics import async_get_ultima_data_disponibile, async_import_ore, ore_del_giorno
+from .statistics import (
+    async_esiste_immissione,
+    async_get_ultima_data_disponibile,
+    async_import_ore,
+    ore_del_giorno,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -108,6 +116,10 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         # POD con impianto, riletti al più una volta al giorno (in memoria).
         self._pod_con_impianto: set[str] = set()
         self._pod_con_impianto_del: date | None = None
+        # Dopo un riavvio l'elenco in memoria è vuoto e il controllo sul
+        # portale arriva solo al primo ciclo con login: si parte dalla serie
+        # di immissione già importata, se c'è (vedi _async_impianti_noti).
+        self._impianti_da_statistiche_letti = False
         self._assicura_orario_richiesta()
 
     def _assicura_orario_richiesta(self) -> None:
@@ -183,6 +195,17 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
             rif["fiscal_code"], rif["profile"], rif["contract_id"], rif["pod"], giorno, **kwargs
         )
         return ore_del_giorno(consumi, giorno)
+
+    async def _async_impianti_noti(self) -> set[str]:
+        """POD con una serie di immissione già importata.
+
+        Serve dopo un riavvio: il riconoscimento vero e proprio richiede un
+        login, che avviene solo nel ciclo serale. Senza questo, fino ad
+        allora i sensori di immissione resterebbero non disponibili anche se
+        i dati ci sono (visti il 24/11/2026 dopo un riavvio mattutino)."""
+        return {
+            pod for pod in self.pods if await async_esiste_immissione(self.hass, pod)
+        }
 
     async def _async_aggiorna_impianti(
         self, api: SetDistribuzioneApiClient, riferimenti: dict[str, dict[str, str]]
@@ -363,6 +386,9 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
     # ------------------------------------------------------------------
 
     async def _async_update_data(self) -> dict:
+        if not self._impianti_da_statistiche_letti:
+            self._impianti_da_statistiche_letti = True
+            self._pod_con_impianto = await self._async_impianti_noti()
         if self._e_ora_di_chiedere():
             richieste = {pod: await self._giorni_da_chiedere(pod) for pod in self.pods}
         else:

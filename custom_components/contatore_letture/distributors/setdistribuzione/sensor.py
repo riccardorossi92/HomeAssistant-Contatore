@@ -65,9 +65,10 @@ def build_setdistribuzione_entities(hass, coordinator: SetDistribuzioneCoordinat
 def async_segui_impianti(hass, coordinator: SetDistribuzioneCoordinator, async_add_entities) -> None:
     """Aggiunge i sensori di immissione di un POD appena risulta avere un
     impianto (stesso meccanismo di edistribuzione/sensor.py): il controllo
-    si fa nei cicli con login, quindi non è ancora noto al caricamento.
-    Una volta create le entità restano; `unique_id` stabili le ritrovano a
-    ogni riavvio."""
+    vero e proprio si fa nei cicli con login, ma al caricamento il
+    coordinator ricava l'informazione dalla serie di immissione già
+    importata, se c'è (vedi _async_impianti_noti). Una volta create le
+    entità restano; `unique_id` stabili le ritrovano a ogni riavvio."""
     entry = coordinator.entry
     aggiunti: set[str] = set()
 
