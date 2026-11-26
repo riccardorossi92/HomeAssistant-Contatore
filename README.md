@@ -440,12 +440,15 @@ sensore e fino a quale giorno ci sono dati.
   servire la statistica `contatore_letture:<pod>_energia`, altrimenti lo
   stesso consumo verrebbe contato due volte.
 - Le entità "Consumo ..." contano solo il prelievo (`<pod>_energia`).
-- **Solo E-Distribuzione**: per l'energia immessa in rete (`<pod>_immissione`)
-  ci sono altre cinque entità con le stesse regole: Immissione mese corrente,
-  Immissione mese precedente, Immissione trimestre corrente, Immissione anno
-  corrente e Immissione trimestre precedente (l'ultimo trimestre solare chiuso).
-  Si creano solo sui POD con impianto (`HasPlant` di E-Distribuzione), appena
-  l'integrazione lo legge: sugli altri POD non compaiono.
+- **E-Distribuzione e SET Distribuzione**: per l'energia immessa in rete
+  (`<pod>_immissione`) ci sono altre cinque entità con le stesse regole:
+  Immissione mese corrente, Immissione mese precedente, Immissione trimestre
+  corrente, Immissione anno corrente e Immissione trimestre precedente
+  (l'ultimo trimestre solare chiuso). Si creano solo sui POD con impianto,
+  appena l'integrazione lo legge: sugli altri POD non compaiono. Per
+  E-Distribuzione il dato è `HasPlant`; SET non ha un campo equivalente, quindi
+  un POD ha un impianto se il portale riporta almeno un mese di immissione
+  misurato nell'anno in corso o in quello precedente.
 - **Solo E-Distribuzione, per chi usa le fasce**: sei entità in più con i kWh del
   **mese precedente per fascia**, dal dato ufficiale del contatore: Consumo F1,
   F2, F3 mese precedente e Immissione F1, F2, F3 mese precedente (T1, T2, T3 del
@@ -535,8 +538,11 @@ Stessa struttura di SET Distribuzione, Ireti ed E-Distribuzione.
 | POD configurati | Account | Quanti e quali POD in questa istanza |
 | Ultima data disponibile | POD | Ultimo giorno per cui esistono dati importati |
 | Consumo ultimo giorno importato | POD | kWh dell'ultimo giorno effettivamente ricevuto |
+| Immissione ultimo giorno importato | POD (solo con impianto) | kWh immessi in rete nell'ultimo giorno ricevuto |
 
-Stessa struttura di Ireti ed E-Distribuzione.
+Stessa struttura di Ireti ed E-Distribuzione. Sui POD con impianto ogni giorno
+costa due richieste al portale (prelievo e immissione), anche in
+`recupera_storico`.
 
 </details>
 

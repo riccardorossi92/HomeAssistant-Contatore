@@ -129,19 +129,37 @@ def ore_del_giorno(consumi: list[dict[str, Any]], giorno: date) -> dict[datetime
 
 
 async def async_import_ore(
-    hass: HomeAssistant, pod: str, nuove_ore: dict[datetime, float]
+    hass: HomeAssistant, pod: str, nuove_ore: dict[datetime, float],
+    *, immissione: bool = False,
 ) -> date | None:
     """Scrive le ore nelle external statistics del POD, con la stessa
     fusione/ricalcolo delle somme degli altri distributori (vedi
-    statistics_common). Ritorna la data locale dell'ultimo punto della
-    serie, o None se non c'è nulla da importare."""
+    statistics_common): il prelievo in <pod>_energia, l'immissione in
+    <pod>_immissione (come E-Distribuzione). Ritorna la data locale
+    dell'ultimo punto della serie, o None se non c'è nulla da importare."""
     if not nuove_ore:
         return None
-    return await async_scrivi_serie_oraria(
-        hass, pod, sanitize_statistic_id(pod), f"SET Distribuzione {pod}", nuove_ore
-    )
+    if immissione:
+        statistic_id = sanitize_statistic_id(pod, "immissione")
+        nome = f"SET Distribuzione {pod} Immissione"
+    else:
+        statistic_id = sanitize_statistic_id(pod)
+        nome = f"SET Distribuzione {pod}"
+    return await async_scrivi_serie_oraria(hass, pod, statistic_id, nome, nuove_ore)
 
 
 async def async_get_ultima_data_disponibile(hass: HomeAssistant, pod: str) -> date | None:
     """Ultima data (locale) presente nelle external statistics del POD."""
     return await async_ultima_data_disponibile(hass, sanitize_statistic_id(pod))
+
+
+async def async_esiste_immissione(hass: HomeAssistant, pod: str) -> bool:
+    """True se per il POD esiste già una serie di immissione importata.
+
+    Dopo un riavvio il controllo sul portale (che richiede un login) non è
+    ancora stato fatto: la presenza della serie dimostra che il POD era già
+    stato riconosciuto con impianto, quindi i sensori di immissione non
+    devono sparire nell'attesa del ciclo serale."""
+    return await async_ultima_data_disponibile(
+        hass, sanitize_statistic_id(pod, "immissione")
+    ) is not None

@@ -15,7 +15,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ...const import DOMAIN
-from ...consumo_periodo import crea_sensori_consumo
+from ...consumo_periodo import crea_sensori_consumo, crea_sensori_immissione
 from ...device_helpers import assicura_dispositivo_padre, collega_al_padre
 from .coordinator import SetDistribuzioneCoordinator
 
@@ -59,6 +59,43 @@ def build_setdistribuzione_entities(hass, coordinator: SetDistribuzioneCoordinat
             )
         )
     return entities
+
+
+@callback
+def async_segui_impianti(hass, coordinator: SetDistribuzioneCoordinator, async_add_entities) -> None:
+    """Aggiunge i sensori di immissione di un POD appena risulta avere un
+    impianto (stesso meccanismo di edistribuzione/sensor.py): il controllo
+    vero e proprio si fa nei cicli con login, ma al caricamento il
+    coordinator ricava l'informazione dalla serie di immissione già
+    importata, se c'è (vedi _async_impianti_noti). Una volta create le
+    entità restano; `unique_id` stabili le ritrovano a ogni riavvio."""
+    entry = coordinator.entry
+    aggiunti: set[str] = set()
+
+    @callback
+    def _controlla() -> None:
+        by_pod = (coordinator.data or {}).get("by_pod", {})
+        da_aggiungere = [
+            pod
+            for pod in coordinator.pods
+            if pod not in aggiunti and by_pod.get(pod, {}).get("con_impianto")
+        ]
+        if not da_aggiungere:
+            return
+        id_padre = assicura_dispositivo_padre(hass, entry.entry_id, dict(_device_info_account(entry)))
+        entities: list[SensorEntity] = []
+        for pod in da_aggiungere:
+            aggiunti.add(pod)
+            entities.append(SetDistribuzioneImmissioneGiornoSensor(coordinator, entry, pod, id_padre))
+            entities.extend(
+                crea_sensori_immissione(
+                    hass, entry, coordinator, pod, _device_info_pod(entry, pod, id_padre)
+                )
+            )
+        async_add_entities(entities)
+
+    entry.async_on_unload(coordinator.async_add_listener(_controlla))
+    _controlla()
 
 
 class SetDistribuzionePodConfiguratiSensor(SensorEntity):
@@ -134,14 +171,21 @@ class SetDistribuzioneConsumoGiornoSensor(CoordinatorEntity[SetDistribuzioneCoor
     _attr_native_unit_of_measurement = "kWh"
     _attr_icon = "mdi:lightning-bolt"
 
+    # Chiavi dei dati del coordinator, id e nome: la sottoclasse
+    # dell'immissione ne cambia solo i valori.
+    _chiave_kwh = "kwh_ultimo_giorno_importato"
+    _chiave_giorno = "ultimo_giorno_importato"
+    _suffisso_id = "consumo_giorno"
+    _nome = "Consumo ultimo giorno importato"
+
     def __init__(
         self, coordinator: SetDistribuzioneCoordinator, entry: ConfigEntry, pod: str,
         id_padre: str | None = None,
     ) -> None:
         super().__init__(coordinator)
         self._pod = pod
-        self._attr_unique_id = f"{entry.entry_id}_{pod}_consumo_giorno"
-        self._attr_name = "Consumo ultimo giorno importato"
+        self._attr_unique_id = f"{entry.entry_id}_{pod}_{self._suffisso_id}"
+        self._attr_name = self._nome
         self._attr_device_info = _device_info_pod(entry, pod, id_padre)
         # Ultimo valore valido (kWh) e giorno a cui si riferisce: restano
         # nei cicli senza dati nuovi e si ripristinano dopo un riavvio.
@@ -170,10 +214,10 @@ class SetDistribuzioneConsumoGiornoSensor(CoordinatorEntity[SetDistribuzioneCoor
         """Se il coordinator ha un valore nuovo lo memorizza, insieme al
         giorno a cui si riferisce; altrimenti resta l'ultimo noto."""
         dati_pod = (self.coordinator.data or {}).get("by_pod", {}).get(self._pod, {})
-        valore = dati_pod.get("kwh_ultimo_giorno_importato")
+        valore = dati_pod.get(self._chiave_kwh)
         if valore is not None:
             self._ultimo_valore = round(valore, 3)
-            self._ultimo_giorno = dati_pod.get("ultimo_giorno_importato")
+            self._ultimo_giorno = dati_pod.get(self._chiave_giorno)
 
     @property
     def native_value(self) -> float | None:
@@ -182,3 +226,14 @@ class SetDistribuzioneConsumoGiornoSensor(CoordinatorEntity[SetDistribuzioneCoor
     @property
     def extra_state_attributes(self):
         return {"giorno": self._ultimo_giorno}
+
+
+class SetDistribuzioneImmissioneGiornoSensor(SetDistribuzioneConsumoGiornoSensor):
+    """kWh immessi nell'ultimo giorno importato di un POD con impianto -
+    equivalente di EdistribuzioneImmissioneGiornoSensor."""
+
+    _chiave_kwh = "kwh_ultimo_giorno_immesso"
+    _chiave_giorno = "ultimo_giorno_immesso"
+    _suffisso_id = "immissione_giorno"
+    _nome = "Immissione ultimo giorno importato"
+    _attr_icon = "mdi:transmission-tower-import"

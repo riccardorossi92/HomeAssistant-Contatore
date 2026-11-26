@@ -23,6 +23,16 @@ Design (il "perché" in documentation/protocols/set-distribuzione-protocol.md):
   - fiscalCode, profilo e contractId necessari ai path si rileggono dopo
     ogni login (2 richieste): un cambio di contratto sullo stesso POD non
     richiede di riconfigurare l'integrazione.
+
+  - Immissione (A2), come E-Distribuzione: solo sui POD con impianto, per
+    gli stessi giorni del prelievo, senza coda propria. Il portale non ha
+    un campo "impianto" nelle forniture: un POD ne ha uno se nell'anno
+    (o nel precedente) c'è un mese di immissione misurato, non stimato e
+    maggiore di zero. Si controlla una volta al giorno, nei cicli che
+    fanno già il login. Dopo un riavvio, finché quel controllo non è stato
+    fatto, valgono come "con impianto" i POD che hanno già una serie di
+    immissione importata: altrimenti i sensori resterebbero non
+    disponibili fino al ciclo serale.
 """
 from __future__ import annotations
 
@@ -57,13 +67,19 @@ from .const import (
     CONF_PASSWORD,
     CONF_PODS,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
+    GRANDEZZA_IMMISSIONE,
     MAX_GIORNI_IN_CODA,
     MAX_GIORNI_RECUPERO_STORICO,
     RITARDO_DATI_GIORNI,
     orario_casuale,
     orario_da_opzioni,
 )
-from .statistics import async_get_ultima_data_disponibile, async_import_ore, ore_del_giorno
+from .statistics import (
+    async_esiste_immissione,
+    async_get_ultima_data_disponibile,
+    async_import_ore,
+    ore_del_giorno,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -82,6 +98,21 @@ def _giorni_nel_periodo(data_da: date, data_a: date) -> list[date]:
     return giorni
 
 
+def _aggiorna_ultimo_giorno(
+    dati_pod: dict, suffisso: str, giorno: date, kwh: float
+) -> None:
+    """Aggiorna 'ultimo giorno' (importato/immesso) solo in avanti.
+
+    Un recupero di storico vecchio, o un giorno in coda arrivato in ritardo,
+    non deve far tornare indietro i sensori diagnostici."""
+    chiave_giorno = f"ultimo_giorno_{suffisso}"
+    precedente = dati_pod.get(chiave_giorno)
+    if precedente is not None and giorno.isoformat() < precedente:
+        return
+    dati_pod[chiave_giorno] = giorno.isoformat()
+    dati_pod[f"kwh_ultimo_giorno_{suffisso}"] = kwh
+
+
 class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
@@ -97,6 +128,13 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         self._session = async_create_clientsession(hass, cookie_jar=nuovo_cookie_jar())
         self._auth = SetDistribuzioneAuthClient(self._session)
         self._orario_ripiego: time | None = None
+        # POD con impianto, riletti al più una volta al giorno (in memoria).
+        self._pod_con_impianto: set[str] = set()
+        self._pod_con_impianto_del: date | None = None
+        # Dopo un riavvio l'elenco in memoria è vuoto e il controllo sul
+        # portale arriva solo al primo ciclo con login: si parte dalla serie
+        # di immissione già importata, se c'è (vedi _async_impianti_noti).
+        self._impianti_da_statistiche_letti = False
         self._assicura_orario_richiesta()
 
     def _assicura_orario_richiesta(self) -> None:
@@ -166,12 +204,87 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
     @staticmethod
     async def _async_scarica_giorno(
-        api: SetDistribuzioneApiClient, rif: dict[str, str], giorno: date
+        api: SetDistribuzioneApiClient, rif: dict[str, str], giorno: date, **kwargs
     ) -> dict[datetime, float] | None:
         consumi = await api.async_get_consumi_giorno(
-            rif["fiscal_code"], rif["profile"], rif["contract_id"], rif["pod"], giorno
+            rif["fiscal_code"], rif["profile"], rif["contract_id"], rif["pod"], giorno, **kwargs
         )
         return ore_del_giorno(consumi, giorno)
+
+    async def _async_impianti_noti(self) -> set[str]:
+        """POD con una serie di immissione già importata.
+
+        Serve dopo un riavvio: il riconoscimento vero e proprio richiede un
+        login, che avviene solo nel ciclo serale. Senza questo, fino ad
+        allora i sensori di immissione resterebbero non disponibili anche se
+        i dati ci sono (visti il 24/11/2026 dopo un riavvio mattutino)."""
+        return {
+            pod for pod in self.pods if await async_esiste_immissione(self.hass, pod)
+        }
+
+    async def _async_aggiorna_impianti(
+        self, api: SetDistribuzioneApiClient, riferimenti: dict[str, dict[str, str]]
+    ) -> set[str]:
+        """POD per cui chiedere anche l'immissione. Riletti una volta al
+        giorno; se la richiesta fallisce resta l'ultimo elenco noto e si
+        riprova al login successivo."""
+        oggi = dt_util.now().date()
+        if self._pod_con_impianto_del == oggi:
+            return self._pod_con_impianto
+        con_impianto: set[str] = set()
+        for pod in self.pods:
+            rif = riferimenti.get(pod)
+            if rif is None:
+                continue
+            try:
+                for anno in (oggi.year, oggi.year - 1):
+                    mesi = await api.async_get_mesi_anno(
+                        rif["fiscal_code"], rif["profile"], rif["contract_id"], pod, anno,
+                        GRANDEZZA_IMMISSIONE,
+                    )
+                    if any(not m.get("estimated") and (m.get("total") or 0) > 0 for m in mesi):
+                        con_impianto.add(pod)
+                        break
+            except SetDistribuzioneApiError as err:
+                _LOGGER.warning(
+                    "Impossibile sapere se il POD %s immette energia, per ora non chiedo "
+                    "l'immissione: %s", pod, err,
+                )
+                return self._pod_con_impianto
+        self._pod_con_impianto = con_impianto
+        self._pod_con_impianto_del = oggi
+        return con_impianto
+
+    async def _async_importa_immissione(
+        self, api: SetDistribuzioneApiClient, rif: dict[str, str], giorni: list[date]
+    ) -> tuple[date, float] | None:
+        """Importa l'immissione dei giorni già ricevuti per il prelievo.
+
+        Non tocca la coda e non fa fallire l'aggiornamento: un errore è solo
+        un warning (come E-Distribuzione). Restituisce (ultimo giorno
+        ricevuto, kWh di quel giorno), o None se non è arrivato nulla."""
+        pod = rif["pod"]
+        ricevuti: dict[date, dict[datetime, float]] = {}
+        for giorno in giorni:
+            try:
+                ore = await self._async_scarica_giorno(
+                    api, rif, giorno, grandezza=GRANDEZZA_IMMISSIONE
+                )
+            except SetDistribuzioneApiError as err:
+                _LOGGER.warning(
+                    "POD %s: errore recuperando l'immissione del %s: %s", pod, giorno, err
+                )
+                continue
+            if ore is not None:
+                ricevuti[giorno] = ore
+        if not ricevuti:
+            return None
+        ore_tutte: dict[datetime, float] = {}
+        for ore_giorno in ricevuti.values():
+            ore_tutte.update(ore_giorno)
+        await async_import_ore(self.hass, pod, ore_tutte, immissione=True)
+        ultimo = max(ricevuti)
+        return ultimo, sum(ricevuti[ultimo].values())
 
     # ------------------------------------------------------------------
     # Coda dei giorni da riprovare, PER POD (stesso meccanismo di
@@ -288,6 +401,9 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
     # ------------------------------------------------------------------
 
     async def _async_update_data(self) -> dict:
+        if not self._impianti_da_statistiche_letti:
+            self._impianti_da_statistiche_letti = True
+            self._pod_con_impianto = await self._async_impianti_noti()
         if self._e_ora_di_chiedere():
             richieste = {pod: await self._giorni_da_chiedere(pod) for pod in self.pods}
         else:
@@ -297,6 +413,7 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         if any(richieste.values()):
             api = await self._async_login()
             riferimenti = await self._async_riferimenti(api)
+            await self._async_aggiorna_impianti(api, riferimenti)
 
         precedenti = (self.data or {}).get("by_pod", {})
         by_pod: dict[str, dict] = {}
@@ -305,6 +422,8 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
             dati_pod = dict(precedenti.get(pod) or {
                 "ultimo_giorno_importato": None,
                 "kwh_ultimo_giorno_importato": None,
+                "ultimo_giorno_immesso": None,
+                "kwh_ultimo_giorno_immesso": None,
             })
 
             if giorni:
@@ -335,9 +454,17 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 await self._async_salva(pod, ricevuti, giorni)
                 if ricevuti:
                     ultimo = max(ricevuti)
-                    dati_pod["ultimo_giorno_importato"] = ultimo.isoformat()
-                    dati_pod["kwh_ultimo_giorno_importato"] = sum(ricevuti[ultimo].values())
+                    _aggiorna_ultimo_giorno(
+                        dati_pod, "importato", ultimo, sum(ricevuti[ultimo].values())
+                    )
+                    if pod in self._pod_con_impianto:
+                        immissione = await self._async_importa_immissione(
+                            api, rif, sorted(ricevuti)
+                        )
+                        if immissione is not None:
+                            _aggiorna_ultimo_giorno(dati_pod, "immesso", *immissione)
 
+            dati_pod["con_impianto"] = pod in self._pod_con_impianto
             ultima_data_disponibile = await async_get_ultima_data_disponibile(self.hass, pod)
             dati_pod["ultima_data_disponibile"] = (
                 ultima_data_disponibile.isoformat() if ultima_data_disponibile else None
@@ -399,6 +526,7 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
         api = await self._async_login()
         riferimenti = await self._async_riferimenti(api)
+        con_impianto = await self._async_aggiorna_impianti(api, riferimenti)
         giorni = _giorni_nel_periodo(data_da, data_a)
         blocchi = [
             giorni[i:i + _GIORNI_PER_BLOCCO_RECUPERO]
@@ -412,6 +540,8 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
 
         fallimenti: list[str] = []
         giorni_importati = 0
+        dati = dict(self.data or {})
+        by_pod = {pod: dict(valori) for pod, valori in dati.get("by_pod", {}).items()}
 
         for pod_corrente in pod_da_recuperare:
             rif = riferimenti.get(pod_corrente)
@@ -422,6 +552,8 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 continue
 
             trovati = 0
+            dati_pod = by_pod.setdefault(pod_corrente, {})
+            dati_pod["con_impianto"] = pod_corrente in con_impianto
             for blocco in blocchi:
                 ricevuti: dict[date, dict[datetime, float]] = {}
                 for giorno in blocco:
@@ -440,6 +572,14 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                         ore_blocco.update(ore_giorno)
                     await async_import_ore(self.hass, pod_corrente, ore_blocco)
                     self._rimuovi_dalla_coda(pod_corrente, sorted(ricevuti))
+                    ultimo = max(ricevuti)
+                    _aggiorna_ultimo_giorno(
+                        dati_pod, "importato", ultimo, sum(ricevuti[ultimo].values())
+                    )
+                    if pod_corrente in con_impianto:
+                        immesso = await self._async_importa_immissione(api, rif, sorted(ricevuti))
+                        if immesso is not None:
+                            _aggiorna_ultimo_giorno(dati_pod, "immesso", *immesso)
                 trovati += len(ricevuti)
 
             giorni_importati += trovati
@@ -460,4 +600,5 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
         # senza questo avviso i sensori calcolati dalle statistiche (consumo
         # del mese precedente, del trimestre, dell'anno) restano al valore di
         # prima fino al giro successivo.
-        self.async_update_listeners()
+        dati["by_pod"] = by_pod
+        self.async_set_updated_data(dati)

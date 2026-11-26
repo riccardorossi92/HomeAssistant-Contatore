@@ -45,6 +45,11 @@ CONF_PASSWORD = "password"
 # (utility/{codice fiscale}/active), non inseriti a mano.
 CONF_PODS = "pods"
 
+# 'consumptionType' delle richieste di consumo: energia prelevata dalla rete
+# (serie <pod>_energia) o immessa in rete (serie <pod>_immissione).
+GRANDEZZA_PRELIEVO = "A1"
+GRANDEZZA_IMMISSIONE = "A2"
+
 HEADERS_BROWSER = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
