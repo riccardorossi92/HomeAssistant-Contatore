@@ -98,6 +98,21 @@ def _giorni_nel_periodo(data_da: date, data_a: date) -> list[date]:
     return giorni
 
 
+def _aggiorna_ultimo_giorno(
+    dati_pod: dict, suffisso: str, giorno: date, kwh: float
+) -> None:
+    """Aggiorna 'ultimo giorno' (importato/immesso) solo in avanti.
+
+    Un recupero di storico vecchio, o un giorno in coda arrivato in ritardo,
+    non deve far tornare indietro i sensori diagnostici."""
+    chiave_giorno = f"ultimo_giorno_{suffisso}"
+    precedente = dati_pod.get(chiave_giorno)
+    if precedente is not None and giorno.isoformat() < precedente:
+        return
+    dati_pod[chiave_giorno] = giorno.isoformat()
+    dati_pod[f"kwh_ultimo_giorno_{suffisso}"] = kwh
+
+
 class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
@@ -439,15 +454,15 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                 await self._async_salva(pod, ricevuti, giorni)
                 if ricevuti:
                     ultimo = max(ricevuti)
-                    dati_pod["ultimo_giorno_importato"] = ultimo.isoformat()
-                    dati_pod["kwh_ultimo_giorno_importato"] = sum(ricevuti[ultimo].values())
+                    _aggiorna_ultimo_giorno(
+                        dati_pod, "importato", ultimo, sum(ricevuti[ultimo].values())
+                    )
                     if pod in self._pod_con_impianto:
                         immissione = await self._async_importa_immissione(
                             api, rif, sorted(ricevuti)
                         )
                         if immissione is not None:
-                            dati_pod["ultimo_giorno_immesso"] = immissione[0].isoformat()
-                            dati_pod["kwh_ultimo_giorno_immesso"] = immissione[1]
+                            _aggiorna_ultimo_giorno(dati_pod, "immesso", *immissione)
 
             dati_pod["con_impianto"] = pod in self._pod_con_impianto
             ultima_data_disponibile = await async_get_ultima_data_disponibile(self.hass, pod)
@@ -557,11 +572,14 @@ class SetDistribuzioneCoordinator(DataUpdateCoordinator[dict]):
                         ore_blocco.update(ore_giorno)
                     await async_import_ore(self.hass, pod_corrente, ore_blocco)
                     self._rimuovi_dalla_coda(pod_corrente, sorted(ricevuti))
+                    ultimo = max(ricevuti)
+                    _aggiorna_ultimo_giorno(
+                        dati_pod, "importato", ultimo, sum(ricevuti[ultimo].values())
+                    )
                     if pod_corrente in con_impianto:
                         immesso = await self._async_importa_immissione(api, rif, sorted(ricevuti))
                         if immesso is not None:
-                            dati_pod["ultimo_giorno_immesso"] = immesso[0].isoformat()
-                            dati_pod["kwh_ultimo_giorno_immesso"] = immesso[1]
+                            _aggiorna_ultimo_giorno(dati_pod, "immesso", *immesso)
                 trovati += len(ricevuti)
 
             giorni_importati += trovati

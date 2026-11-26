@@ -400,6 +400,36 @@ class TestRecuperaStorico:
         coordinator.async_update_listeners.assert_called_once()
         # 61 giorni = blocchi da 31 + 30: due scritture, non 61.
         assert [len(ore) // 24 for ore in statistiche["importate"]] == [31, 30]
+        # Anche i sensori "ultimo giorno importato" seguono il recupero,
+        # senza aspettare il ciclo automatico serale.
+        dati_pod = coordinator.data["by_pod"][POD]
+        assert dati_pod["ultimo_giorno_importato"] == "2026-09-30"
+        assert dati_pod["kwh_ultimo_giorno_importato"] == pytest.approx(7.858, abs=1e-3)
+
+    async def test_recupero_vecchio_non_torna_indietro(
+        self, hass, coordinator, statistiche, monkeypatch
+    ):
+        coordinator.data = {
+            "by_pod": {
+                POD: {
+                    "ultimo_giorno_importato": "2026-09-30",
+                    "kwh_ultimo_giorno_importato": 1.5,
+                    "ultimo_giorno_immesso": "2026-09-30",
+                    "kwh_ultimo_giorno_immesso": 2.5,
+                }
+            }
+        }
+        api = _api_finta(mesi_a2=MESI_CON_IMPIANTO)
+        monkeypatch.setattr(coordinator, "_async_login", AsyncMock(return_value=api))
+        coordinator.async_update_listeners = Mock()
+
+        await coordinator.async_recupera_storico(date(2026, 8, 1), date(2026, 8, 31))
+
+        dati_pod = coordinator.data["by_pod"][POD]
+        assert dati_pod["ultimo_giorno_importato"] == "2026-09-30"
+        assert dati_pod["kwh_ultimo_giorno_importato"] == pytest.approx(1.5)
+        assert dati_pod["ultimo_giorno_immesso"] == "2026-09-30"
+        assert dati_pod["kwh_ultimo_giorno_immesso"] == pytest.approx(2.5)
 
     async def test_nessun_dato_solleva_errore_visibile(
         self, hass, coordinator, statistiche, monkeypatch
